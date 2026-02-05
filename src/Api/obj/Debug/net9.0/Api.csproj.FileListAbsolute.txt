@@ -194,3 +194,4 @@ D:\ramadan\backend\src\Api\bin\Debug\net9.0\runtimes\win-arm64\native\e_sqlite3.
 D:\ramadan\backend\src\Api\bin\Debug\net9.0\runtimes\win-x64\native\e_sqlite3.dll
 D:\ramadan\backend\src\Api\bin\Debug\net9.0\runtimes\win-x86\native\e_sqlite3.dll
 d:\ramadan\backend\src\Api\bin\Debug\net9.0\Api.staticwebassets.runtime.json
+d:\ramadan\backend\src\Api\obj\Debug\net9.0\Api.sourcelink.json

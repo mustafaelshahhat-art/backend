@@ -82,3 +82,18 @@ public class PendingPaymentResponse
     public TournamentDto Tournament { get; set; } = new();
     public TeamRegistrationDto Registration { get; set; } = new();
 }
+
+public class TournamentStandingDto
+{
+    public Guid TeamId { get; set; }
+    public string TeamName { get; set; } = string.Empty;
+    public int Played { get; set; }
+    public int Won { get; set; }
+    public int Drawn { get; set; }
+    public int Lost { get; set; }
+    public int TodoGoalsFor { get; set; } // Goals Scored
+    public int GoalsAgainst { get; set; }
+    public int GoalDifference => TodoGoalsFor - GoalsAgainst;
+    public int Points { get; set; }
+    public List<string> Form { get; set; } = new(); // W, D, L
+}

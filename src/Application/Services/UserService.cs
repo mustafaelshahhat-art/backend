@@ -77,4 +77,14 @@ public class UserService : IUserService
         user.Status = UserStatus.Active;
         await _userRepository.UpdateAsync(user);
     }
+
+    public async Task<IEnumerable<UserDto>> GetByRoleAsync(string role)
+    {
+        if (Enum.TryParse<UserRole>(role, true, out var userRole))
+        {
+            var users = await _userRepository.FindAsync(u => u.Role == userRole);
+            return _mapper.Map<IEnumerable<UserDto>>(users);
+        }
+        return new List<UserDto>();
+    }
 }

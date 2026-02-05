@@ -26,6 +26,14 @@ public class UsersController : ControllerBase
         return Ok(users);
     }
 
+    [HttpGet("role/{role}")]
+    [Authorize]
+    public async Task<ActionResult<IEnumerable<UserDto>>> GetByRole(string role)
+    {
+        var users = await _userService.GetByRoleAsync(role);
+        return Ok(users);
+    }
+
     [HttpGet("{id}")]
     public async Task<ActionResult<UserDto>> GetById(Guid id)
     {

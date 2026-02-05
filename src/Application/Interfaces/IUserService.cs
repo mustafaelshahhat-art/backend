@@ -14,4 +14,5 @@ public interface IUserService
     Task DeleteAsync(Guid id);
     Task SuspendAsync(Guid id);
     Task ActivateAsync(Guid id);
+    Task<IEnumerable<UserDto>> GetByRoleAsync(string role);
 }

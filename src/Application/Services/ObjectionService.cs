@@ -24,13 +24,14 @@ public class ObjectionService : IObjectionService
 
     public async Task<IEnumerable<ObjectionDto>> GetAllAsync()
     {
-        var objections = await _objectionRepository.GetAllAsync();
+        var objections = await _objectionRepository.FindAsync(_ => true, new[] { "Team.Captain", "Match.Tournament" });
         return _mapper.Map<IEnumerable<ObjectionDto>>(objections);
     }
 
     public async Task<ObjectionDto?> GetByIdAsync(Guid id)
     {
-        var objection = await _objectionRepository.GetByIdAsync(id);
+        var objections = await _objectionRepository.FindAsync(o => o.Id == id, new[] { "Team.Captain", "Match.Tournament" });
+        var objection = objections.FirstOrDefault();
         return objection == null ? null : _mapper.Map<ObjectionDto>(objection);
     }
 

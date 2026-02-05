@@ -12,10 +12,12 @@ namespace Api.Controllers;
 public class ObjectionsController : ControllerBase
 {
     private readonly IObjectionService _objectionService;
+    private readonly IUserService _userService;
 
-    public ObjectionsController(IObjectionService objectionService)
+    public ObjectionsController(IObjectionService objectionService, IUserService userService)
     {
         _objectionService = objectionService;
+        _userService = userService;
     }
 
     [HttpGet]
@@ -36,10 +38,22 @@ public class ObjectionsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Captain")]
     public async Task<ActionResult<ObjectionDto>> Submit(SubmitObjectionRequest request)
     {
-        // Implementation TODO
-        return await Task.FromResult(StatusCode(501, "Objection submission requires TeamId resolution logic."));
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value 
+                  ?? User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
+        
+        if (userId == null) return Unauthorized();
+
+        var user = await _userService.GetByIdAsync(Guid.Parse(userId));
+        if (user == null || !user.TeamId.HasValue)
+        {
+            return BadRequest("يجب أن تكون كابتن فريق لتقديم اعتراض.");
+        }
+
+        var objection = await _objectionService.SubmitAsync(request, user.TeamId.Value);
+        return CreatedAtAction(nameof(GetById), new { id = objection.Id }, objection);
     }
 
     [HttpPost("{id}/resolve")]

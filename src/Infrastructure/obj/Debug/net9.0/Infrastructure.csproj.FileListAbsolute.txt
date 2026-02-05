@@ -19,3 +19,4 @@ D:\ramadan\backend\src\Infrastructure\obj\Debug\net9.0\refint\Infrastructure.dll
 D:\ramadan\backend\src\Infrastructure\obj\Debug\net9.0\Infrastructure.pdb
 D:\ramadan\backend\src\Infrastructure\obj\Debug\net9.0\Infrastructure.genruntimeconfig.cache
 D:\ramadan\backend\src\Infrastructure\obj\Debug\net9.0\ref\Infrastructure.dll
+d:\ramadan\backend\src\Infrastructure\obj\Debug\net9.0\Infrastructure.sourcelink.json

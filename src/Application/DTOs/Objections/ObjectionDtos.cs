@@ -8,6 +8,8 @@ public class ObjectionDto
     public Guid MatchId { get; set; }
     public Guid TeamId { get; set; }
     public string TeamName { get; set; } = string.Empty;
+    public string CaptainName { get; set; } = string.Empty;
+    public string TournamentName { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;

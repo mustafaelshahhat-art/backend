@@ -76,6 +76,16 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
         return await _dbSet.Where(predicate).ToListAsync();
     }
 
+    public async Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate, string[] includePaths)
+    {
+        IQueryable<T> query = _dbSet;
+        foreach (var path in includePaths)
+        {
+            query = query.Include(path);
+        }
+        return await query.Where(predicate).ToListAsync();
+    }
+
     public async Task AddAsync(T entity)
     {
         await _dbSet.AddAsync(entity);

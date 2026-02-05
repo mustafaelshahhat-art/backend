@@ -39,13 +39,13 @@ public class MatchService : IMatchService
 
     public async Task<IEnumerable<MatchDto>> GetAllAsync()
     {
-        var matches = await _matchRepository.GetAllAsync();
+        var matches = await _matchRepository.GetAllAsync(new[] { "HomeTeam", "AwayTeam" });
         return _mapper.Map<IEnumerable<MatchDto>>(matches);
     }
 
     public async Task<MatchDto?> GetByIdAsync(Guid id)
     {
-        var match = await _matchRepository.GetByIdAsync(id);
+        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam" });
         if (match == null) return null;
 
         if (match.Events == null || !match.Events.Any())
@@ -150,12 +150,13 @@ public class MatchService : IMatchService
 
     public async Task<MatchDto> UpdateAsync(Guid id, UpdateMatchRequest request)
     {
-        var match = await _matchRepository.GetByIdAsync(id);
+        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Referee" });
         if (match == null) throw new NotFoundException(nameof(Match), id);
 
         if (request.HomeScore.HasValue) match.HomeScore = request.HomeScore.Value;
         if (request.AwayScore.HasValue) match.AwayScore = request.AwayScore.Value;
         if (request.Date.HasValue) match.Date = request.Date.Value;
+        if (request.RefereeId.HasValue) match.RefereeId = request.RefereeId.Value;
         
         if (!string.IsNullOrEmpty(request.Status) && Enum.TryParse<MatchStatus>(request.Status, true, out var status))
         {
@@ -163,6 +164,101 @@ public class MatchService : IMatchService
         }
 
         await _matchRepository.UpdateAsync(match);
+        
+        // If Referee was updated, we might need to reload to get Referee name if EF didn't fix it up locally (it usually requires a fresh fetch or attached entry)
+        // But for now, let's assume if we just set RefereeId, the Referee navigation prop might be null if not loaded. 
+        // We included "Referee" in GetByIdAsync, but that was the OLD referee.
+        // If we changed it, match.Referee will act weird unless we reload or the repo handles it.
+        // Let's reload just to be safe if RefereeId changed.
+        if (request.RefereeId.HasValue)
+        {
+             match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Referee" });
+        }
+
         return _mapper.Map<MatchDto>(match);
+    }
+
+    public async Task<IEnumerable<MatchDto>> GenerateMatchesForTournamentAsync(Guid tournamentId)
+    {
+        // Check if matches already exist for this tournament
+        var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+        if (existingMatches.Any())
+        {
+            throw new ConflictException("المباريات موجودة بالفعل لهذه البطولة.");
+        }
+
+        // Get all approved/pending registrations for this tournament
+        // We need to access registrations - inject repository
+        // For now, let's assume we get team IDs from a separate call
+        // Actually, we need to get the teams - let me fetch all teams registered
+        
+        var allTeams = await _teamRepository.GetAllAsync();
+        // We need to filter by tournament registrations - this requires access to registration repository
+        // Since we don't have it injected, let's add a workaround by having the caller pass team IDs
+        // OR we can add the repository. For simplicity, let's assume all teams in allTeams are for this tournament
+        // This is a placeholder - real implementation should filter by tournament registrations
+        
+        throw new NotImplementedException("This method requires tournament registration data. Use GenerateMatchesAsync with team IDs.");
+    }
+
+    public async Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId, List<Guid> teamIds)
+    {
+        // Check if matches already exist
+        var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+        if (existingMatches.Any())
+        {
+            throw new ConflictException("المباريات موجودة بالفعل لهذه البطولة.");
+        }
+
+        if (teamIds.Count < 2)
+        {
+            throw new BadRequestException("يجب وجود فريقين على الأقل لتوليد المباريات.");
+        }
+
+        var matches = new List<Match>();
+        var random = new Random();
+        
+        // Shuffle teams for random order
+        var shuffledTeams = teamIds.OrderBy(x => random.Next()).ToList();
+        
+        // Round Robin: Each team plays against every other team once
+        var matchDate = DateTime.UtcNow.AddDays(7); // First match week from now
+        var matchNumber = 0;
+        
+        for (int i = 0; i < shuffledTeams.Count; i++)
+        {
+            for (int j = i + 1; j < shuffledTeams.Count; j++)
+            {
+                var match = new Match
+                {
+                    TournamentId = tournamentId,
+                    HomeTeamId = shuffledTeams[i],
+                    AwayTeamId = shuffledTeams[j],
+                    Status = MatchStatus.Scheduled,
+                    Date = matchDate.AddDays(matchNumber * 3), // 3 days between matches
+                    HomeScore = 0,
+                    AwayScore = 0
+                };
+                
+                matches.Add(match);
+                matchNumber++;
+            }
+        }
+
+        // Save all matches
+        foreach (var match in matches)
+        {
+            await _matchRepository.AddAsync(match);
+        }
+
+        await _analyticsService.LogActivityAsync("Matches Generated", $"Generated {matches.Count} matches for Tournament {tournamentId}", null, "System");
+
+        return _mapper.Map<IEnumerable<MatchDto>>(matches);
+    }
+
+    public async Task<IEnumerable<MatchDto>> GetMatchesByRefereeAsync(Guid refereeId)
+    {
+        var matches = await _matchRepository.FindAsync(m => m.RefereeId == refereeId, new[] { "HomeTeam", "AwayTeam" });
+        return _mapper.Map<IEnumerable<MatchDto>>(matches);
     }
 }

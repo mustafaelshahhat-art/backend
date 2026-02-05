@@ -14,4 +14,7 @@ public interface IMatchService
     Task<MatchDto> AddEventAsync(Guid id, AddMatchEventRequest request);
     Task<MatchDto> SubmitReportAsync(Guid id, SubmitReportRequest request);
     Task<MatchDto> UpdateAsync(Guid id, UpdateMatchRequest request);
+
+    Task<IEnumerable<MatchDto>> GenerateMatchesForTournamentAsync(Guid tournamentId);
+    Task<IEnumerable<MatchDto>> GetMatchesByRefereeAsync(Guid refereeId);
 }

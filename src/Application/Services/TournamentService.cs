@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Application.DTOs.Tournaments;
+using Application.DTOs.Matches;
 using Application.Interfaces;
 using AutoMapper;
 using Domain.Entities;
@@ -16,14 +17,16 @@ public class TournamentService : ITournamentService
 {
     private readonly IRepository<Tournament> _tournamentRepository;
     private readonly IRepository<TeamRegistration> _registrationRepository;
+    private readonly IRepository<Match> _matchRepository;
     private readonly IMapper _mapper;
     private readonly IAnalyticsService _analyticsService;
     private readonly INotificationService _notificationService;
-    private readonly IRepository<Team> _teamRepository; // Need Team repo to get CaptainId
+    private readonly IRepository<Team> _teamRepository;
 
     public TournamentService(
         IRepository<Tournament> tournamentRepository,
         IRepository<TeamRegistration> registrationRepository,
+        IRepository<Match> matchRepository,
         IMapper mapper,
         IAnalyticsService analyticsService,
         INotificationService notificationService,
@@ -31,6 +34,7 @@ public class TournamentService : ITournamentService
     {
         _tournamentRepository = tournamentRepository;
         _registrationRepository = registrationRepository;
+        _matchRepository = matchRepository;
         _mapper = mapper;
         _analyticsService = analyticsService;
         _notificationService = notificationService;
@@ -177,7 +181,73 @@ public class TournamentService : ITournamentService
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
         if (team != null) await _notificationService.SendNotificationAsync(team.CaptainId, "Registration Approved", $"Your registration for {tournament?.Name} has been approved.", "system");
 
+        // Check if tournament is now full with approved teams - auto-generate matches
+        await TryGenerateMatchesIfFullAsync(tournamentId);
+
         return _mapper.Map<TeamRegistrationDto>(reg);
+    }
+
+    private async Task TryGenerateMatchesIfFullAsync(Guid tournamentId)
+    {
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        if (tournament == null) return;
+
+        // Get approved registrations only
+        var approvedRegs = await _registrationRepository.FindAsync(r => 
+            r.TournamentId == tournamentId && r.Status == RegistrationStatus.Approved);
+        
+        var approvedCount = approvedRegs.Count();
+        
+        // Check if we have reached max teams
+        if (approvedCount < tournament.MaxTeams) return;
+
+        // Check if matches already exist
+        var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+        if (existingMatches.Any()) return;
+
+        // Generate Round Robin matches
+        var teamIds = approvedRegs.Select(r => r.TeamId).ToList();
+        var random = new Random();
+        var shuffledTeams = teamIds.OrderBy(x => random.Next()).ToList();
+
+        var matchDate = DateTime.UtcNow.AddDays(7);
+        var matchNumber = 0;
+
+        for (int i = 0; i < shuffledTeams.Count; i++)
+        {
+            for (int j = i + 1; j < shuffledTeams.Count; j++)
+            {
+                var match = new Match
+                {
+                    TournamentId = tournamentId,
+                    HomeTeamId = shuffledTeams[i],
+                    AwayTeamId = shuffledTeams[j],
+                    Status = MatchStatus.Scheduled,
+                    Date = matchDate.AddDays(matchNumber * 3),
+                    HomeScore = 0,
+                    AwayScore = 0
+                };
+                
+                await _matchRepository.AddAsync(match);
+                matchNumber++;
+            }
+        }
+
+        // Update tournament status to Active
+        tournament.Status = "active";
+        await _tournamentRepository.UpdateAsync(tournament);
+
+        await _analyticsService.LogActivityAsync("Matches Auto-Generated", $"Generated {matchNumber} matches for Tournament {tournament.Name}", null, "System");
+        
+        // Notify all captains
+        foreach (var reg in approvedRegs)
+        {
+            var t = await _teamRepository.GetByIdAsync(reg.TeamId);
+            if (t != null)
+            {
+                await _notificationService.SendNotificationAsync(t.CaptainId, "جدول المباريات جاهز!", $"تم توليد جدول المباريات لبطولة {tournament.Name}. تحقق من المباريات القادمة.", "tournament");
+            }
+        }
     }
 
     public async Task<TeamRegistrationDto> RejectRegistrationAsync(Guid tournamentId, Guid teamId, RejectRegistrationRequest request)
@@ -223,5 +293,150 @@ public class TournamentService : ITournamentService
             });
         }
         return result;
+    }
+
+    public async Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId)
+    {
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+
+        // Check if matches already exist
+        var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+        if (existingMatches.Any())
+        {
+            throw new ConflictException("المباريات موجودة بالفعل لهذه البطولة.");
+        }
+
+        // Get all non-rejected registrations (approved or pending review - they count as registered)
+        var registrations = await _registrationRepository.FindAsync(r => 
+            r.TournamentId == tournamentId && r.Status != RegistrationStatus.Rejected);
+        
+        var teamIds = registrations.Select(r => r.TeamId).ToList();
+
+        if (teamIds.Count < 2)
+        {
+            throw new BadRequestException("يجب وجود فريقين على الأقل لتوليد المباريات.");
+        }
+
+        // Generate Round Robin matches
+        var random = new Random();
+        var shuffledTeams = teamIds.OrderBy(x => random.Next()).ToList();
+
+        var matchDate = DateTime.UtcNow.AddDays(7);
+        var matchNumber = 0;
+        var matches = new List<Match>();
+
+        for (int i = 0; i < shuffledTeams.Count; i++)
+        {
+            for (int j = i + 1; j < shuffledTeams.Count; j++)
+            {
+                var match = new Match
+                {
+                    TournamentId = tournamentId,
+                    HomeTeamId = shuffledTeams[i],
+                    AwayTeamId = shuffledTeams[j],
+                    Status = MatchStatus.Scheduled,
+                    Date = matchDate.AddDays(matchNumber * 3),
+                    HomeScore = 0,
+                    AwayScore = 0
+                };
+                
+                await _matchRepository.AddAsync(match);
+                matches.Add(match);
+                matchNumber++;
+            }
+        }
+
+        // Update tournament status to Active
+        tournament.Status = "active";
+        await _tournamentRepository.UpdateAsync(tournament);
+
+        await _analyticsService.LogActivityAsync("Matches Generated", $"Generated {matchNumber} matches for Tournament {tournament.Name}", null, "Admin");
+
+        return _mapper.Map<IEnumerable<MatchDto>>(matches);
+    }
+
+    public async Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId)
+    {
+        // 1. Get all matches for tournament
+        var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId && m.Status == MatchStatus.Finished);
+        
+        // 2. Get all approved registrations (teams)
+        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.Status == RegistrationStatus.Approved);
+        
+        // 3. Initialize standings
+        var standings = new List<TournamentStandingDto>();
+        
+        foreach (var reg in registrations)
+        {
+            var team = await _teamRepository.GetByIdAsync(reg.TeamId);
+            standings.Add(new TournamentStandingDto
+            {
+                TeamId = reg.TeamId,
+                TeamName = team?.Name ?? "Unknown",
+                Played = 0,
+                Won = 0,
+                Drawn = 0,
+                Lost = 0,
+                TodoGoalsFor = 0,
+                GoalsAgainst = 0,
+                Points = 0,
+                Form = new List<string>()
+            });
+        }
+
+        // 4. Calculate stats
+        foreach (var match in matches)
+        {
+            var home = standings.FirstOrDefault(s => s.TeamId == match.HomeTeamId);
+            var away = standings.FirstOrDefault(s => s.TeamId == match.AwayTeamId);
+
+            if (home == null || away == null) continue;
+
+            home.Played++;
+            away.Played++;
+            
+            home.TodoGoalsFor += match.HomeScore;
+            home.GoalsAgainst += match.AwayScore;
+            
+            away.TodoGoalsFor += match.AwayScore;
+            away.GoalsAgainst += match.HomeScore;
+
+            if (match.HomeScore > match.AwayScore)
+            {
+                home.Won++;
+                home.Points += 3;
+                home.Form.Add("W");
+                
+                away.Lost++;
+                away.Form.Add("L");
+            }
+            else if (match.AwayScore > match.HomeScore)
+            {
+                away.Won++;
+                away.Points += 3;
+                away.Form.Add("W");
+                
+                home.Lost++;
+                home.Form.Add("L");
+            }
+            else
+            {
+                home.Drawn++;
+                home.Points += 1;
+                home.Form.Add("D");
+                
+                away.Drawn++;
+                away.Points += 1;
+                away.Form.Add("D");
+            }
+        }
+
+        // 5. Sort by Points desc, then Goal Difference desc, then Goals For desc
+        return standings
+            .OrderByDescending(s => s.Points)
+            .ThenByDescending(s => s.GoalDifference)
+            .ThenByDescending(s => s.TodoGoalsFor)
+            .ToList();
     }
 }

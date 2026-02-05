@@ -140,4 +140,20 @@ public class TournamentsController : ControllerBase
         var pending = await _tournamentService.GetPendingPaymentsAsync();
         return Ok(pending);
     }
+
+    [HttpPost("{id}/generate-matches")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> GenerateMatches(Guid id)
+    {
+        var matches = await _tournamentService.GenerateMatchesAsync(id);
+        return Ok(new { message = $"تم توليد {matches.Count()} مباراة بنجاح", matches });
+    }
+
+    [HttpGet("{id}/standings")]
+    [AllowAnonymous]
+    public async Task<ActionResult<IEnumerable<TournamentStandingDto>>> GetStandings(Guid id)
+    {
+        var standings = await _tournamentService.GetStandingsAsync(id);
+        return Ok(standings);
+    }
 }

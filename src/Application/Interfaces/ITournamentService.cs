@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Application.DTOs.Tournaments;
+using Application.DTOs.Matches;
 
 namespace Application.Interfaces;
 
@@ -20,4 +21,6 @@ public interface ITournamentService
     Task<TeamRegistrationDto> RejectRegistrationAsync(Guid tournamentId, Guid teamId, RejectRegistrationRequest request);
     
     Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync();
+    Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId);
+    Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId);
 }
