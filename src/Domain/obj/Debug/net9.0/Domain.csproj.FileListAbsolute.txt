@@ -1,0 +1,11 @@
+D:\ramadan\backend\src\Domain\bin\Debug\net9.0\Domain.deps.json
+D:\ramadan\backend\src\Domain\bin\Debug\net9.0\Domain.dll
+D:\ramadan\backend\src\Domain\bin\Debug\net9.0\Domain.pdb
+D:\ramadan\backend\src\Domain\obj\Debug\net9.0\Domain.GeneratedMSBuildEditorConfig.editorconfig
+D:\ramadan\backend\src\Domain\obj\Debug\net9.0\Domain.AssemblyInfoInputs.cache
+D:\ramadan\backend\src\Domain\obj\Debug\net9.0\Domain.AssemblyInfo.cs
+D:\ramadan\backend\src\Domain\obj\Debug\net9.0\Domain.csproj.CoreCompileInputs.cache
+D:\ramadan\backend\src\Domain\obj\Debug\net9.0\Domain.dll
+D:\ramadan\backend\src\Domain\obj\Debug\net9.0\refint\Domain.dll
+D:\ramadan\backend\src\Domain\obj\Debug\net9.0\Domain.pdb
+D:\ramadan\backend\src\Domain\obj\Debug\net9.0\ref\Domain.dll

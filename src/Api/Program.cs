@@ -1,0 +1,181 @@
+using Api.Middleware;
+using Application;
+using Infrastructure;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using System.Text;
+using Domain.Enums;
+using Microsoft.EntityFrameworkCore;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
+builder.Services.AddSignalR();
+builder.Services.AddScoped<Application.Interfaces.IRealTimeNotifier, Api.Services.RealTimeNotifier>();
+
+// CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend",
+        policy =>
+        {
+            policy.WithOrigins("http://localhost:4200") // Angular default
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials(); // Required for SignalR
+        });
+});
+
+// Add Layer Dependencies
+builder.Services.AddApplication();
+builder.Services.AddInfrastructure(builder.Configuration);
+
+// Helpers
+builder.Services.AddHttpContextAccessor();
+
+// Swagger
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Ramadan Tournament API", Version = "v1" });
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme.",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer"
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            new string[] { }
+        }
+    });
+});
+
+// Authentication
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+            ValidAudience = builder.Configuration["JwtSettings:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:Secret"]!))
+        };
+        
+        // SignalR Token Config
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    (path.StartsWithSegments("/hubs/notifications") || path.StartsWithSegments("/hubs/chat")))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            }
+        };
+    });
+
+// Authorization policies if needed, or stick to Roles.
+builder.Services.AddAuthorization();
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
+
+// app.UseHttpsRedirection(); 
+app.UseStaticFiles();
+
+app.UseCors("AllowFrontend");
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllers();
+app.MapHub<Api.Hubs.NotificationHub>("/hubs/notifications");
+app.MapHub<Api.Hubs.MatchChatHub>("/hubs/chat");
+
+// Ensure Migration?
+
+// Ensure Migration?
+// Scope for migration.
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<Infrastructure.Data.AppDbContext>();
+    try 
+    {
+        dbContext.Database.Migrate();
+
+        // Seed Admin if not exists (check ignoring soft-delete filters)
+        var adminUser = dbContext.Users.IgnoreQueryFilters().FirstOrDefault(u => u.Email == "admin@test.com");
+        if (adminUser == null)
+        {
+            var hasher = scope.ServiceProvider.GetRequiredService<Application.Interfaces.IPasswordHasher>();
+            adminUser = new Domain.Entities.User
+            {
+                Email = "admin@test.com",
+                Name = "Admin User",
+                PasswordHash = hasher.HashPassword("password"),
+                Role = UserRole.Admin,
+                Status = UserStatus.Active,
+                DisplayId = "ADM-001",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            dbContext.Users.Add(adminUser);
+            dbContext.SaveChanges();
+        }
+        else 
+        {
+            // Ensure existing admin is active, not deleted, and has correct password
+            var hasher = scope.ServiceProvider.GetRequiredService<Application.Interfaces.IPasswordHasher>();
+            adminUser.Role = UserRole.Admin;
+            adminUser.Status = UserStatus.Active;
+            adminUser.PasswordHash = hasher.HashPassword("password");
+            
+            // Explicitly reset IsDeleted shadow property
+            dbContext.Entry(adminUser).Property("IsDeleted").CurrentValue = false;
+            
+            dbContext.SaveChanges();
+        }
+    }
+    catch (Exception ex)
+    {
+        // Log migration error
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An error occurred while migrating or seeding the database.");
+    }
+}
+
+app.Run();

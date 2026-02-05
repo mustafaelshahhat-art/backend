@@ -1,0 +1,21 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  Domain -> D:\ramadan\backend\src\Domain\bin\Debug\net9.0\Domain.dll
+  Shared -> D:\ramadan\backend\src\Shared\bin\Debug\net9.0\Shared.dll
+  Application -> D:\ramadan\backend\src\Application\bin\Debug\net9.0\Application.dll
+  Infrastructure -> D:\ramadan\backend\src\Infrastructure\bin\Debug\net9.0\Infrastructure.dll
+D:\ramadan\backend\src\Api\Hubs\MatchChatHub.cs(19,12): warning CS8618: Non-nullable field '_notificationService' must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring the field as nullable. [D:\ramadan\backend\src\Api\Api.csproj]
+D:\ramadan\backend\src\Api\Controllers\ObjectionsController.cs(39,51): warning CS1998: This async method lacks 'await' operators and will run synchronously. Consider using the 'await' operator to await non-blocking API calls, or 'await Task.Run(...)' to do CPU-bound work on a background thread. [D:\ramadan\backend\src\Api\Api.csproj]
+D:\ramadan\backend\src\Api\Program.cs(138,85): error CS0234: The type or namespace name 'IPasswordHasher' does not exist in the namespace 'Domain.Interfaces' (are you missing an assembly reference?) [D:\ramadan\backend\src\Api\Api.csproj]
+D:\ramadan\backend\src\Api\Hubs\MatchChatHub.cs(15,43): warning CS0169: The field 'MatchChatHub._notificationService' is never used [D:\ramadan\backend\src\Api\Api.csproj]
+
+Build FAILED.
+
+D:\ramadan\backend\src\Api\Hubs\MatchChatHub.cs(19,12): warning CS8618: Non-nullable field '_notificationService' must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring the field as nullable. [D:\ramadan\backend\src\Api\Api.csproj]
+D:\ramadan\backend\src\Api\Controllers\ObjectionsController.cs(39,51): warning CS1998: This async method lacks 'await' operators and will run synchronously. Consider using the 'await' operator to await non-blocking API calls, or 'await Task.Run(...)' to do CPU-bound work on a background thread. [D:\ramadan\backend\src\Api\Api.csproj]
+D:\ramadan\backend\src\Api\Hubs\MatchChatHub.cs(15,43): warning CS0169: The field 'MatchChatHub._notificationService' is never used [D:\ramadan\backend\src\Api\Api.csproj]
+D:\ramadan\backend\src\Api\Program.cs(138,85): error CS0234: The type or namespace name 'IPasswordHasher' does not exist in the namespace 'Domain.Interfaces' (are you missing an assembly reference?) [D:\ramadan\backend\src\Api\Api.csproj]
+    3 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:00.87
