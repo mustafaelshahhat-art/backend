@@ -20,4 +20,5 @@ public interface IRepository<T> where T : BaseEntity
     Task UpdateAsync(T entity);
     Task DeleteAsync(T entity);
     Task DeleteAsync(Guid id);
+    Task<int> CountAsync(Expression<Func<T, bool>> predicate);
 }

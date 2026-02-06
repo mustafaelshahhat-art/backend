@@ -93,9 +93,9 @@ public class TournamentStandingDto
     public int Won { get; set; }
     public int Drawn { get; set; }
     public int Lost { get; set; }
-    public int TodoGoalsFor { get; set; } // Goals Scored
+    public int GoalsFor { get; set; } // Goals Scored
     public int GoalsAgainst { get; set; }
-    public int GoalDifference => TodoGoalsFor - GoalsAgainst;
+    public int GoalDifference => GoalsFor - GoalsAgainst;
     public int Points { get; set; }
     public List<string> Form { get; set; } = new(); // W, D, L
 }

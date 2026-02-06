@@ -20,10 +20,12 @@ public class TeamService : ITeamService
     private readonly IRepository<Match> _matchRepository;
     private readonly IRepository<TeamJoinRequest> _joinRequestRepository;
     private readonly IRepository<TeamRegistration> _registrationRepository;
+    private readonly IRepository<Tournament> _tournamentRepository;
     private readonly IMapper _mapper;
     private readonly IAnalyticsService _analyticsService;
     private readonly INotificationService _notificationService;
     private readonly IRealTimeNotifier _realTimeNotifier;
+    private readonly ITournamentLifecycleService _lifecycleService;
 
     public TeamService(
         IRepository<Team> teamRepository,
@@ -32,10 +34,12 @@ public class TeamService : ITeamService
         IRepository<Match> matchRepository,
         IRepository<TeamJoinRequest> joinRequestRepository,
         IRepository<TeamRegistration> registrationRepository,
+        IRepository<Tournament> tournamentRepository,
         IMapper mapper,
         IAnalyticsService analyticsService,
         INotificationService notificationService,
-        IRealTimeNotifier realTimeNotifier)
+        IRealTimeNotifier realTimeNotifier,
+        ITournamentLifecycleService lifecycleService)
     {
         _teamRepository = teamRepository;
         _userRepository = userRepository;
@@ -43,10 +47,12 @@ public class TeamService : ITeamService
         _matchRepository = matchRepository;
         _joinRequestRepository = joinRequestRepository;
         _registrationRepository = registrationRepository;
+        _tournamentRepository = tournamentRepository;
         _mapper = mapper;
         _analyticsService = analyticsService;
         _notificationService = notificationService;
         _realTimeNotifier = realTimeNotifier;
+        _lifecycleService = lifecycleService;
     }
 
     public async Task<IEnumerable<TeamDto>> GetAllAsync()
@@ -80,6 +86,64 @@ public class TeamService : ITeamService
         }
 
         return teamDtos;
+    }
+
+    // ... (Use existing methods until DisableTeamAsync)
+
+    public async Task DisableTeamAsync(Guid teamId)
+    {
+        // 1. Get Team
+        var team = await _teamRepository.GetByIdAsync(teamId);
+        if (team == null) throw new NotFoundException(nameof(Team), teamId);
+
+        // 2. Set Status to Disabled (Inactive)
+        team.IsActive = false;
+        await _teamRepository.UpdateAsync(team);
+
+        await _analyticsService.LogActivityAsync("Team Disabled", $"Team {team.Name} (ID: {teamId}) has been disabled by Admin.", null, "Admin");
+
+        // 3. Handle Active Tournaments (Withdrawal)
+        var activeRegistrations = await _registrationRepository.FindAsync(r => r.TeamId == teamId && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.PendingPaymentReview));
+        
+        foreach (var reg in activeRegistrations)
+        {
+             // Use injected repository
+             var tournament = await _tournamentRepository.GetByIdAsync(reg.TournamentId); 
+             // Logic check? Assuming valid.
+             
+             // Mark as Withdrawn
+             reg.Status = RegistrationStatus.Withdrawn;
+             await _registrationRepository.UpdateAsync(reg);
+
+             // 4. Forfeit Upcoming Matches
+             var matches = await _matchRepository.FindAsync(m => m.TournamentId == reg.TournamentId && (m.HomeTeamId == teamId || m.AwayTeamId == teamId) && m.Status == Domain.Enums.MatchStatus.Scheduled);
+             
+             foreach (var match in matches)
+             {
+                 match.Status = Domain.Enums.MatchStatus.Finished;
+                 match.Forfeit = true;
+                 
+                 // Assign 3-0 loss
+                 if (match.HomeTeamId == teamId)
+                 {
+                     match.HomeScore = 0;
+                     match.AwayScore = 3; 
+                 }
+                 else
+                 {
+                     match.HomeScore = 3;
+                     match.AwayScore = 0;
+                 }
+                 
+                 await _matchRepository.UpdateAsync(match);
+             }
+
+             // 4.5 Check if this tournament should now be finalized
+             await _lifecycleService.CheckAndFinalizeTournamentAsync(reg.TournamentId);
+        }
+
+        // 5. Notify Captain
+        await _notificationService.SendNotificationAsync(team.CaptainId, "تم تعطيل الفريق", "تم تعطيل فريقك من قبل الإدارة وسحب جميع نتائجه القادمة.", "team_disabled");
     }
 
     public async Task<TeamDto?> GetByIdAsync(Guid id)
@@ -550,4 +614,5 @@ public class TeamService : ITeamService
         var registrations = await _registrationRepository.FindAsync(r => r.TeamId == teamId, new[] { "Tournament", "Team.Captain" });
         return _mapper.Map<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>>(registrations);
     }
+
 }

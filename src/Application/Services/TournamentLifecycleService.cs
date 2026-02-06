@@ -53,7 +53,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         // 3. Calculate Standings to find the winner
         // (Copying logic from TournamentService.GetStandingsAsync to avoid circular dependency)
         var finishedMatches = allMatches.Where(m => m.Status == MatchStatus.Finished).ToList();
-        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.Status == RegistrationStatus.Approved);
+        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.Withdrawn));
         
         var standings = new List<TournamentStandingDto>();
         foreach (var reg in registrations)
@@ -67,7 +67,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
                 Won = 0,
                 Drawn = 0,
                 Lost = 0,
-                TodoGoalsFor = 0,
+                GoalsFor = 0,
                 GoalsAgainst = 0,
                 Points = 0
             });
@@ -82,9 +82,9 @@ public class TournamentLifecycleService : ITournamentLifecycleService
 
             home.Played++;
             away.Played++;
-            home.TodoGoalsFor += match.HomeScore;
+            home.GoalsFor += match.HomeScore;
             home.GoalsAgainst += match.AwayScore;
-            away.TodoGoalsFor += match.AwayScore;
+            away.GoalsFor += match.AwayScore;
             away.GoalsAgainst += match.HomeScore;
 
             if (match.HomeScore > match.AwayScore)
@@ -111,7 +111,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         var topTeam = standings
             .OrderByDescending(s => s.Points)
             .ThenByDescending(s => s.GoalDifference)
-            .ThenByDescending(s => s.TodoGoalsFor)
+            .ThenByDescending(s => s.GoalsFor)
             .FirstOrDefault();
 
         if (topTeam != null)

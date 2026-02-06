@@ -9,6 +9,7 @@ public class AnalyticsOverview
     public int ActiveTournaments { get; set; }
     public int PendingObjections { get; set; }
     public int MatchesToday { get; set; }
+    public int TotalGoals { get; set; }
 }
 
 public class TeamAnalyticsDto

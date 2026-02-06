@@ -149,6 +149,14 @@ public class TeamsController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("{id}/disable")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Disable(Guid id)
+    {
+        await _teamService.DisableTeamAsync(id);
+        return Ok(new { message = "Team disabled and withdrawn from all active tournaments." });
+    }
+
     [HttpGet("{id}/players")]
     public async Task<ActionResult<IEnumerable<PlayerDto>>> GetTeamPlayers(Guid id)
     {

@@ -20,6 +20,7 @@ public class Match : BaseEntity
     
     public MatchStatus Status { get; set; } = MatchStatus.Scheduled;
     public DateTime? Date { get; set; }
+    public bool Forfeit { get; set; } = false;
     
     // Referee
     public Guid? RefereeId { get; set; }

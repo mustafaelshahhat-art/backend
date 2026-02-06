@@ -94,7 +94,6 @@ public class TournamentService : ITournamentService
 
         await _tournamentRepository.UpdateAsync(tournament);
         return _mapper.Map<TournamentDto>(tournament);
-        return _mapper.Map<TournamentDto>(tournament);
     }
 
     public async Task<TournamentDto> CloseRegistrationAsync(Guid id)
@@ -149,6 +148,11 @@ public class TournamentService : ITournamentService
         // 2. Verify Team Ownership
         var team = await _teamRepository.GetByIdAsync(request.TeamId);
         if (team == null) throw new NotFoundException(nameof(Team), request.TeamId);
+        
+        if (!team.IsActive)
+        {
+            throw new ForbiddenException("لا يمكن للفرق المعطلة التسجيل في البطولات.");
+        }
         
         if (team.CaptainId != userId)
         {
@@ -432,8 +436,8 @@ public class TournamentService : ITournamentService
         // 1. Get all matches for tournament
         var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId && m.Status == MatchStatus.Finished);
         
-        // 2. Get all approved registrations (teams)
-        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.Status == RegistrationStatus.Approved);
+        // 2. Get all approved or withdrawn registrations (teams that participated)
+        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.Withdrawn));
         
         // 3. Initialize standings
         var standings = new List<TournamentStandingDto>();
@@ -449,7 +453,7 @@ public class TournamentService : ITournamentService
                 Won = 0,
                 Drawn = 0,
                 Lost = 0,
-                TodoGoalsFor = 0,
+                GoalsFor = 0,
                 GoalsAgainst = 0,
                 Points = 0,
                 Form = new List<string>()
@@ -467,10 +471,10 @@ public class TournamentService : ITournamentService
             home.Played++;
             away.Played++;
             
-            home.TodoGoalsFor += match.HomeScore;
+            home.GoalsFor += match.HomeScore;
             home.GoalsAgainst += match.AwayScore;
             
-            away.TodoGoalsFor += match.AwayScore;
+            away.GoalsFor += match.AwayScore;
             away.GoalsAgainst += match.HomeScore;
 
             if (match.HomeScore > match.AwayScore)
@@ -507,7 +511,7 @@ public class TournamentService : ITournamentService
         return standings
             .OrderByDescending(s => s.Points)
             .ThenByDescending(s => s.GoalDifference)
-            .ThenByDescending(s => s.TodoGoalsFor)
+            .ThenByDescending(s => s.GoalsFor)
             .ToList();
     }
 }

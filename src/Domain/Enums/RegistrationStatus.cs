@@ -4,5 +4,6 @@ public enum RegistrationStatus
 {
     PendingPaymentReview,
     Approved,
-    Rejected
+    Rejected,
+    Withdrawn
 }

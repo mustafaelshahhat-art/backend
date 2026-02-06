@@ -29,4 +29,7 @@ public interface ITeamService
     Task<IEnumerable<PlayerDto>> GetTeamPlayersAsync(Guid teamId);
     Task<IEnumerable<Application.DTOs.Matches.MatchDto>> GetTeamMatchesAsync(Guid teamId);
     Task<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>> GetTeamFinancialsAsync(Guid teamId);
+
+    // Admin Action
+    Task DisableTeamAsync(Guid teamId);
 }

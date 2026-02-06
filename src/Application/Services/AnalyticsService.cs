@@ -44,21 +44,25 @@ public class AnalyticsService : IAnalyticsService
 
     public async Task<AnalyticsOverview> GetOverviewAsync()
     {
-        var users = await _userRepository.GetAllAsync();
-        var teams = await _teamRepository.GetAllAsync();
-        var tournaments = await _tournamentRepository.GetAllAsync();
-        var objections = await _objectionRepository.FindAsync(o => o.Status == Domain.Enums.ObjectionStatus.Pending);
+        var totalUsers = await _userRepository.CountAsync(_ => true);
+        var totalTeams = await _teamRepository.CountAsync(_ => true);
+        var activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == "registration_open" || t.Status == "active");
+        var pendingObjections = await _objectionRepository.CountAsync(o => o.Status == Domain.Enums.ObjectionStatus.Pending);
 
         var today = DateTime.UtcNow.Date;
-        var matches = await _matchRepository.FindAsync(m => m.Date.HasValue && m.Date.Value.Date == today);
+        var matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today);
+        
+        var finishedMatches = await _matchRepository.FindAsync(m => m.Status == Domain.Enums.MatchStatus.Finished);
+        var totalGoals = finishedMatches.Sum(m => m.HomeScore + m.AwayScore);
 
         return new AnalyticsOverview
         {
-            TotalUsers = users.Count(),
-            TotalTeams = teams.Count(),
-            ActiveTournaments = tournaments.Count(t => t.Status == "registration_open" || t.Status == "active"),
-            PendingObjections = objections.Count(),
-            MatchesToday = matches.Count()
+            TotalUsers = totalUsers,
+            TotalTeams = totalTeams,
+            ActiveTournaments = activeTournaments,
+            PendingObjections = pendingObjections,
+            MatchesToday = matchesToday,
+            TotalGoals = totalGoals
         };
     }
 
