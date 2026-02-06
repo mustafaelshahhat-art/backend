@@ -437,18 +437,21 @@ public class TournamentService : ITournamentService
         var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId && m.Status == MatchStatus.Finished);
         
         // 2. Get all approved or withdrawn registrations (teams that participated)
-        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.Withdrawn));
+        var registrations = await _registrationRepository.FindAsync(
+            r => r.TournamentId == tournamentId && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.Withdrawn),
+            new[] { "Team" }
+        );
         
         // 3. Initialize standings
         var standings = new List<TournamentStandingDto>();
         
         foreach (var reg in registrations)
         {
-            var team = await _teamRepository.GetByIdAsync(reg.TeamId);
             standings.Add(new TournamentStandingDto
             {
                 TeamId = reg.TeamId,
-                TeamName = team?.Name ?? "Unknown",
+                TeamName = reg.Team?.Name ?? "Unknown",
+                TeamLogoUrl = reg.Team?.Logo,
                 Played = 0,
                 Won = 0,
                 Drawn = 0,

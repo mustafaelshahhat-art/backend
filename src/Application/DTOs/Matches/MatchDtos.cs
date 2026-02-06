@@ -9,8 +9,10 @@ public class MatchDto
     public Guid TournamentId { get; set; }
     public Guid HomeTeamId { get; set; }
     public string HomeTeamName { get; set; } = string.Empty;
+    public string? HomeTeamLogoUrl { get; set; }
     public Guid AwayTeamId { get; set; }
     public string AwayTeamName { get; set; } = string.Empty;
+    public string? AwayTeamLogoUrl { get; set; }
     public int HomeScore { get; set; }
     public int AwayScore { get; set; }
     public string Status { get; set; } = string.Empty;

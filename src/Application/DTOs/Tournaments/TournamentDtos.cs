@@ -56,6 +56,7 @@ public class TeamRegistrationDto
 {
     public Guid TeamId { get; set; }
     public string TeamName { get; set; } = string.Empty;
+    public string? TeamLogoUrl { get; set; }
     public string CaptainName { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string? PaymentReceiptUrl { get; set; }
@@ -89,6 +90,7 @@ public class TournamentStandingDto
 {
     public Guid TeamId { get; set; }
     public string TeamName { get; set; } = string.Empty;
+    public string? TeamLogoUrl { get; set; }
     public int Played { get; set; }
     public int Won { get; set; }
     public int Drawn { get; set; }

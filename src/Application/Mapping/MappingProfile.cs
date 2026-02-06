@@ -42,6 +42,7 @@ public class MappingProfile : Profile
         CreateMap<Player, PlayerDto>();
         CreateMap<TeamRegistration, TeamRegistrationDto>()
             .ForMember(d => d.TeamName, o => o.MapFrom(s => s.Team != null ? s.Team.Name : string.Empty))
+            .ForMember(d => d.TeamLogoUrl, o => o.MapFrom(s => s.Team != null ? s.Team.Logo : null))
             .ForMember(d => d.CaptainName, o => o.MapFrom(s => s.Team != null && s.Team.Captain != null ? s.Team.Captain.Name : string.Empty))
             .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()))
             .ForMember(d => d.RegisteredAt, o => o.MapFrom(s => s.CreatedAt));
@@ -49,7 +50,9 @@ public class MappingProfile : Profile
         // Match
         CreateMap<Match, MatchDto>()
             .ForMember(d => d.HomeTeamName, o => o.MapFrom(s => s.HomeTeam != null ? s.HomeTeam.Name : string.Empty))
+            .ForMember(d => d.HomeTeamLogoUrl, o => o.MapFrom(s => s.HomeTeam != null ? s.HomeTeam.Logo : null))
             .ForMember(d => d.AwayTeamName, o => o.MapFrom(s => s.AwayTeam != null ? s.AwayTeam.Name : string.Empty))
+            .ForMember(d => d.AwayTeamLogoUrl, o => o.MapFrom(s => s.AwayTeam != null ? s.AwayTeam.Logo : null))
             .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()))
             .ForMember(d => d.RefereeName, o => o.MapFrom(s => s.Referee != null ? s.Referee.Name : string.Empty))
             .ForMember(d => d.Events, o => o.MapFrom(s => s.Events));
