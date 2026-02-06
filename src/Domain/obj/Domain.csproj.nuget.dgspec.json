@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "d:\\ramadan\\backend\\src\\Domain\\Domain.csproj": {}
+    "D:\\ramadan\\backend\\src\\Domain\\Domain.csproj": {}
   },
   "projects": {
-    "d:\\ramadan\\backend\\src\\Domain\\Domain.csproj": {
+    "D:\\ramadan\\backend\\src\\Domain\\Domain.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "d:\\ramadan\\backend\\src\\Domain\\Domain.csproj",
+        "projectUniqueName": "D:\\ramadan\\backend\\src\\Domain\\Domain.csproj",
         "projectName": "Domain",
-        "projectPath": "d:\\ramadan\\backend\\src\\Domain\\Domain.csproj",
+        "projectPath": "D:\\ramadan\\backend\\src\\Domain\\Domain.csproj",
         "packagesPath": "C:\\Users\\musta\\.nuget\\packages\\",
-        "outputPath": "d:\\ramadan\\backend\\src\\Domain\\obj\\",
+        "outputPath": "D:\\ramadan\\backend\\src\\Domain\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\musta\\AppData\\Roaming\\NuGet\\NuGet.Config"

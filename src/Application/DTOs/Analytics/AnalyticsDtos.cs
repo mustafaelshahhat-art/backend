@@ -11,6 +11,14 @@ public class AnalyticsOverview
     public int MatchesToday { get; set; }
 }
 
+public class TeamAnalyticsDto
+{
+    public int PlayerCount { get; set; }
+    public int UpcomingMatches { get; set; }
+    public int ActiveTournaments { get; set; }
+    public string Rank { get; set; } = "-";
+}
+
 public class ActivityDto
 {
     public string Type { get; set; } = string.Empty;

@@ -98,7 +98,7 @@ public class MatchesController : ControllerBase
     }
 
     [HttpPatch("{id}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Referee")]
     public async Task<ActionResult<MatchDto>> UpdateMatch(Guid id, UpdateMatchRequest request)
     {
         var match = await _matchService.UpdateAsync(id, request);

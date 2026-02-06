@@ -103,22 +103,32 @@ public class TeamsController : ControllerBase
         return Ok(response);
     }
 
-    [HttpPost("{id}/players")]
-    public async Task<ActionResult<PlayerDto>> AddPlayer(Guid id, AddPlayerRequest request)
+    [HttpPost("{id}/invite")]
+    public async Task<ActionResult<JoinRequestDto>> Invite(Guid id, AddPlayerRequest request)
     {
-        // Check captain
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Unauthorized();
+
+        var joinRequest = await _teamService.InvitePlayerAsync(id, Guid.Parse(userId), request);
+        return Ok(joinRequest);
+    }
+
+    [HttpGet("{id}/requests")]
+    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetRequests(Guid id)
+    {
+        // Check captain or admin
         var team = await _teamService.GetByIdAsync(id);
         if (team == null) return NotFound();
 
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (team.CaptainId.ToString() != userId && !User.IsInRole("Admin")) return Forbid();
 
-        var player = await _teamService.AddPlayerAsync(id, request);
-        return Ok(player);
+        var requests = await _teamService.GetJoinRequestsAsync(id);
+        return Ok(requests);
     }
 
     [HttpDelete("{id}/players/{playerId}")]
-    public async Task<IActionResult> RemovePlayer(Guid id, Guid playerId)
+    public async Task<ActionResult<object>> RemovePlayer(Guid id, Guid playerId)
     {
         // Check captain
         var team = await _teamService.GetByIdAsync(id);
@@ -128,7 +138,7 @@ public class TeamsController : ControllerBase
         if (team.CaptainId.ToString() != userId && !User.IsInRole("Admin")) return Forbid();
 
         await _teamService.RemovePlayerAsync(id, playerId);
-        return NoContent();
+        return Ok(new { teamRemoved = true, playerId = playerId, teamId = id });
     }
 
     [HttpDelete("{id}")]
@@ -137,5 +147,33 @@ public class TeamsController : ControllerBase
     {
         await _teamService.DeleteAsync(id);
         return NoContent();
+    }
+
+    [HttpGet("{id}/players")]
+    public async Task<ActionResult<IEnumerable<PlayerDto>>> GetTeamPlayers(Guid id)
+    {
+        var players = await _teamService.GetTeamPlayersAsync(id);
+        return Ok(players);
+    }
+
+    [HttpGet("{id}/matches")]
+    public async Task<ActionResult<IEnumerable<Application.DTOs.Matches.MatchDto>>> GetTeamMatches(Guid id)
+    {
+        var matches = await _teamService.GetTeamMatchesAsync(id);
+        return Ok(matches);
+    }
+
+    [HttpGet("{id}/financials")]
+    public async Task<ActionResult<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>>> GetTeamFinancials(Guid id)
+    {
+        // Check permission (Captain or Admin)
+        var team = await _teamService.GetByIdAsync(id);
+        if (team == null) return NotFound();
+
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (team.CaptainId.ToString() != userId && !User.IsInRole("Admin")) return Forbid();
+
+        var financials = await _teamService.GetTeamFinancialsAsync(id);
+        return Ok(financials);
     }
 }

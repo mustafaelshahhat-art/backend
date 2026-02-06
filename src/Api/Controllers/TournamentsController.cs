@@ -60,6 +60,14 @@ public class TournamentsController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("{id}/close-registration")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<TournamentDto>> CloseRegistration(Guid id)
+    {
+        var tournament = await _tournamentService.CloseRegistrationAsync(id);
+        return Ok(tournament);
+    }
+
     [HttpPost("{id}/register")]
     public async Task<ActionResult<TeamRegistrationDto>> RegisterTeam(Guid id, RegisterTeamRequest request)
     {
@@ -70,7 +78,7 @@ public class TournamentsController : ControllerBase
             return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من التسجيل في البطولات.");
         }
         
-        var registration = await _tournamentService.RegisterTeamAsync(id, request);
+        var registration = await _tournamentService.RegisterTeamAsync(id, request, userId);
         return Ok(registration);
     }
 
@@ -97,7 +105,7 @@ public class TournamentsController : ControllerBase
         var receiptUrl = await SaveFile(receipt);
         var request = new SubmitPaymentRequest { PaymentReceiptUrl = receiptUrl };
 
-        var registration = await _tournamentService.SubmitPaymentAsync(id, teamId, request);
+        var registration = await _tournamentService.SubmitPaymentAsync(id, teamId, request, userId);
         return Ok(registration);
     }
 

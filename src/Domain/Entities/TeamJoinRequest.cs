@@ -11,4 +11,5 @@ public class TeamJoinRequest : BaseEntity
     public User? User { get; set; }
 
     public string Status { get; set; } = "pending"; // pending|approved|rejected
+    public bool InitiatedByPlayer { get; set; }
 }

@@ -17,6 +17,16 @@ public interface ITeamService
     Task<IEnumerable<JoinRequestDto>> GetJoinRequestsAsync(Guid teamId);
     Task<JoinRequestDto> RespondJoinRequestAsync(Guid teamId, Guid requestId, bool approve);
     
-    Task<PlayerDto> AddPlayerAsync(Guid teamId, AddPlayerRequest request);
+    // Invitation flow
+    Task<JoinRequestDto> InvitePlayerAsync(Guid teamId, Guid captainId, AddPlayerRequest request);
+    Task<JoinRequestDto> AcceptInviteAsync(Guid requestId, Guid userId);
+    Task<JoinRequestDto> RejectInviteAsync(Guid requestId, Guid userId);
+    Task<IEnumerable<JoinRequestDto>> GetUserInvitationsAsync(Guid userId);
+    Task<IEnumerable<JoinRequestDto>> GetRequestsForCaptainAsync(Guid captainId);
+    
     Task RemovePlayerAsync(Guid teamId, Guid playerId);
+
+    Task<IEnumerable<PlayerDto>> GetTeamPlayersAsync(Guid teamId);
+    Task<IEnumerable<Application.DTOs.Matches.MatchDto>> GetTeamMatchesAsync(Guid teamId);
+    Task<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>> GetTeamFinancialsAsync(Guid teamId);
 }

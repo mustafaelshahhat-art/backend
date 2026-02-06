@@ -125,6 +125,14 @@ public class AppDbContext : DbContext
         // I'll use a shadow property "IsDeleted" for User.
         modelBuilder.Entity<User>().Property<bool>("IsDeleted");
         modelBuilder.Entity<User>().HasQueryFilter(u => !EF.Property<bool>(u, "IsDeleted"));
+
+        // Soft Delete for Team
+        modelBuilder.Entity<Team>().Property<bool>("IsDeleted");
+        modelBuilder.Entity<Team>().HasQueryFilter(t => !EF.Property<bool>(t, "IsDeleted"));
+
+        // Soft Delete for Player
+        modelBuilder.Entity<Player>().Property<bool>("IsDeleted");
+        modelBuilder.Entity<Player>().HasQueryFilter(p => !EF.Property<bool>(p, "IsDeleted"));
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -143,10 +151,11 @@ public class AppDbContext : DbContext
             }
         }
         
-        // Handle Soft Delete for User
-        foreach (var entry in ChangeTracker.Entries<User>())
+        // Handle Soft Delete for User, Team, Player
+        foreach (var entry in ChangeTracker.Entries())
         {
-            if (entry.State == EntityState.Deleted)
+            if (entry.State == EntityState.Deleted && 
+               (entry.Entity is User || entry.Entity is Team || entry.Entity is Player))
             {
                 entry.State = EntityState.Modified;
                 entry.Property("IsDeleted").CurrentValue = true;

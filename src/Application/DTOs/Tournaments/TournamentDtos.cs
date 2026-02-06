@@ -19,6 +19,8 @@ public class TournamentDto
     public string Rules { get; set; } = string.Empty;
     public string Prizes { get; set; } = string.Empty;
     public List<TeamRegistrationDto> Registrations { get; set; } = new();
+    public Guid? WinnerTeamId { get; set; }
+    public string? WinnerTeamName { get; set; }
 }
 
 public class CreateTournamentRequest

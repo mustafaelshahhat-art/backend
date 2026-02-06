@@ -15,14 +15,16 @@ namespace Application.Services;
 public class AuthService : IAuthService
 {
     private readonly IRepository<User> _userRepository;
+    private readonly IRepository<Team> _teamRepository;
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IMapper _mapper;
     private readonly IAnalyticsService _analyticsService;
 
-    public AuthService(IRepository<User> userRepository, IJwtTokenGenerator jwtTokenGenerator, IPasswordHasher passwordHasher, IMapper mapper, IAnalyticsService analyticsService)
+    public AuthService(IRepository<User> userRepository, IRepository<Team> teamRepository, IJwtTokenGenerator jwtTokenGenerator, IPasswordHasher passwordHasher, IMapper mapper, IAnalyticsService analyticsService)
     {
         _userRepository = userRepository;
+        _teamRepository = teamRepository;
         _jwtTokenGenerator = jwtTokenGenerator;
         _passwordHasher = passwordHasher;
         _mapper = mapper;
@@ -87,7 +89,7 @@ public class AuthService : IAuthService
         {
             Token = token,
             RefreshToken = refreshToken,
-            User = _mapper.Map<UserDto>(user)
+            User = await MapUserWithTeamInfoAsync(user)
         };
     }
 
@@ -132,7 +134,7 @@ public class AuthService : IAuthService
         {
             Token = token,
             RefreshToken = refreshToken,
-            User = _mapper.Map<UserDto>(user)
+            User = await MapUserWithTeamInfoAsync(user)
         };
     }
 
@@ -157,7 +159,21 @@ public class AuthService : IAuthService
         {
             Token = token,
             RefreshToken = newRefreshToken,
-            User = _mapper.Map<UserDto>(user)
+            User = await MapUserWithTeamInfoAsync(user)
         };
+    }
+    private async Task<UserDto> MapUserWithTeamInfoAsync(User user)
+    {
+        var dto = _mapper.Map<UserDto>(user);
+        if (user.TeamId.HasValue)
+        {
+            var team = await _teamRepository.GetByIdAsync(user.TeamId.Value);
+            if (team != null)
+            {
+                dto.TeamName = team.Name;
+                dto.IsTeamOwner = team.CaptainId == user.Id;
+            }
+        }
+        return dto;
     }
 }

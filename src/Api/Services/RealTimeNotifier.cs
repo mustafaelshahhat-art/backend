@@ -29,4 +29,28 @@ public class RealTimeNotifier : IRealTimeNotifier
             Console.WriteLine($"Error sending real-time notification: {ex.Message}");
         }
     }
+
+    public async Task SendAccountStatusChangedAsync(Guid userId, string newStatus)
+    {
+        try
+        {
+            await _hubContext.Clients.User(userId.ToString()).SendAsync("AccountStatusChanged", new { UserId = userId, Status = newStatus });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending account status update: {ex.Message}");
+        }
+    }
+
+    public async Task SendRemovedFromTeamAsync(Guid userId, Guid teamId, Guid playerId)
+    {
+        try
+        {
+            await _hubContext.Clients.User(userId.ToString()).SendAsync("RemovedFromTeam", new { PlayerId = playerId, TeamId = teamId });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending removed from team notification: {ex.Message}");
+        }
+    }
 }

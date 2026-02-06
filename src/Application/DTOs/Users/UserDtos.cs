@@ -21,6 +21,17 @@ public class UserDto
     public string? IdFrontUrl { get; set; }
     public string? IdBackUrl { get; set; }
     public Guid? TeamId { get; set; }
+    public string? TeamName { get; set; }
+    public bool IsTeamOwner { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public List<UserActivityDto> Activities { get; set; } = new();
+}
+
+public class UserActivityDto
+{
+    public Guid Id { get; set; }
+    public string Type { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
 }
 

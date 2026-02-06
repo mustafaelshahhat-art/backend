@@ -16,6 +16,7 @@ public class AnalyticsService : IAnalyticsService
     private readonly IRepository<Activity> _activityRepository;
     private readonly IRepository<User> _userRepository;
     private readonly IRepository<Team> _teamRepository;
+    private readonly IRepository<Player> _playerRepository;
     private readonly IRepository<Tournament> _tournamentRepository;
     private readonly IRepository<Objection> _objectionRepository;
     private readonly IRepository<Match> _matchRepository;
@@ -25,6 +26,7 @@ public class AnalyticsService : IAnalyticsService
         IRepository<Activity> activityRepository,
         IRepository<User> userRepository,
         IRepository<Team> teamRepository,
+        IRepository<Player> playerRepository,
         IRepository<Tournament> tournamentRepository,
         IRepository<Objection> objectionRepository,
         IRepository<Match> matchRepository,
@@ -33,6 +35,7 @@ public class AnalyticsService : IAnalyticsService
         _activityRepository = activityRepository;
         _userRepository = userRepository;
         _teamRepository = teamRepository;
+        _playerRepository = playerRepository;
         _tournamentRepository = tournamentRepository;
         _objectionRepository = objectionRepository;
         _matchRepository = matchRepository;
@@ -56,6 +59,28 @@ public class AnalyticsService : IAnalyticsService
             ActiveTournaments = tournaments.Count(t => t.Status == "registration_open" || t.Status == "active"),
             PendingObjections = objections.Count(),
             MatchesToday = matches.Count()
+        };
+    }
+
+    public async Task<TeamAnalyticsDto> GetTeamAnalyticsAsync(Guid teamId)
+    {
+        var players = await _playerRepository.FindAsync(p => p.TeamId == teamId);
+        var upcomingMatches = await _matchRepository.FindAsync(m => 
+            (m.HomeTeamId == teamId || m.AwayTeamId == teamId) && 
+            m.Status == Domain.Enums.MatchStatus.Scheduled);
+        
+        var registrations = await _tournamentRepository.GetAllAsync(t => t.Registrations); // N+1ish but ok
+        // Find tournaments where this team is registered and status is active/open
+        var activeTournaments = registrations.Count(t => 
+            (t.Status == "active" || t.Status == "registration_open") &&
+            t.Registrations.Any(r => r.TeamId == teamId && r.Status == Domain.Enums.RegistrationStatus.Approved));
+
+        return new TeamAnalyticsDto
+        {
+            PlayerCount = players.Count(),
+            UpcomingMatches = upcomingMatches.Count(),
+            ActiveTournaments = activeTournaments,
+            Rank = "3" // Placeholder or implement standing calculation
         };
     }
 

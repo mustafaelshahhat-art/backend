@@ -20,6 +20,7 @@ public class MatchService : IMatchService
     private readonly IMapper _mapper;
     private readonly IAnalyticsService _analyticsService;
     private readonly INotificationService _notificationService;
+    private readonly ITournamentLifecycleService _lifecycleService;
 
     public MatchService(
         IRepository<Match> matchRepository,
@@ -27,7 +28,8 @@ public class MatchService : IMatchService
         IRepository<Team> teamRepository,
         IMapper mapper,
         IAnalyticsService analyticsService,
-        INotificationService notificationService)
+        INotificationService notificationService,
+        ITournamentLifecycleService lifecycleService)
     {
         _matchRepository = matchRepository;
         _eventRepository = eventRepository;
@@ -35,6 +37,7 @@ public class MatchService : IMatchService
         _mapper = mapper;
         _analyticsService = analyticsService;
         _notificationService = notificationService;
+        _lifecycleService = lifecycleService;
     }
 
     public async Task<IEnumerable<MatchDto>> GetAllAsync()
@@ -93,6 +96,9 @@ public class MatchService : IMatchService
 
         if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "Match Ended", $"Match ended. Score: {match.HomeScore}-{match.AwayScore}", "match");
         if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "Match Ended", $"Match ended. Score: {match.HomeScore}-{match.AwayScore}", "match");
+
+        // Trigger Lifecycle check
+        await _lifecycleService.CheckAndFinalizeTournamentAsync(match.TournamentId);
 
         return _mapper.Map<MatchDto>(match);
     }

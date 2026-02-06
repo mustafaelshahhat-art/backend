@@ -120,6 +120,7 @@ app.UseStaticFiles();
 app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
+app.UseMiddleware<UserStatusCheckMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();
@@ -179,3 +180,4 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+// Trigger rebuild

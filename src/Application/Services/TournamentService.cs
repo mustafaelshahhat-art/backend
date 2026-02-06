@@ -43,13 +43,13 @@ public class TournamentService : ITournamentService
 
     public async Task<IEnumerable<TournamentDto>> GetAllAsync()
     {
-        var tournaments = await _tournamentRepository.GetAllAsync(new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain" });
+        var tournaments = await _tournamentRepository.GetAllAsync(new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
         return _mapper.Map<IEnumerable<TournamentDto>>(tournaments);
     }
 
     public async Task<TournamentDto?> GetByIdAsync(Guid id)
     {
-        var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain" });
+        var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
         return tournament == null ? null : _mapper.Map<TournamentDto>(tournament);
     }
 
@@ -94,39 +94,87 @@ public class TournamentService : ITournamentService
 
         await _tournamentRepository.UpdateAsync(tournament);
         return _mapper.Map<TournamentDto>(tournament);
+        return _mapper.Map<TournamentDto>(tournament);
+    }
+
+    public async Task<TournamentDto> CloseRegistrationAsync(Guid id)
+    {
+        var tournament = await _tournamentRepository.GetByIdAsync(id);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
+
+        tournament.Status = "registration_closed";
+        
+        await _tournamentRepository.UpdateAsync(tournament);
+        await _analyticsService.LogActivityAsync("Registration Closed", $"Registration closed for Tournament {tournament.Name}", null, "Admin");
+        
+        return _mapper.Map<TournamentDto>(tournament);
     }
 
     public async Task DeleteAsync(Guid id)
     {
-        await _tournamentRepository.DeleteAsync(id);
+        var tournament = await _tournamentRepository.GetByIdAsync(id);
+        if (tournament == null) return;
+
+        // 1. Clean up Matches
+        var matches = await _matchRepository.FindAsync(m => m.TournamentId == id);
+        foreach (var match in matches)
+        {
+            await _matchRepository.DeleteAsync(match);
+        }
+
+        // 2. Clean up Registrations
+        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == id);
+        foreach (var reg in registrations)
+        {
+            await _registrationRepository.DeleteAsync(reg);
+        }
+
+        // 3. Delete Tournament
+        await _tournamentRepository.DeleteAsync(tournament);
+        
+        await _analyticsService.LogActivityAsync("Tournament Deleted", $"Tournament {tournament.Name} (ID: {id}) was deleted.", null, "Admin");
     }
 
-    public async Task<TeamRegistrationDto> RegisterTeamAsync(Guid tournamentId, RegisterTeamRequest request)
+    public async Task<TeamRegistrationDto> RegisterTeamAsync(Guid tournamentId, RegisterTeamRequest request, Guid userId)
     {
-        // Check if tournament exists
+        // 1. Verify Tournament Status
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+        
+        if (tournament.Status != "registration_open")
+        {
+            throw new BadRequestException("التسجيل في هذه البطولة مغلق حالياً.");
+        }
 
-        // Check if team is already registered in THIS tournament
+        // 2. Verify Team Ownership
+        var team = await _teamRepository.GetByIdAsync(request.TeamId);
+        if (team == null) throw new NotFoundException(nameof(Team), request.TeamId);
+        
+        if (team.CaptainId != userId)
+        {
+            throw new ForbiddenException("فقط صاحب الفريق (الرئيس) يمكنه تسجيل الفريق في البطولات.");
+        }
+
+        // 3. Check if team is already registered in THIS tournament
         var existing = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == request.TeamId);
         if (existing.Any()) throw new ConflictException("الفريق مسجل بالفعل في هذه البطولة.");
 
-        // Check capacity (include pending review)
-        var regCount = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.Status != RegistrationStatus.Rejected)).Count();
-        if (regCount >= tournament.MaxTeams) throw new ConflictException("عذراً، اكتمل العدد الأقصى للفرق في هذه البطولة.");
-
-        // Check if team is registered in ANY other active tournament
+        // 4. Check if team is registered in ANY other active tournament
         var allRegistrations = await _registrationRepository.FindAsync(r => r.TeamId == request.TeamId);
         foreach (var reg in allRegistrations)
         {
             if (reg.Status == RegistrationStatus.Rejected) continue;
 
             var t = await _tournamentRepository.GetByIdAsync(reg.TournamentId);
-            if (t != null && t.Status != "completed")
+            if (t != null && t.Status != "completed" && t.Status != "cancelled")
             {
                 throw new ConflictException($"الفريق مسجل بالفعل في بطولة أخرى جارية: {t.Name}");
             }
         }
+
+        // 5. Check capacity
+        var regCount = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.Status != RegistrationStatus.Rejected)).Count();
+        if (regCount >= tournament.MaxTeams) throw new ConflictException("عذراً، اكتمل العدد الأقصى للفرق في هذه البطولة.");
 
         var registration = new TeamRegistration
         {
@@ -149,19 +197,42 @@ public class TournamentService : ITournamentService
         return _mapper.Map<IEnumerable<TeamRegistrationDto>>(registrations);
     }
 
-    public async Task<TeamRegistrationDto> SubmitPaymentAsync(Guid tournamentId, Guid teamId, SubmitPaymentRequest request)
+    public async Task<TeamRegistrationDto> SubmitPaymentAsync(Guid tournamentId, Guid teamId, SubmitPaymentRequest request, Guid userId)
     {
+        // 1. Verify Tournament Status
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+        
+        if (tournament.Status != "registration_open")
+        {
+            throw new BadRequestException("لا يمكن إرسال إيصالات لبطولة مغلقة أو جارية.");
+        }
+
+        // 2. Verify Team Ownership
+        var team = await _teamRepository.GetByIdAsync(teamId);
+        if (team == null) throw new NotFoundException(nameof(Team), teamId);
+        
+        if (team.CaptainId != userId)
+        {
+            throw new ForbiddenException("فقط صاحب الفريق يمكنه إرسال إيصال الدفع.");
+        }
+
+        // 3. Verify Registration Status
         var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId);
         var reg = registrations.FirstOrDefault();
-        if (reg == null) throw new NotFoundException("Registration not found.");
+        if (reg == null) throw new NotFoundException("طلب التسجيل غير موجود.");
+
+        if (reg.Status != RegistrationStatus.PendingPaymentReview)
+        {
+            throw new BadRequestException("لا يمكن تعديل إيصال الدفع بعد الموافقة عليه أو رفضه.");
+        }
 
         reg.PaymentReceiptUrl = request.PaymentReceiptUrl;
-        // Status remains PendingPaymentReview as per rules
         
         await _registrationRepository.UpdateAsync(reg);
         
         // Notify Admins
-        await _notificationService.SendNotificationAsync(Guid.Empty, "New payment awaiting review", $"New payment receipt submitted for Team {reg.TeamId} in Tournament {tournamentId}", "admin_broadcast");
+        await _notificationService.SendNotificationAsync(Guid.Empty, "New payment awaiting review", $"New payment receipt submitted for Team {team.Name} in Tournament {tournament.Name}", "admin_broadcast");
         return _mapper.Map<TeamRegistrationDto>(reg);
     }
 

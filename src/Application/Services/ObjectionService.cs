@@ -28,6 +28,12 @@ public class ObjectionService : IObjectionService
         return _mapper.Map<IEnumerable<ObjectionDto>>(objections);
     }
 
+    public async Task<IEnumerable<ObjectionDto>> GetByTeamIdAsync(Guid teamId)
+    {
+        var objections = await _objectionRepository.FindAsync(o => o.TeamId == teamId, new[] { "Team.Captain", "Match.Tournament" });
+        return _mapper.Map<IEnumerable<ObjectionDto>>(objections);
+    }
+
     public async Task<ObjectionDto?> GetByIdAsync(Guid id)
     {
         var objections = await _objectionRepository.FindAsync(o => o.Id == id, new[] { "Team.Captain", "Match.Tournament" });
@@ -39,7 +45,16 @@ public class ObjectionService : IObjectionService
     {
         if (!Enum.TryParse<ObjectionType>(request.Type, true, out var type))
         {
-             throw new BadRequestException("Invalid objection type.");
+            // Try matching normalized uppercase strings if PascalCase fails
+            var normalizedTypes = Enum.GetNames<ObjectionType>().ToDictionary(t => t.ToUpperInvariant(), t => Enum.Parse<ObjectionType>(t));
+            if (normalizedTypes.TryGetValue(request.Type.ToUpperInvariant().Replace("_", ""), out var fallbackType))
+            {
+                type = fallbackType;
+            }
+            else
+            {
+                throw new BadRequestException($"نوع الاعتراض غير صالح: {request.Type}");
+            }
         }
 
         var objection = new Objection

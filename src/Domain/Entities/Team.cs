@@ -9,6 +9,7 @@ public class Team : BaseEntity
     public string? Logo { get; set; }
     public string Founded { get; set; } = string.Empty;
     public string? City { get; set; }
+    public bool IsActive { get; set; } = true;
 
     public Guid CaptainId { get; set; }
     public User? Captain { get; set; }

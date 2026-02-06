@@ -1,0 +1,21 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  Domain -> D:\ramadan\backend\src\Domain\bin\Debug\net9.0\Domain.dll
+  Shared -> D:\ramadan\backend\src\Shared\bin\Debug\net9.0\Shared.dll
+D:\ramadan\backend\src\Application\DTOs\Auth\AuthDtos.cs(36,19): warning CS8618: Non-nullable property 'User' must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring the property as nullable. [D:\ramadan\backend\src\Application\Application.csproj]
+D:\ramadan\backend\src\Application\Services\TournamentService.cs(97,9): warning CS0162: Unreachable code detected [D:\ramadan\backend\src\Application\Application.csproj]
+D:\ramadan\backend\src\Application\Services\TeamService.cs(326,52): error CS0246: The type or namespace name 'ForbidException' could not be found (are you missing a using directive or an assembly reference?) [D:\ramadan\backend\src\Application\Application.csproj]
+D:\ramadan\backend\src\Application\Services\TeamService.cs(370,49): error CS0246: The type or namespace name 'ForbidException' could not be found (are you missing a using directive or an assembly reference?) [D:\ramadan\backend\src\Application\Application.csproj]
+D:\ramadan\backend\src\Application\Services\TeamService.cs(415,49): error CS0246: The type or namespace name 'ForbidException' could not be found (are you missing a using directive or an assembly reference?) [D:\ramadan\backend\src\Application\Application.csproj]
+
+Build FAILED.
+
+D:\ramadan\backend\src\Application\DTOs\Auth\AuthDtos.cs(36,19): warning CS8618: Non-nullable property 'User' must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring the property as nullable. [D:\ramadan\backend\src\Application\Application.csproj]
+D:\ramadan\backend\src\Application\Services\TournamentService.cs(97,9): warning CS0162: Unreachable code detected [D:\ramadan\backend\src\Application\Application.csproj]
+D:\ramadan\backend\src\Application\Services\TeamService.cs(326,52): error CS0246: The type or namespace name 'ForbidException' could not be found (are you missing a using directive or an assembly reference?) [D:\ramadan\backend\src\Application\Application.csproj]
+D:\ramadan\backend\src\Application\Services\TeamService.cs(370,49): error CS0246: The type or namespace name 'ForbidException' could not be found (are you missing a using directive or an assembly reference?) [D:\ramadan\backend\src\Application\Application.csproj]
+D:\ramadan\backend\src\Application\Services\TeamService.cs(415,49): error CS0246: The type or namespace name 'ForbidException' could not be found (are you missing a using directive or an assembly reference?) [D:\ramadan\backend\src\Application\Application.csproj]
+    2 Warning(s)
+    3 Error(s)
+
+Time Elapsed 00:00:00.95

@@ -324,11 +324,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "d:\\ramadan\\backend\\src\\Application\\Application.csproj",
+      "projectUniqueName": "D:\\ramadan\\backend\\src\\Application\\Application.csproj",
       "projectName": "Application",
-      "projectPath": "d:\\ramadan\\backend\\src\\Application\\Application.csproj",
+      "projectPath": "D:\\ramadan\\backend\\src\\Application\\Application.csproj",
       "packagesPath": "C:\\Users\\musta\\.nuget\\packages\\",
-      "outputPath": "d:\\ramadan\\backend\\src\\Application\\obj\\",
+      "outputPath": "D:\\ramadan\\backend\\src\\Application\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\musta\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -343,11 +343,11 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "projectReferences": {
-            "d:\\ramadan\\backend\\src\\Domain\\Domain.csproj": {
-              "projectPath": "d:\\ramadan\\backend\\src\\Domain\\Domain.csproj"
+            "D:\\ramadan\\backend\\src\\Domain\\Domain.csproj": {
+              "projectPath": "D:\\ramadan\\backend\\src\\Domain\\Domain.csproj"
             },
-            "d:\\ramadan\\backend\\src\\Shared\\Shared.csproj": {
-              "projectPath": "d:\\ramadan\\backend\\src\\Shared\\Shared.csproj"
+            "D:\\ramadan\\backend\\src\\Shared\\Shared.csproj": {
+              "projectPath": "D:\\ramadan\\backend\\src\\Shared\\Shared.csproj"
             }
           }
         }

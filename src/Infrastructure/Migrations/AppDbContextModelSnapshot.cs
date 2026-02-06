@@ -280,12 +280,26 @@ namespace Infrastructure.Migrations
                     b.Property<int>("Goals")
                         .HasColumnType("int");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Position")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("RedCards")
                         .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid>("TeamId")
                         .HasColumnType("uniqueidentifier");
@@ -327,6 +341,12 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Logo")
                         .HasColumnType("nvarchar(max)");
 
@@ -352,6 +372,9 @@ namespace Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<bool>("InitiatedByPlayer")
+                        .HasColumnType("bit");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -431,6 +454,7 @@ namespace Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<decimal>("EntryFee")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("Location")
@@ -465,7 +489,12 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("WinnerTeamId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("WinnerTeamId");
 
                     b.ToTable("Tournaments");
                 });
@@ -705,6 +734,15 @@ namespace Infrastructure.Migrations
                     b.Navigation("Team");
 
                     b.Navigation("Tournament");
+                });
+
+            modelBuilder.Entity("Domain.Entities.Tournament", b =>
+                {
+                    b.HasOne("Domain.Entities.Team", "WinnerTeam")
+                        .WithMany()
+                        .HasForeignKey("WinnerTeamId");
+
+                    b.Navigation("WinnerTeam");
                 });
 
             modelBuilder.Entity("Domain.Entities.Match", b =>

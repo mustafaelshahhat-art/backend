@@ -29,6 +29,9 @@ public class Tournament : BaseEntity
     public string Rules { get; set; } = string.Empty;
     public string Prizes { get; set; } = string.Empty; // Store as comma-separated or JSON
 
+    public Guid? WinnerTeamId { get; set; }
+    public Team? WinnerTeam { get; set; }
+
     public ICollection<TeamRegistration> Registrations { get; set; } = new List<TeamRegistration>();
     public ICollection<Match> Matches { get; set; } = new List<Match>();
 }

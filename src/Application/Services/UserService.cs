@@ -14,12 +14,23 @@ namespace Application.Services;
 public class UserService : IUserService
 {
     private readonly IRepository<User> _userRepository;
+    private readonly IRepository<Activity> _activityRepository;
+    private readonly IRepository<Team> _teamRepository;
     private readonly IMapper _mapper;
+    private readonly IRealTimeNotifier _realTimeNotifier;
 
-    public UserService(IRepository<User> userRepository, IMapper mapper)
+    public UserService(
+        IRepository<User> userRepository, 
+        IRepository<Activity> activityRepository,
+        IRepository<Team> teamRepository,
+        IMapper mapper,
+        IRealTimeNotifier realTimeNotifier)
     {
         _userRepository = userRepository;
+        _activityRepository = activityRepository;
+        _teamRepository = teamRepository;
         _mapper = mapper;
+        _realTimeNotifier = realTimeNotifier;
     }
 
     public async Task<IEnumerable<UserDto>> GetAllAsync()
@@ -32,7 +43,25 @@ public class UserService : IUserService
     {
         var user = await _userRepository.GetByIdAsync(id);
         if (user == null) return null;
-        return _mapper.Map<UserDto>(user);
+
+        var dto = _mapper.Map<UserDto>(user);
+
+        // Fetch Team Name and Ownership if exists
+        if (user.TeamId.HasValue)
+        {
+            var team = await _teamRepository.GetByIdAsync(user.TeamId.Value);
+            if (team != null)
+            {
+                dto.TeamName = team.Name;
+                dto.IsTeamOwner = team.CaptainId == id;
+            }
+        }
+
+        // Fetch Recent Activities
+        var activities = await _activityRepository.FindAsync(a => a.UserId == id);
+        dto.Activities = _mapper.Map<List<UserActivityDto>>(activities.OrderByDescending(a => a.CreatedAt).Take(10).ToList());
+
+        return dto;
     }
 
     public async Task<UserDto> UpdateAsync(Guid id, UpdateUserRequest request)
@@ -58,6 +87,7 @@ public class UserService : IUserService
         // Task says "Delete user (or deactivate)". Soft delete enabled in DbContext.
         // So Repository.DeleteAsync will mark it Deleted, and DbContext will set IsDeleted.
         await _userRepository.DeleteAsync(id);
+        await _realTimeNotifier.SendAccountStatusChangedAsync(id, "Deleted");
     }
 
     public async Task SuspendAsync(Guid id)
@@ -67,6 +97,7 @@ public class UserService : IUserService
 
         user.Status = UserStatus.Suspended;
         await _userRepository.UpdateAsync(user);
+        await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Suspended.ToString());
     }
 
     public async Task ActivateAsync(Guid id)
@@ -76,6 +107,7 @@ public class UserService : IUserService
 
         user.Status = UserStatus.Active;
         await _userRepository.UpdateAsync(user);
+        await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Active.ToString());
     }
 
     public async Task<IEnumerable<UserDto>> GetByRoleAsync(string role)

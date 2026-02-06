@@ -17,19 +17,26 @@ public class MappingProfile : Profile
     {
         // User
         CreateMap<User, UserDto>()
-            .ForMember(d => d.Role, o => o.MapFrom(s => s.TeamId.HasValue ? "Captain" : s.Role.ToString()))
-            .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()));
+            .ForMember(d => d.Role, o => o.MapFrom(s => s.Role.ToString()))
+            .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()))
+            .ForMember(d => d.TeamName, o => o.Ignore()) // Polished in service or via custom resolver if complex
+            .ForMember(d => d.Activities, o => o.Ignore());
+
+        CreateMap<Activity, UserActivityDto>();
 
         // Tournament
         CreateMap<Tournament, TournamentDto>()
             .ForMember(d => d.Status, o => o.MapFrom(s => s.Status))
             .ForMember(d => d.Registrations, o => o.MapFrom(s => s.Registrations != null 
                 ? s.Registrations.Where(r => r.Status != RegistrationStatus.Rejected) 
-                : new List<TeamRegistration>()));
+                : new List<TeamRegistration>()))
+            .ForMember(d => d.WinnerTeamName, o => o.MapFrom(s => s.WinnerTeam != null ? s.WinnerTeam.Name : null));
 
         // Team
         CreateMap<Team, TeamDto>()
-            .ForMember(d => d.CaptainName, o => o.MapFrom(s => s.Captain != null ? s.Captain.Name : string.Empty));
+            .ForMember(d => d.CaptainName, o => o.MapFrom(s => s.Captain != null ? s.Captain.Name : string.Empty))
+            .ForMember(d => d.PlayerCount, o => o.MapFrom(s => s.Players != null ? s.Players.Count : 0))
+            .ForMember(d => d.MaxPlayers, o => o.MapFrom(s => 10));
         
         // Player
         CreateMap<Player, PlayerDto>();
