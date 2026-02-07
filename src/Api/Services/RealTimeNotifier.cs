@@ -4,6 +4,8 @@ using Application.Interfaces;
 using Domain.Entities;
 using Api.Hubs;
 using Microsoft.AspNetCore.SignalR;
+using System.Security.Claims;
+using System.Linq;
 
 namespace Api.Services;
 
@@ -51,6 +53,19 @@ public class RealTimeNotifier : IRealTimeNotifier
         catch (Exception ex)
         {
             Console.WriteLine($"Error sending removed from team notification: {ex.Message}");
+        }
+    }
+
+    public async Task SendTeamDeletedAsync(Guid teamId, System.Collections.Generic.IEnumerable<Guid> userIds)
+    {
+        try
+        {
+            var userStringIds = System.Linq.Enumerable.Select(userIds, id => id.ToString());
+            await _hubContext.Clients.Users(userStringIds.ToList()).SendAsync("TeamDeleted", new { TeamId = teamId });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending team deleted notification: {ex.Message}");
         }
     }
 }

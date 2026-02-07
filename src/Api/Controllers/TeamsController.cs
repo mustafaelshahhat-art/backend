@@ -142,9 +142,17 @@ public class TeamsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(Guid id)
     {
+        var team = await _teamService.GetByIdAsync(id);
+        if (team == null) return NotFound();
+
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (team.CaptainId.ToString() != userId && !User.IsInRole("Admin"))
+        {
+            return Forbid();
+        }
+
         await _teamService.DeleteAsync(id);
         return NoContent();
     }

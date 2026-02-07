@@ -249,6 +249,8 @@ public class TeamService : ITeamService
 
         // 2. Unlink Users (Set TeamId = null)
         var users = await _userRepository.FindAsync(u => u.TeamId == id);
+        var memberUserIds = users.Select(u => u.Id).ToList();
+
         foreach (var user in users)
         {
             user.TeamId = null;
@@ -275,6 +277,9 @@ public class TeamService : ITeamService
 
         // 5. Delete Team
         await _teamRepository.DeleteAsync(id);
+
+        // 6. Notify all members
+        await _realTimeNotifier.SendTeamDeletedAsync(id, memberUserIds);
     }
 
     public async Task<JoinRequestDto> RequestJoinAsync(Guid teamId, Guid playerId)
@@ -578,6 +583,13 @@ public class TeamService : ITeamService
         // Safety check teamId
         if (player != null && player.TeamId == teamId)
         {
+            // Rule: Captain cannot remove himself
+            var team = await _teamRepository.GetByIdAsync(teamId);
+            if (team != null && player.UserId.HasValue && player.UserId.Value == team.CaptainId)
+            {
+                throw new ForbiddenException("لا يمكن للكابتن حذف نفسه من الفريق. استخدم خيار حذف الفريق بدلاً من ذلك.");
+            }
+
             // Unlink User
             if (player.UserId.HasValue)
             {
