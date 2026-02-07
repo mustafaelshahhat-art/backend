@@ -13,5 +13,6 @@ public class TeamRegistration : BaseEntity
 
     public RegistrationStatus Status { get; set; } = RegistrationStatus.PendingPaymentReview;
     public string? PaymentReceiptUrl { get; set; }
+    public string? SenderNumber { get; set; }
     public string? RejectionReason { get; set; }
 }

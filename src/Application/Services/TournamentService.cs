@@ -232,6 +232,7 @@ public class TournamentService : ITournamentService
         }
 
         reg.PaymentReceiptUrl = request.PaymentReceiptUrl;
+        reg.SenderNumber = request.SenderNumber;
         
         await _registrationRepository.UpdateAsync(reg);
         

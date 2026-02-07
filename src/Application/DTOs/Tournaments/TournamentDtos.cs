@@ -60,6 +60,7 @@ public class TeamRegistrationDto
     public string CaptainName { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string? PaymentReceiptUrl { get; set; }
+    public string? SenderNumber { get; set; }
     public string? RejectionReason { get; set; }
     public DateTime RegisteredAt { get; set; }
     public Guid TournamentId { get; set; }
@@ -68,6 +69,7 @@ public class TeamRegistrationDto
 public class SubmitPaymentRequest
 {
     public string PaymentReceiptUrl { get; set; } = string.Empty;
+    public string? SenderNumber { get; set; }
 }
 
 public class RejectRegistrationRequest

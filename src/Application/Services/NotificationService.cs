@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Application.Interfaces;
 using Domain.Entities;
+using Domain.Enums;
+using Domain.Interfaces;
 // WAIT. Application Layer cannot depend on Api Layer (Clean Architecture).
 // BAD ARCHITECTURE: Api.Hubs is in Api Layer.
 // FIX: Hubs should remain in Api. Services in Application cannot reference Hubs directly if they are in Api.
@@ -31,29 +33,35 @@ public class NotificationService : INotificationService
 {
     private readonly INotificationRepository _repository;
     private readonly IRealTimeNotifier _notifier;
+    private readonly IRepository<User> _userRepository;
 
-    public NotificationService(INotificationRepository repository, IRealTimeNotifier notifier)
+    public NotificationService(
+        INotificationRepository repository,
+        IRealTimeNotifier notifier,
+        IRepository<User> userRepository)
     {
         _repository = repository;
         _notifier = notifier;
+        _userRepository = userRepository;
     }
 
     public async Task SendNotificationAsync(Guid userId, string title, string message, string type = "system")
     {
-        var notification = new Notification
+        // Broadcast to all active admins (used by admin_broadcast notifications).
+        if (userId == Guid.Empty)
         {
-            UserId = userId,
-            Title = title,
-            Message = message,
-            Type = type,
-            IsRead = false,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+            var admins = await _userRepository.FindAsync(u => u.Role == UserRole.Admin && u.Status == UserStatus.Active);
+            foreach (var admin in admins)
+            {
+                var adminNotification = CreateNotification(admin.Id, title, message, type);
+                await _repository.AddAsync(adminNotification);
+                await _notifier.SafeSendNotificationAsync(admin.Id, adminNotification);
+            }
+            return;
+        }
 
+        var notification = CreateNotification(userId, title, message, type);
         await _repository.AddAsync(notification);
-        
-        // Push Real-Time
         await _notifier.SafeSendNotificationAsync(userId, notification);
     }
 
@@ -75,5 +83,19 @@ public class NotificationService : INotificationService
     public async Task MarkAllAsReadAsync(Guid userId)
     {
         await _repository.MarkAllAsReadAsync(userId);
+    }
+
+    private static Notification CreateNotification(Guid userId, string title, string message, string type)
+    {
+        return new Notification
+        {
+            UserId = userId,
+            Title = title,
+            Message = message,
+            Type = type,
+            IsRead = false,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
     }
 }
