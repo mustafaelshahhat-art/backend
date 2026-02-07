@@ -238,5 +238,35 @@ public class UserService : IUserService
             IsLastAdmin = isLastAdmin
         };
     }
+
+    public async Task<IEnumerable<string>> GetGovernoratesAsync()
+    {
+        var users = await _userRepository.GetAllAsync();
+        return users.Select(u => u.Governorate).Where(g => !string.IsNullOrEmpty(g)).Distinct()!;
+    }
+
+    public async Task<IEnumerable<string>> GetCitiesAsync(string governorate)
+    {
+        var users = await _userRepository.FindAsync(u => u.Governorate == governorate);
+        return users.Select(u => u.City).Where(c => !string.IsNullOrEmpty(c)).Distinct()!;
+    }
+
+    public async Task<IEnumerable<string>> GetDistrictsAsync(string city)
+    {
+        var users = await _userRepository.FindAsync(u => u.City == city);
+        return users.Select(u => u.Neighborhood).Where(d => !string.IsNullOrEmpty(d)).Distinct()!;
+    }
+
+    public async Task<IEnumerable<UserDto>> GetRefereesByLocationAsync(string? district = null, string? city = null, string? governorate = null)
+    {
+        var referees = await _userRepository.FindAsync(u => u.Role == UserRole.Referee && u.Status == UserStatus.Active);
+        
+        var query = referees.AsQueryable();
+        if (!string.IsNullOrEmpty(governorate)) query = query.Where(u => u.Governorate == governorate);
+        if (!string.IsNullOrEmpty(city)) query = query.Where(u => u.City == city);
+        if (!string.IsNullOrEmpty(district)) query = query.Where(u => u.Neighborhood == district);
+
+        return _mapper.Map<IEnumerable<UserDto>>(query.ToList());
+    }
 }
 

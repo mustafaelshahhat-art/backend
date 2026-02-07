@@ -7,5 +7,6 @@ public enum MatchStatus
     Halftime,
     Finished,
     Cancelled,
-    Postponed
+    Postponed,
+    Rescheduled
 }

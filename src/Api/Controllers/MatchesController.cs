@@ -85,6 +85,14 @@ public class MatchesController : ControllerBase
         return Ok(match);
     }
 
+    [HttpDelete("{id}/events/{eventId}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<MatchDto>> RemoveEvent(Guid id, Guid eventId)
+    {
+        var match = await _matchService.RemoveEventAsync(id, eventId);
+        return Ok(match);
+    }
+
     [HttpPost("{id}/report")]
     [Authorize(Roles = "Referee")]
     public async Task<ActionResult<MatchDto>> SubmitReport(Guid id, SubmitReportRequest request)

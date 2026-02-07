@@ -12,6 +12,7 @@ public interface IMatchService
     Task<MatchDto> StartMatchAsync(Guid id);
     Task<MatchDto> EndMatchAsync(Guid id);
     Task<MatchDto> AddEventAsync(Guid id, AddMatchEventRequest request);
+    Task<MatchDto> RemoveEventAsync(Guid matchId, Guid eventId);
     Task<MatchDto> SubmitReportAsync(Guid id, SubmitReportRequest request);
     Task<MatchDto> UpdateAsync(Guid id, UpdateMatchRequest request);
 

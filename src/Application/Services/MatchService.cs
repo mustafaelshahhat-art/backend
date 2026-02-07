@@ -141,6 +141,49 @@ public class MatchService : IMatchService
         var events = await _eventRepository.FindAsync(e => e.MatchId == id);
         match.Events = events.ToList();
 
+        // Notify
+        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
+        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
+        if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "حدث جديد", "تم تحديث أحداث المباراة", "match");
+        if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "حدث جديد", "تم تحديث أحداث المباراة", "match");
+        if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationAsync(match.RefereeId.Value, "حدث جديد", "تم تحديث أحداث المباراة", "match");
+
+        return _mapper.Map<MatchDto>(match);
+    }
+
+    public async Task<MatchDto> RemoveEventAsync(Guid matchId, Guid eventId)
+    {
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null) throw new NotFoundException(nameof(Match), matchId);
+
+        var matchEvent = await _eventRepository.GetByIdAsync(eventId);
+        if (matchEvent == null || matchEvent.MatchId != matchId) throw new NotFoundException(nameof(MatchEvent), eventId);
+
+        // Rollback effects
+        if (matchEvent.Type == MatchEventType.Goal)
+        {
+            if (matchEvent.TeamId == match.HomeTeamId)
+                match.HomeScore = Math.Max(0, match.HomeScore - 1);
+            else if (matchEvent.TeamId == match.AwayTeamId)
+                match.AwayScore = Math.Max(0, match.AwayScore - 1);
+            
+            await _matchRepository.UpdateAsync(match);
+        }
+
+        await _eventRepository.DeleteAsync(matchEvent);
+        await _analyticsService.LogActivityAsync("Event Removed", $"Event {eventId} removed from Match {matchId}", null, "Admin");
+
+        // Notify
+        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
+        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
+        if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "تحديث أحداث", "تم تحديث أحداث المباراة", "match");
+        if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "تحديث أحداث", "تم تحديث أحداث المباراة", "match");
+        if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationAsync(match.RefereeId.Value, "تحديث أحداث", "تم تحديث أحداث المباراة", "match");
+
+        // Refresh events
+        var events = await _eventRepository.FindAsync(e => e.MatchId == matchId);
+        match.Events = events.ToList();
+
         return _mapper.Map<MatchDto>(match);
     }
 
@@ -159,28 +202,85 @@ public class MatchService : IMatchService
         var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Referee" });
         if (match == null) throw new NotFoundException(nameof(Match), id);
 
+        var oldRefereeId = match.RefereeId;
+        var oldStatus = match.Status;
+        var oldScore = $"{match.HomeScore}-{match.AwayScore}";
+        var oldDate = match.Date;
+
+        bool scoreChanged = (request.HomeScore.HasValue && request.HomeScore != match.HomeScore) || 
+                           (request.AwayScore.HasValue && request.AwayScore != match.AwayScore);
+        
         if (request.HomeScore.HasValue) match.HomeScore = request.HomeScore.Value;
         if (request.AwayScore.HasValue) match.AwayScore = request.AwayScore.Value;
         if (request.Date.HasValue) match.Date = request.Date.Value;
         if (request.RefereeId.HasValue) match.RefereeId = request.RefereeId.Value;
         
+        MatchStatus? newStatus = null;
         if (!string.IsNullOrEmpty(request.Status) && Enum.TryParse<MatchStatus>(request.Status, true, out var status))
         {
+            newStatus = status;
             match.Status = status;
         }
 
         await _matchRepository.UpdateAsync(match);
-        
-        // If Referee was updated, we might need to reload to get Referee name if EF didn't fix it up locally (it usually requires a fresh fetch or attached entry)
-        // But for now, let's assume if we just set RefereeId, the Referee navigation prop might be null if not loaded. 
-        // We included "Referee" in GetByIdAsync, but that was the OLD referee.
-        // If we changed it, match.Referee will act weird unless we reload or the repo handles it.
-        // Let's reload just to be safe if RefereeId changed.
-        if (request.RefereeId.HasValue)
+
+        // Handle Notifications & Logging
+        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
+        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
+
+        // 1. Score Update
+        if (scoreChanged)
         {
-             match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Referee" });
+            await _analyticsService.LogActivityAsync("Score Updated", $"Match {id} score updated to {match.HomeScore}-{match.AwayScore}", null, "AdminOverride");
+            string msg = "تم تعديل نتيجة المباراة بواسطة الإدارة";
+            if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "تعديل نتيجة", msg, "match");
+            if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "تعديل نتيجة", msg, "match");
+            if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationAsync(match.RefereeId.Value, "تعديل نتيجة", msg, "match");
         }
 
+        // 2. Referee Change
+        if (request.RefereeId.HasValue && request.RefereeId.Value != oldRefereeId)
+        {
+            if (oldRefereeId.HasValue && oldRefereeId.Value != Guid.Empty)
+                await _notificationService.SendNotificationAsync(oldRefereeId.Value, "إلغاء تعيين", "تم إلغاء تعيينك من المباراة", "match");
+            
+            await _notificationService.SendNotificationAsync(request.RefereeId.Value, "تعيين جديد", "تم تعيينك حكماً للمباراة", "match");
+            
+            string msg = "تم تغيير حكم المباراة";
+            if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "تغيير الحكم", msg, "match");
+            if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "تغيير الحكم", msg, "match");
+        }
+
+        // 3. Status Changes (Postpone, Cancel, Reschedule)
+        if (newStatus.HasValue && newStatus.Value != oldStatus)
+        {
+            string msg = "";
+            switch (newStatus.Value)
+            {
+                case MatchStatus.Postponed:
+                    msg = $"تم تأجيل المباراة إلى {match.Date:yyyy/MM/dd} الساعة {match.Date:HH:mm}";
+                    break;
+                case MatchStatus.Cancelled:
+                    msg = "تم إلغاء المباراة رسمياً";
+                    break;
+                case MatchStatus.Rescheduled:
+                    msg = $"سيتم إعادة المباراة يوم {match.Date:yyyy/MM/dd} الساعة {match.Date:HH:mm}";
+                    break;
+            }
+
+            if (!string.IsNullOrEmpty(msg))
+            {
+                if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "تحديث حالة المباراة", msg, "match");
+                if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "تحديث حالة المباراة", msg, "match");
+                if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationAsync(match.RefereeId.Value, "تحديث حالة المباراة", msg, "match");
+            }
+        }
+
+        // 4. Trigger Tournament Lifecycle check just in case
+        await _lifecycleService.CheckAndFinalizeTournamentAsync(match.TournamentId);
+
+        // Reload to get fresh data incl. new referee name
+        match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Referee" });
         return _mapper.Map<MatchDto>(match);
     }
 

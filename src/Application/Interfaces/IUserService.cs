@@ -27,5 +27,11 @@ public interface IUserService
     /// Used for safety checks before delete/suspend operations.
     /// </summary>
     Task<AdminCountDto> GetAdminCountAsync(Guid? userId = null);
+
+    // Location-based Discovery
+    Task<IEnumerable<string>> GetGovernoratesAsync();
+    Task<IEnumerable<string>> GetCitiesAsync(string governorate);
+    Task<IEnumerable<string>> GetDistrictsAsync(string city);
+    Task<IEnumerable<UserDto>> GetRefereesByLocationAsync(string? district = null, string? city = null, string? governorate = null);
 }
 

@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<ITournamentLifecycleService, TournamentLifecycleService>();
         services.AddScoped<ISystemSettingsService, SystemSettingsService>();
+        services.AddScoped<ISearchService, SearchService>();
 
         return services;
     }
