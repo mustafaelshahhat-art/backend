@@ -12,11 +12,13 @@ public class TournamentsController : ControllerBase
 {
     private readonly ITournamentService _tournamentService;
     private readonly IUserService _userService;
+    private readonly IWebHostEnvironment _environment;
 
-    public TournamentsController(ITournamentService tournamentService, IUserService userService)
+    public TournamentsController(ITournamentService tournamentService, IUserService userService, IWebHostEnvironment environment)
     {
         _tournamentService = tournamentService;
         _userService = userService;
+        _environment = environment;
     }
 
     [HttpGet]
@@ -91,16 +93,19 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpPost("{id}/registrations/{teamId}/payment")]
-    public async Task<ActionResult<TeamRegistrationDto>> SubmitPayment(Guid id, Guid teamId, IFormFile receipt)
+    public async Task<ActionResult<TeamRegistrationDto>> SubmitPayment(Guid id, Guid teamId, [FromForm] IFormFile receipt)
     {
-        var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value!);
+        var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdString)) return Unauthorized();
+        
+        var userId = Guid.Parse(userIdString);
         var user = await _userService.GetByIdAsync(userId);
         if (user?.Status != "Active")
         {
             return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من إرسال إيصال الدفع.");
         }
 
-        if (receipt == null) return BadRequest("يجب إرسال إيصال الدفع.");
+        if (receipt == null || receipt.Length == 0) return BadRequest("يجب إرسال إيصال الدفع.");
 
         var receiptUrl = await SaveFile(receipt);
         var request = new SubmitPaymentRequest { PaymentReceiptUrl = receiptUrl };
@@ -111,7 +116,8 @@ public class TournamentsController : ControllerBase
 
     private async Task<string> SaveFile(IFormFile file)
     {
-        var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
+        var rootPath = _environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+        var uploadsFolder = Path.Combine(rootPath, "uploads");
         if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
 
         var fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);

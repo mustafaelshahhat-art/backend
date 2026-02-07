@@ -353,7 +353,9 @@ public class TournamentService : ITournamentService
 
     public async Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync()
     {
-        var pending = await _registrationRepository.FindAsync(r => r.Status == RegistrationStatus.PendingPaymentReview && !string.IsNullOrEmpty(r.PaymentReceiptUrl));
+        var pending = await _registrationRepository.FindAsync(
+            r => r.Status == RegistrationStatus.PendingPaymentReview,
+            new[] { "Team", "Team.Captain" });
         
         var result = new List<PendingPaymentResponse>();
         foreach (var p in pending)
