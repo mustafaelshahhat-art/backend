@@ -49,3 +49,10 @@ artifacts/
 _ReSharper*/
 *.ReSharper
 *.DotSettings.user
+
+# Debug and Logs
+src/Api/settings_debug.log
+
+# User Uploads
+src/Api/wwwroot/uploads/*
+!src/Api/wwwroot/uploads/.gitkeep

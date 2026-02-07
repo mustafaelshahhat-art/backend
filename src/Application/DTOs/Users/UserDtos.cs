@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json.Serialization;
 using Domain.Enums;
 
 namespace Application.DTOs.Users;
@@ -40,10 +41,24 @@ public class UpdateUserRequest
     public string? Name { get; set; }
     public string? Phone { get; set; }
     public string? Avatar { get; set; }
+    [JsonPropertyName("removeAvatar")]
+    public bool RemoveAvatar { get; set; } = false;
     public string? City { get; set; }
     public string? Governorate { get; set; }
     public string? Neighborhood { get; set; }
     public int? Age { get; set; }
+}
+
+public class ChangePasswordRequest
+{
+    public string CurrentPassword { get; set; } = string.Empty;
+    public string NewPassword { get; set; } = string.Empty;
+}
+
+public class UploadAvatarRequest
+{
+    public string Base64Image { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
 }
 
 /// <summary>

@@ -10,4 +10,6 @@ public interface IRealTimeNotifier
     Task SendAccountStatusChangedAsync(Guid userId, string newStatus);
     Task SendRemovedFromTeamAsync(Guid userId, Guid teamId, Guid playerId);
     Task SendTeamDeletedAsync(Guid teamId, System.Collections.Generic.IEnumerable<Guid> userIds);
+    Task SendMatchUpdatedAsync(Application.DTOs.Matches.MatchDto match);
+    Task SendSystemEventAsync(string type, object metadata, string group = null);
 }

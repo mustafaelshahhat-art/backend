@@ -80,7 +80,17 @@ public class UserService : IUserService
 
         if (!string.IsNullOrEmpty(request.Name)) user.Name = request.Name!;
         if (!string.IsNullOrEmpty(request.Phone)) user.Phone = request.Phone;
-        if (!string.IsNullOrEmpty(request.Avatar)) user.Avatar = request.Avatar;
+        
+        // Handle avatar: RemoveAvatar takes precedence, then check for new avatar
+        if (request.RemoveAvatar)
+        {
+            user.Avatar = null;
+        }
+        else if (!string.IsNullOrEmpty(request.Avatar))
+        {
+            user.Avatar = request.Avatar;
+        }
+        
         if (!string.IsNullOrEmpty(request.City)) user.City = request.City;
         if (!string.IsNullOrEmpty(request.Governorate)) user.Governorate = request.Governorate;
         if (!string.IsNullOrEmpty(request.Neighborhood)) user.Neighborhood = request.Neighborhood;
@@ -127,6 +137,9 @@ public class UserService : IUserService
         user.Status = UserStatus.Suspended;
         await _userRepository.UpdateAsync(user);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Suspended.ToString());
+        
+        // Lightweight System Event
+        await _realTimeNotifier.SendSystemEventAsync("USER_BLOCKED", new { UserId = id }, $"user:{id}");
     }
 
     public async Task ActivateAsync(Guid id)
@@ -137,6 +150,9 @@ public class UserService : IUserService
         user.Status = UserStatus.Active;
         await _userRepository.UpdateAsync(user);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Active.ToString());
+
+        // Lightweight System Event
+        await _realTimeNotifier.SendSystemEventAsync("USER_APPROVED", new { UserId = id }, $"user:{id}");
     }
 
     public async Task<IEnumerable<UserDto>> GetByRoleAsync(string role)
@@ -267,6 +283,115 @@ public class UserService : IUserService
         if (!string.IsNullOrEmpty(district)) query = query.Where(u => u.Neighborhood == district);
 
         return _mapper.Map<IEnumerable<UserDto>>(query.ToList());
+    }
+
+    public async Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword)
+    {
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null)
+        {
+            throw new NotFoundException(nameof(User), userId);
+        }
+
+        // Verify current password
+        if (!_passwordHasher.VerifyPassword(currentPassword, user.PasswordHash))
+        {
+            throw new BadRequestException("كلمة المرور الحالية غير صحيحة");
+        }
+
+        // Validate new password
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6)
+        {
+            throw new BadRequestException("كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل");
+        }
+
+        // Update password
+        user.PasswordHash = _passwordHasher.HashPassword(newPassword);
+        await _userRepository.UpdateAsync(user);
+
+        // Log activity
+        try
+        {
+            await _analyticsService.LogActivityAsync(
+                "Password Changed", 
+                "User changed their password", 
+                userId, 
+                "Profile"
+            );
+        }
+        catch
+        {
+            // Don't fail if analytics logging fails
+        }
+    }
+
+    public async Task<string> UploadAvatarAsync(Guid userId, UploadAvatarRequest request)
+    {
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null)
+        {
+            throw new NotFoundException(nameof(User), userId);
+        }
+
+        // Validate base64 image
+        if (string.IsNullOrWhiteSpace(request.Base64Image))
+        {
+            throw new BadRequestException("Image data is required");
+        }
+
+        // Remove data URL prefix if present
+        var base64Data = request.Base64Image;
+        if (base64Data.StartsWith("data:image"))
+        {
+            base64Data = base64Data.Substring(base64Data.IndexOf(",") + 1);
+        }
+
+        // Validate base64 format
+        byte[] imageData;
+        try
+        {
+            imageData = Convert.FromBase64String(base64Data);
+        }
+        catch
+        {
+            throw new BadRequestException("Invalid image data");
+        }
+
+        // Save file
+        var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
+        if (!Directory.Exists(uploadsFolder))
+        {
+            Directory.CreateDirectory(uploadsFolder);
+        }
+
+        var fileExtension = Path.GetExtension(request.FileName) ?? ".jpg";
+        var fileName = $"avatar_{userId}_{Guid.NewGuid()}{fileExtension}";
+        var filePath = Path.Combine(uploadsFolder, fileName);
+
+        await File.WriteAllBytesAsync(filePath, imageData);
+
+        var avatarUrl = $"/uploads/{fileName}";
+
+        // Update user avatar
+        user.Avatar = avatarUrl;
+        await _userRepository.UpdateAsync(user);
+
+        // Log activity
+        try
+        {
+            await _analyticsService.LogActivityAsync(
+                "Avatar Updated", 
+                "User updated their profile picture", 
+                userId, 
+                "Profile"
+            );
+        }
+        catch
+        {
+            // Don't fail if analytics logging fails
+        }
+
+        return avatarUrl;
     }
 }
 

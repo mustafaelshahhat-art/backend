@@ -20,6 +20,7 @@ public class MatchService : IMatchService
     private readonly IMapper _mapper;
     private readonly IAnalyticsService _analyticsService;
     private readonly INotificationService _notificationService;
+    private readonly IRealTimeNotifier _notifier;
     private readonly ITournamentLifecycleService _lifecycleService;
 
     public MatchService(
@@ -29,6 +30,7 @@ public class MatchService : IMatchService
         IMapper mapper,
         IAnalyticsService analyticsService,
         INotificationService notificationService,
+        IRealTimeNotifier notifier,
         ITournamentLifecycleService lifecycleService)
     {
         _matchRepository = matchRepository;
@@ -37,6 +39,7 @@ public class MatchService : IMatchService
         _mapper = mapper;
         _analyticsService = analyticsService;
         _notificationService = notificationService;
+        _notifier = notifier;
         _lifecycleService = lifecycleService;
     }
 
@@ -48,12 +51,12 @@ public class MatchService : IMatchService
 
     public async Task<MatchDto?> GetByIdAsync(Guid id)
     {
-        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam" });
+        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Referee", "Events.Player" });
         if (match == null) return null;
 
         if (match.Events == null || !match.Events.Any())
         {
-             var events = await _eventRepository.FindAsync(e => e.MatchId == id);
+             var events = await _eventRepository.FindAsync(e => e.MatchId == id, new[] { "Player" });
              match.Events = events.ToList();
         }
 
@@ -69,6 +72,10 @@ public class MatchService : IMatchService
         await _matchRepository.UpdateAsync(match);
         await _analyticsService.LogActivityAsync("Match Started", $"Match ID {id} started.", null, "Referee");
         
+        // Lightweight System Event
+        await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Live.ToString() }, $"match:{id}");
+        await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Live.ToString() }, "role:Admin");
+        
         // Notify Captains (requires fetching teams to get CaptainId)
         // Optimization: Fetch match with Teams included or fetch Teams separately.
         // Assuming match has HomeTeamId/AwayTeamId but usually not loaded.
@@ -79,7 +86,9 @@ public class MatchService : IMatchService
         if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "Match Started", $"Your match against {awayTeam?.Name ?? "Opponent"} has started.", "match");
         if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "Match Started", $"Your match against {homeTeam?.Name ?? "Opponent"} has started.", "match");
 
-        return _mapper.Map<MatchDto>(match);
+        var matchDto = _mapper.Map<MatchDto>(match);
+        await _notifier.SendMatchUpdatedAsync(matchDto);
+        return matchDto;
     }
 
     public async Task<MatchDto> EndMatchAsync(Guid id)
@@ -91,6 +100,10 @@ public class MatchService : IMatchService
         await _matchRepository.UpdateAsync(match);
         await _analyticsService.LogActivityAsync("Match Ended", $"Match ID {id} ended.", null, "Referee");
 
+        // Lightweight System Event
+        await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Finished.ToString() }, $"match:{id}");
+        await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Finished.ToString() }, "role:Admin");
+
         var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
         var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
 
@@ -100,7 +113,9 @@ public class MatchService : IMatchService
         // Trigger Lifecycle check
         await _lifecycleService.CheckAndFinalizeTournamentAsync(match.TournamentId);
 
-        return _mapper.Map<MatchDto>(match);
+        var matchDto = _mapper.Map<MatchDto>(match);
+        await _notifier.SendMatchUpdatedAsync(matchDto);
+        return matchDto;
     }
 
     public async Task<MatchDto> AddEventAsync(Guid id, AddMatchEventRequest request)
@@ -138,7 +153,7 @@ public class MatchService : IMatchService
         await _eventRepository.AddAsync(matchEvent);
         
         // Refresh events for clean return
-        var events = await _eventRepository.FindAsync(e => e.MatchId == id);
+        var events = await _eventRepository.FindAsync(e => e.MatchId == id, new[] { "Player" });
         match.Events = events.ToList();
 
         // Notify
@@ -148,7 +163,9 @@ public class MatchService : IMatchService
         if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "حدث جديد", "تم تحديث أحداث المباراة", "match");
         if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationAsync(match.RefereeId.Value, "حدث جديد", "تم تحديث أحداث المباراة", "match");
 
-        return _mapper.Map<MatchDto>(match);
+        var matchDto = _mapper.Map<MatchDto>(match);
+        await _notifier.SendMatchUpdatedAsync(matchDto);
+        return matchDto;
     }
 
     public async Task<MatchDto> RemoveEventAsync(Guid matchId, Guid eventId)
@@ -181,10 +198,12 @@ public class MatchService : IMatchService
         if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationAsync(match.RefereeId.Value, "تحديث أحداث", "تم تحديث أحداث المباراة", "match");
 
         // Refresh events
-        var events = await _eventRepository.FindAsync(e => e.MatchId == matchId);
+        var events = await _eventRepository.FindAsync(e => e.MatchId == matchId, new[] { "Player" });
         match.Events = events.ToList();
 
-        return _mapper.Map<MatchDto>(match);
+        var matchDto = _mapper.Map<MatchDto>(match);
+        await _notifier.SendMatchUpdatedAsync(matchDto);
+        return matchDto;
     }
 
     public async Task<MatchDto> SubmitReportAsync(Guid id, SubmitReportRequest request)
@@ -274,6 +293,14 @@ public class MatchService : IMatchService
                 if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "تحديث حالة المباراة", msg, "match");
                 if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationAsync(match.RefereeId.Value, "تحديث حالة المباراة", msg, "match");
             }
+
+            // Lightweight System Events
+            if (newStatus == MatchStatus.Postponed)
+                await _notifier.SendSystemEventAsync("MATCH_RESCHEDULED", new { MatchId = id, Date = match.Date }, $"match:{id}");
+            else
+                await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = newStatus.Value.ToString() }, $"match:{id}");
+            
+            await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = newStatus.Value.ToString() }, "role:Admin");
         }
 
         // 4. Trigger Tournament Lifecycle check just in case
@@ -281,7 +308,9 @@ public class MatchService : IMatchService
 
         // Reload to get fresh data incl. new referee name
         match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Referee" });
-        return _mapper.Map<MatchDto>(match);
+        var matchDto = _mapper.Map<MatchDto>(match);
+        await _notifier.SendMatchUpdatedAsync(matchDto);
+        return matchDto;
     }
 
     public async Task<IEnumerable<MatchDto>> GenerateMatchesForTournamentAsync(Guid tournamentId)

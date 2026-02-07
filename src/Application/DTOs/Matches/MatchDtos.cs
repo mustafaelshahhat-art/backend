@@ -24,6 +24,7 @@ public class MatchDto
 
 public class MatchEventDto
 {
+    public Guid Id { get; set; }
     public string Type { get; set; } = string.Empty;
     public Guid TeamId { get; set; }
     public Guid? PlayerId { get; set; }

@@ -33,5 +33,9 @@ public interface IUserService
     Task<IEnumerable<string>> GetCitiesAsync(string governorate);
     Task<IEnumerable<string>> GetDistrictsAsync(string city);
     Task<IEnumerable<UserDto>> GetRefereesByLocationAsync(string? district = null, string? city = null, string? governorate = null);
+    
+    // Profile Management
+    Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword);
+    Task<string> UploadAvatarAsync(Guid userId, UploadAvatarRequest request);
 }
 

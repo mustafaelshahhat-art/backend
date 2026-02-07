@@ -22,6 +22,7 @@ public class TournamentService : ITournamentService
     private readonly IAnalyticsService _analyticsService;
     private readonly INotificationService _notificationService;
     private readonly IRepository<Team> _teamRepository;
+    private readonly IRealTimeNotifier _notifier;
 
     public TournamentService(
         IRepository<Tournament> tournamentRepository,
@@ -30,7 +31,8 @@ public class TournamentService : ITournamentService
         IMapper mapper,
         IAnalyticsService analyticsService,
         INotificationService notificationService,
-        IRepository<Team> teamRepository)
+        IRepository<Team> teamRepository,
+        IRealTimeNotifier notifier)
     {
         _tournamentRepository = tournamentRepository;
         _registrationRepository = registrationRepository;
@@ -39,6 +41,7 @@ public class TournamentService : ITournamentService
         _analyticsService = analyticsService;
         _notificationService = notificationService;
         _teamRepository = teamRepository;
+        _notifier = notifier;
     }
 
     public async Task<IEnumerable<TournamentDto>> GetAllAsync()
@@ -72,6 +75,10 @@ public class TournamentService : ITournamentService
 
         await _tournamentRepository.AddAsync(tournament);
         await _analyticsService.LogActivityAsync("Tournament Created", $"Tournament {tournament.Name} created.", null, "Admin");
+        
+        // Lightweight System Event
+        await _notifier.SendSystemEventAsync("TOURNAMENT_CREATED", new { TournamentId = tournament.Id });
+        
         return _mapper.Map<TournamentDto>(tournament);
     }
 
@@ -93,6 +100,10 @@ public class TournamentService : ITournamentService
         if (request.Prizes != null) tournament.Prizes = request.Prizes;
 
         await _tournamentRepository.UpdateAsync(tournament);
+
+        // Lightweight System Event
+        await _notifier.SendSystemEventAsync("TOURNAMENT_UPDATED", new { TournamentId = tournament.Id });
+
         return _mapper.Map<TournamentDto>(tournament);
     }
 
@@ -255,7 +266,13 @@ public class TournamentService : ITournamentService
         // Notify Captain
         var team = await _teamRepository.GetByIdAsync(teamId);
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
-        if (team != null) await _notificationService.SendNotificationAsync(team.CaptainId, "Registration Approved", $"Your registration for {tournament?.Name} has been approved.", "system");
+        if (team != null) 
+        {
+            await _notificationService.SendNotificationAsync(team.CaptainId, "Registration Approved", $"Your registration for {tournament?.Name} has been approved.", "system");
+            
+            // Lightweight System Event
+            await _notifier.SendSystemEventAsync("PAYMENT_APPROVED", new { TournamentId = tournamentId, TeamId = teamId }, $"user:{team.CaptainId}");
+        }
 
         // Check if tournament is now full with approved teams - auto-generate matches
         await TryGenerateMatchesIfFullAsync(tournamentId);
@@ -347,7 +364,13 @@ public class TournamentService : ITournamentService
         
         // Notify Captain
         var team = await _teamRepository.GetByIdAsync(teamId);
-        if (team != null) await _notificationService.SendNotificationAsync(team.CaptainId, "Registration Rejected", $"Your registration for {tournament?.Name} was rejected: {request.Reason}", "system");
+        if (team != null) 
+        {
+            await _notificationService.SendNotificationAsync(team.CaptainId, "Registration Rejected", $"Your registration for {tournament?.Name} was rejected: {request.Reason}", "system");
+            
+            // Lightweight System Event
+            await _notifier.SendSystemEventAsync("PAYMENT_REJECTED", new { TournamentId = tournamentId, TeamId = teamId, Reason = request.Reason }, $"user:{team.CaptainId}");
+        }
 
         return _mapper.Map<TeamRegistrationDto>(reg);
     }

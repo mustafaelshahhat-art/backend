@@ -68,4 +68,36 @@ public class RealTimeNotifier : IRealTimeNotifier
             Console.WriteLine($"Error sending team deleted notification: {ex.Message}");
         }
     }
+
+    public async Task SendMatchUpdatedAsync(Application.DTOs.Matches.MatchDto match)
+    {
+        try
+        {
+            await _hubContext.Clients.All.SendAsync("MatchUpdated", match);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending match update: {ex.Message}");
+        }
+    }
+
+    public async Task SendSystemEventAsync(string type, object metadata, string group = null)
+    {
+        try
+        {
+            var payload = new { Type = type, Metadata = metadata, Timestamp = DateTime.UtcNow };
+            if (!string.IsNullOrEmpty(group))
+            {
+                await _hubContext.Clients.Group(group).SendAsync("SystemEvent", payload);
+            }
+            else
+            {
+                await _hubContext.Clients.All.SendAsync("SystemEvent", payload);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending system event: {ex.Message}");
+        }
+    }
 }

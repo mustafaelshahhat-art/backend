@@ -110,5 +110,78 @@ public class UsersController : ControllerBase
         var result = await _userService.GetAdminCountAsync(userId);
         return Ok(result);
     }
+
+    /// <summary>
+    /// Changes the password for the current authenticated user.
+    /// </summary>
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out var id))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            await _userService.ChangePasswordAsync(id, request.CurrentPassword, request.NewPassword);
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Uploads and updates the avatar for the current authenticated user.
+    /// </summary>
+    [HttpPost("upload-avatar")]
+    public async Task<ActionResult<string>> UploadAvatar(UploadAvatarRequest request)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out var id))
+        {
+            return Unauthorized();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Base64Image))
+        {
+            return BadRequest("Image data is required");
+        }
+
+        // Validate base64 image
+        var base64Data = request.Base64Image;
+        if (base64Data.StartsWith("data:image"))
+        {
+            base64Data = base64Data.Substring(base64Data.IndexOf(",") + 1);
+        }
+
+        try
+        {
+            var imageBytes = Convert.FromBase64String(base64Data);
+            
+            // Validate file size (max 2MB)
+            if (imageBytes.Length > 2 * 1024 * 1024)
+            {
+                return BadRequest("File size must be less than 2MB");
+            }
+        }
+        catch
+        {
+            return BadRequest("Invalid image data");
+        }
+
+        try
+        {
+            var avatarUrl = await _userService.UploadAvatarAsync(id, request);
+            return Ok(new { avatarUrl });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
 }
 

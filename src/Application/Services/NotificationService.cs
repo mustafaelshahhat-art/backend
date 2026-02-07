@@ -56,6 +56,9 @@ public class NotificationService : INotificationService
                 var adminNotification = CreateNotification(admin.Id, title, message, type);
                 await _repository.AddAsync(adminNotification);
                 await _notifier.SafeSendNotificationAsync(admin.Id, adminNotification);
+                
+                // Lightweight System Event
+                await _notifier.SendSystemEventAsync("NOTIFICATION_CREATED", new { UserId = admin.Id, NotificationId = adminNotification.Id }, $"user:{admin.Id}");
             }
             return;
         }
@@ -63,6 +66,9 @@ public class NotificationService : INotificationService
         var notification = CreateNotification(userId, title, message, type);
         await _repository.AddAsync(notification);
         await _notifier.SafeSendNotificationAsync(userId, notification);
+        
+        // Lightweight System Event
+        await _notifier.SendSystemEventAsync("NOTIFICATION_CREATED", new { UserId = userId, NotificationId = notification.Id }, $"user:{userId}");
     }
 
     public async Task<IEnumerable<Notification>> GetUserNotificationsAsync(Guid userId)
