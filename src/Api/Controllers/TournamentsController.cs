@@ -12,13 +12,11 @@ public class TournamentsController : ControllerBase
 {
     private readonly ITournamentService _tournamentService;
     private readonly IUserService _userService;
-    private readonly IWebHostEnvironment _environment;
 
-    public TournamentsController(ITournamentService tournamentService, IUserService userService, IWebHostEnvironment environment)
+    public TournamentsController(ITournamentService tournamentService, IUserService userService)
     {
         _tournamentService = tournamentService;
         _userService = userService;
-        _environment = environment;
     }
 
     [HttpGet]
@@ -116,19 +114,13 @@ public class TournamentsController : ControllerBase
 
     private async Task<string> SaveFile(IFormFile file)
     {
-        var rootPath = _environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-        var uploadsFolder = Path.Combine(rootPath, "uploads");
-        if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
-
-        var fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
-        var filePath = Path.Combine(uploadsFolder, fileName);
-
-        using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
-
-        return $"/uploads/{fileName}";
+        // Convert to base64 data URL for hosting platforms that don't allow file writes
+        using var memoryStream = new MemoryStream();
+        await file.CopyToAsync(memoryStream);
+        var bytes = memoryStream.ToArray();
+        var base64 = Convert.ToBase64String(bytes);
+        var mimeType = file.ContentType ?? "image/png";
+        return $"data:{mimeType};base64,{base64}";
     }
 
     [HttpPost("{id}/registrations/{teamId}/approve")]
