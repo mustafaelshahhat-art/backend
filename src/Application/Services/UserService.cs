@@ -18,19 +18,28 @@ public class UserService : IUserService
     private readonly IRepository<Team> _teamRepository;
     private readonly IMapper _mapper;
     private readonly IRealTimeNotifier _realTimeNotifier;
+    private readonly IPasswordHasher _passwordHasher;
+    private readonly IAnalyticsService _analyticsService;
+    private readonly ISystemSettingsService _systemSettingsService;
 
     public UserService(
         IRepository<User> userRepository, 
         IRepository<Activity> activityRepository,
         IRepository<Team> teamRepository,
         IMapper mapper,
-        IRealTimeNotifier realTimeNotifier)
+        IRealTimeNotifier realTimeNotifier,
+        IPasswordHasher passwordHasher,
+        IAnalyticsService analyticsService,
+        ISystemSettingsService systemSettingsService)
     {
         _userRepository = userRepository;
         _activityRepository = activityRepository;
         _teamRepository = teamRepository;
         _mapper = mapper;
         _realTimeNotifier = realTimeNotifier;
+        _passwordHasher = passwordHasher;
+        _analyticsService = analyticsService;
+        _systemSettingsService = systemSettingsService;
     }
 
     public async Task<IEnumerable<UserDto>> GetAllAsync()
@@ -83,9 +92,19 @@ public class UserService : IUserService
 
     public async Task DeleteAsync(Guid id)
     {
-        // Soft delete logic is likely handled by repository or business rule.
-        // Task says "Delete user (or deactivate)". Soft delete enabled in DbContext.
-        // So Repository.DeleteAsync will mark it Deleted, and DbContext will set IsDeleted.
+        var user = await _userRepository.GetByIdAsync(id);
+        if (user == null) throw new NotFoundException(nameof(User), id);
+
+        // CRITICAL SAFETY: Prevent deleting the last admin
+        if (user.Role == UserRole.Admin)
+        {
+            var adminCount = await GetAdminCountAsync(id);
+            if (adminCount.IsLastAdmin)
+            {
+                throw new BadRequestException("لا يمكن حذف آخر مشرف في النظام");
+            }
+        }
+
         await _userRepository.DeleteAsync(id);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, "Deleted");
     }
@@ -94,6 +113,16 @@ public class UserService : IUserService
     {
         var user = await _userRepository.GetByIdAsync(id);
         if (user == null) throw new NotFoundException(nameof(User), id);
+
+        // CRITICAL SAFETY: Prevent suspending the last admin
+        if (user.Role == UserRole.Admin)
+        {
+            var adminCount = await GetAdminCountAsync(id);
+            if (adminCount.IsLastAdmin)
+            {
+                throw new BadRequestException("لا يمكن إيقاف آخر مشرف في النظام");
+            }
+        }
 
         user.Status = UserStatus.Suspended;
         await _userRepository.UpdateAsync(user);
@@ -119,4 +148,95 @@ public class UserService : IUserService
         }
         return new List<UserDto>();
     }
+
+    /// <summary>
+    /// Creates a new admin user. Role is always forced to Admin.
+    /// </summary>
+    public async Task<UserDto> CreateAdminAsync(CreateAdminRequest request, Guid createdByAdminId)
+    {
+        // SYSTEM SETTING CHECK: Block admin creation during maintenance
+        if (await _systemSettingsService.IsMaintenanceModeEnabledAsync())
+        {
+            throw new BadRequestException("لا يمكن إنشاء مشرفين جدد أثناء وضع الصيانة");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Email))
+        {
+            throw new BadRequestException("البريد الإلكتروني مطلوب");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            throw new BadRequestException("الاسم مطلوب");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
+        {
+            throw new BadRequestException("كلمة المرور مطلوبة ويجب أن تكون 6 أحرف على الأقل");
+        }
+
+        var email = request.Email.Trim().ToLower();
+
+        // Check email uniqueness
+        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email);
+        if (existingUser != null && existingUser.Any())
+        {
+            throw new ConflictException("البريد الإلكتروني مستخدم بالفعل");
+        }
+
+        var newAdmin = new User
+        {
+            Email = email,
+            Name = request.Name.Trim(),
+            PasswordHash = _passwordHasher.HashPassword(request.Password),
+            Role = UserRole.Admin, // FORCE Admin role - cannot be overridden
+            Status = request.Status,
+            DisplayId = "ADM-" + new Random().Next(1000, 9999)
+        };
+
+        await _userRepository.AddAsync(newAdmin);
+
+        // Log activity
+        try
+        {
+            await _analyticsService.LogActivityAsync(
+                "Admin Created", 
+                $"Admin created new admin: {newAdmin.Name}", 
+                createdByAdminId, 
+                "System"
+            );
+        }
+        catch
+        {
+            // Don't fail if analytics logging fails
+        }
+
+        return _mapper.Map<UserDto>(newAdmin);
+    }
+
+    /// <summary>
+    /// Gets the count of active admin users and checks if a specific user is the last admin.
+    /// </summary>
+    public async Task<AdminCountDto> GetAdminCountAsync(Guid? userId = null)
+    {
+        var admins = await _userRepository.FindAsync(u => 
+            u.Role == UserRole.Admin && 
+            u.Status != UserStatus.Suspended);
+        
+        var adminList = admins.ToList();
+        var totalAdmins = adminList.Count;
+
+        var isLastAdmin = false;
+        if (userId.HasValue && totalAdmins == 1)
+        {
+            isLastAdmin = adminList.Any(a => a.Id == userId.Value);
+        }
+
+        return new AdminCountDto
+        {
+            TotalAdmins = totalAdmins,
+            IsLastAdmin = isLastAdmin
+        };
+    }
 }
+

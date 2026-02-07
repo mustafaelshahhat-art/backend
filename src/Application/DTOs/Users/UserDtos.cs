@@ -45,3 +45,25 @@ public class UpdateUserRequest
     public string? Neighborhood { get; set; }
     public int? Age { get; set; }
 }
+
+/// <summary>
+/// Request DTO for creating a new admin user.
+/// Role is always forced to Admin on the backend.
+/// </summary>
+public class CreateAdminRequest
+{
+    public required string Name { get; set; }
+    public required string Email { get; set; }
+    public required string Password { get; set; }
+    public UserStatus Status { get; set; } = UserStatus.Active;
+}
+
+/// <summary>
+/// Response DTO containing admin count for safety checks.
+/// </summary>
+public class AdminCountDto
+{
+    public int TotalAdmins { get; set; }
+    public bool IsLastAdmin { get; set; }
+}
+

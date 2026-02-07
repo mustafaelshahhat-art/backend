@@ -26,6 +26,7 @@ public class TeamService : ITeamService
     private readonly INotificationService _notificationService;
     private readonly IRealTimeNotifier _realTimeNotifier;
     private readonly ITournamentLifecycleService _lifecycleService;
+    private readonly ISystemSettingsService _systemSettingsService;
 
     public TeamService(
         IRepository<Team> teamRepository,
@@ -39,7 +40,8 @@ public class TeamService : ITeamService
         IAnalyticsService analyticsService,
         INotificationService notificationService,
         IRealTimeNotifier realTimeNotifier,
-        ITournamentLifecycleService lifecycleService)
+        ITournamentLifecycleService lifecycleService,
+        ISystemSettingsService systemSettingsService)
     {
         _teamRepository = teamRepository;
         _userRepository = userRepository;
@@ -53,6 +55,7 @@ public class TeamService : ITeamService
         _notificationService = notificationService;
         _realTimeNotifier = realTimeNotifier;
         _lifecycleService = lifecycleService;
+        _systemSettingsService = systemSettingsService;
     }
 
     public async Task<IEnumerable<TeamDto>> GetAllAsync()
@@ -180,6 +183,12 @@ public class TeamService : ITeamService
 
     public async Task<TeamDto> CreateAsync(CreateTeamRequest request, Guid captainId)
     {
+        // SYSTEM SETTING CHECK: Block team creation if disabled
+        if (!await _systemSettingsService.IsTeamCreationAllowedAsync())
+        {
+            throw new BadRequestException("إنشاء الفرق متوقف حالياً");
+        }
+
         var captain = await _userRepository.GetByIdAsync(captainId);
         if (captain == null) throw new NotFoundException(nameof(User), captainId);
 
