@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
     public DbSet<Activity> Activities { get; set; }
     public DbSet<TeamJoinRequest> TeamJoinRequests { get; set; }
     public DbSet<MatchMessage> MatchMessages { get; set; }
+    public DbSet<SystemSetting> SystemSettings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -15,4 +15,17 @@ public interface IUserService
     Task SuspendAsync(Guid id);
     Task ActivateAsync(Guid id);
     Task<IEnumerable<UserDto>> GetByRoleAsync(string role);
+    
+    /// <summary>
+    /// Creates a new admin user. Only callable by existing admins.
+    /// Role is forced to Admin regardless of input.
+    /// </summary>
+    Task<UserDto> CreateAdminAsync(CreateAdminRequest request, Guid createdByAdminId);
+    
+    /// <summary>
+    /// Gets the total count of active admin users and checks if a specific user is the last admin.
+    /// Used for safety checks before delete/suspend operations.
+    /// </summary>
+    Task<AdminCountDto> GetAdminCountAsync(Guid? userId = null);
 }
+

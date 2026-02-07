@@ -122,6 +122,7 @@ app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 app.UseMiddleware<UserStatusCheckMiddleware>();
+app.UseMiddleware<MaintenanceModeMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();

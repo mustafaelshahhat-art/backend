@@ -81,4 +81,34 @@ public class UsersController : ControllerBase
         await _userService.ActivateAsync(id);
         return NoContent();
     }
+
+    /// <summary>
+    /// Creates a new admin user. Only accessible by existing admins.
+    /// Role is forced to Admin on the backend.
+    /// </summary>
+    [HttpPost("create-admin")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<UserDto>> CreateAdmin(CreateAdminRequest request)
+    {
+        var creatorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(creatorId) || !Guid.TryParse(creatorId, out var adminId))
+        {
+            return Unauthorized();
+        }
+
+        var newAdmin = await _userService.CreateAdminAsync(request, adminId);
+        return Ok(newAdmin);
+    }
+
+    /// <summary>
+    /// Gets the count of active admins. Used for safety checks on the frontend.
+    /// </summary>
+    [HttpGet("admin-count")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<AdminCountDto>> GetAdminCount([FromQuery] Guid? userId = null)
+    {
+        var result = await _userService.GetAdminCountAsync(userId);
+        return Ok(result);
+    }
 }
+
