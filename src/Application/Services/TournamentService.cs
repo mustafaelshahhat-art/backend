@@ -355,18 +355,17 @@ public class TournamentService : ITournamentService
     {
         var pending = await _registrationRepository.FindAsync(
             r => r.Status == RegistrationStatus.PendingPaymentReview,
-            new[] { "Team", "Team.Captain" });
+            new[] { "Team", "Team.Captain", "Tournament" });
         
         var result = new List<PendingPaymentResponse>();
         foreach (var p in pending)
         {
-            var tournament = await _tournamentRepository.GetByIdAsync(p.TournamentId);
-            // Ideally load relations efficiently.
+            if (p.Tournament == null) continue;
             
             result.Add(new PendingPaymentResponse
             {
                 Registration = _mapper.Map<TeamRegistrationDto>(p),
-                Tournament = _mapper.Map<TournamentDto>(tournament!) // Assuming tournament exists integrity
+                Tournament = _mapper.Map<TournamentDto>(p.Tournament)
             });
         }
         return result;
