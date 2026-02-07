@@ -21,6 +21,7 @@ public interface ITournamentService
     Task<TeamRegistrationDto> RejectRegistrationAsync(Guid tournamentId, Guid teamId, RejectRegistrationRequest request);
     
     Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync();
+    Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync();
     Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId);
     Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId);
     Task<TournamentDto> CloseRegistrationAsync(Guid id);

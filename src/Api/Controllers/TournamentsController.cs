@@ -151,6 +151,14 @@ public class TournamentsController : ControllerBase
         return Ok(pending);
     }
 
+    [HttpGet("payments/all")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<IEnumerable<PendingPaymentResponse>>> GetAllPaymentRequests()
+    {
+        var requests = await _tournamentService.GetAllPaymentRequestsAsync();
+        return Ok(requests);
+    }
+
     [HttpPost("{id}/generate-matches")]
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult> GenerateMatches(Guid id)

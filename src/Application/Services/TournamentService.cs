@@ -372,6 +372,29 @@ public class TournamentService : ITournamentService
         return result;
     }
 
+    public async Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync()
+    {
+        // Return all payment requests with receipts (pending, approved, rejected)
+        var registrations = await _registrationRepository.FindAsync(
+            r => r.Status == RegistrationStatus.PendingPaymentReview || 
+                 r.Status == RegistrationStatus.Approved || 
+                 r.Status == RegistrationStatus.Rejected,
+            new[] { "Team", "Team.Captain", "Tournament" });
+        
+        var result = new List<PendingPaymentResponse>();
+        foreach (var reg in registrations)
+        {
+            if (reg.Tournament == null) continue;
+            
+            result.Add(new PendingPaymentResponse
+            {
+                Registration = _mapper.Map<TeamRegistrationDto>(reg),
+                Tournament = _mapper.Map<TournamentDto>(reg.Tournament)
+            });
+        }
+        return result;
+    }
+
     public async Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
