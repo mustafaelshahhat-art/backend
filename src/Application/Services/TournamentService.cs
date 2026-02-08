@@ -580,7 +580,10 @@ public class TournamentService : ITournamentService
         
         // 2. Get all approved or withdrawn registrations (teams that participated)
         var registrations = await _registrationRepository.FindAsync(
-            r => r.TournamentId == tournamentId && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.Withdrawn),
+            r => r.TournamentId == tournamentId && 
+            (r.Status == RegistrationStatus.Approved || 
+             r.Status == RegistrationStatus.Withdrawn ||
+             r.Status == RegistrationStatus.Eliminated),
             new[] { "Team" }
         );
         
@@ -658,5 +661,62 @@ public class TournamentService : ITournamentService
             .ThenByDescending(s => s.GoalDifference)
             .ThenByDescending(s => s.GoalsFor)
             .ToList();
+    }
+
+    public async Task EliminateTeamAsync(Guid tournamentId, Guid teamId)
+    {
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+
+        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId);
+        var reg = registrations.FirstOrDefault();
+        if (reg == null) throw new NotFoundException("التسجيل غير موجود لهذا الفريق في هذه البطولة.");
+
+        if (reg.Status == RegistrationStatus.Eliminated) return;
+
+        reg.Status = RegistrationStatus.Eliminated;
+        await _registrationRepository.UpdateAsync(reg);
+
+        // Forfeit all UPCOMING matches for this team in this tournament
+        var matches = await _matchRepository.FindAsync(m => 
+            m.TournamentId == tournamentId && 
+            (m.HomeTeamId == teamId || m.AwayTeamId == teamId) && 
+            (m.Status == MatchStatus.Scheduled || m.Status == MatchStatus.Live || m.Status == MatchStatus.Postponed));
+
+        foreach (var match in matches)
+        {
+            match.Status = MatchStatus.Finished;
+            match.Forfeit = true;
+            
+            // Assign 3-0 loss to eliminated team
+            if (match.HomeTeamId == teamId)
+            {
+                match.HomeScore = 0;
+                match.AwayScore = 3;
+            }
+            else
+            {
+                match.HomeScore = 3;
+                match.AwayScore = 0;
+            }
+            
+            await _matchRepository.UpdateAsync(match);
+        }
+
+        var team = await _teamRepository.GetByIdAsync(teamId);
+        await _analyticsService.LogActivityAsync("إقصاء فريق", $"تم إقصاء فريق {team?.Name ?? "Unknown"} من بطولة {tournament.Name}", null, "Admin");
+
+        // Notify Captain
+        if (team != null)
+        {
+            await _notificationService.SendNotificationAsync(team.CaptainId, "تم إقصاء الفريق من البطولة", $"للأسف، تم إقصاء فريقكم {team.Name} من بطولة {tournament.Name} من قبل اللجنة المنظمة. نأمل رؤيتكم في بطولات قادمة.", "tournament_elimination");
+        }
+
+        // Real-time update
+        var updatedTournament = await GetByIdFreshAsync(tournamentId);
+        if (updatedTournament != null)
+        {
+            await _notifier.SendTournamentUpdatedAsync(updatedTournament);
+        }
     }
 }

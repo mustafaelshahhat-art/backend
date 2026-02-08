@@ -25,4 +25,5 @@ public interface ITournamentService
     Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId);
     Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId);
     Task<TournamentDto> CloseRegistrationAsync(Guid id);
+    Task EliminateTeamAsync(Guid tournamentId, Guid teamId);
 }

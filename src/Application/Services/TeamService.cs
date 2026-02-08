@@ -294,6 +294,16 @@ public class TeamService : ITeamService
         
         foreach (var reg in registrations)
         {
+            // If the deleted registration was counted in CurrentTeams, decrement it
+            if (reg.Status == RegistrationStatus.Approved || reg.Status == RegistrationStatus.PendingPaymentReview)
+            {
+                var tournament = await _tournamentRepository.GetByIdAsync(reg.TournamentId);
+                if (tournament != null)
+                {
+                    tournament.CurrentTeams = Math.Max(0, tournament.CurrentTeams - 1);
+                    await _tournamentRepository.UpdateAsync(tournament);
+                }
+            }
             await _registrationRepository.DeleteAsync(reg);
         }
 

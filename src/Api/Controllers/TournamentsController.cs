@@ -174,4 +174,12 @@ public class TournamentsController : ControllerBase
         var standings = await _tournamentService.GetStandingsAsync(id);
         return Ok(standings);
     }
+
+    [HttpPost("{id}/registrations/{teamId}/eliminate")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> EliminateTeam(Guid id, Guid teamId)
+    {
+        await _tournamentService.EliminateTeamAsync(id, teamId);
+        return NoContent();
+    }
 }
