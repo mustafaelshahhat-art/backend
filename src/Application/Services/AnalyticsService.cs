@@ -45,12 +45,14 @@ public class AnalyticsService : IAnalyticsService
     public async Task<AnalyticsOverview> GetOverviewAsync()
     {
         var totalUsers = await _userRepository.CountAsync(u => u.IsEmailVerified);
+        var totalReferees = await _userRepository.CountAsync(u => u.IsEmailVerified && u.Role == Domain.Enums.UserRole.Referee);
         var totalTeams = await _teamRepository.CountAsync(_ => true);
         var activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == "registration_open" || t.Status == "active");
         var pendingObjections = await _objectionRepository.CountAsync(o => o.Status == Domain.Enums.ObjectionStatus.Pending);
 
         var today = DateTime.UtcNow.Date;
         var matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today);
+        var loginsToday = await _activityRepository.CountAsync(a => a.Type == Common.ActivityConstants.USER_LOGIN && a.CreatedAt.Date == today);
         
         var finishedMatches = await _matchRepository.FindAsync(m => m.Status == Domain.Enums.MatchStatus.Finished);
         var totalGoals = finishedMatches.Sum(m => m.HomeScore + m.AwayScore);
@@ -59,9 +61,11 @@ public class AnalyticsService : IAnalyticsService
         {
             TotalUsers = totalUsers,
             TotalTeams = totalTeams,
+            TotalReferees = totalReferees,
             ActiveTournaments = activeTournaments,
             PendingObjections = pendingObjections,
             MatchesToday = matchesToday,
+            LoginsToday = loginsToday,
             TotalGoals = totalGoals
         };
     }
