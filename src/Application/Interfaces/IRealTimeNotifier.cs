@@ -36,5 +36,5 @@ public interface IRealTimeNotifier
     Task SendObjectionSubmittedAsync(Application.DTOs.Objections.ObjectionDto objection);
     Task SendObjectionResolvedAsync(Application.DTOs.Objections.ObjectionDto objection);
 
-    Task SendSystemEventAsync(string type, object metadata, string group = null);
+    Task SendSystemEventAsync(string type, object metadata, string? group = null);
 }

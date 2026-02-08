@@ -19,13 +19,26 @@ public class ObjectionService : IObjectionService
     private readonly IMapper _mapper;
     private readonly INotificationService _notificationService;
     private readonly IRealTimeNotifier _notifier;
+    private readonly IAnalyticsService _analyticsService;
+    private readonly IRepository<Team> _teamRepository;
+    private readonly IRepository<Match> _matchRepository;
 
-    public ObjectionService(IRepository<Objection> objectionRepository, IMapper mapper, INotificationService notificationService, IRealTimeNotifier notifier)
+    public ObjectionService(
+        IRepository<Objection> objectionRepository, 
+        IMapper mapper, 
+        INotificationService notificationService, 
+        IRealTimeNotifier notifier,
+        IAnalyticsService analyticsService,
+        IRepository<Team> teamRepository,
+        IRepository<Match> matchRepository)
     {
         _objectionRepository = objectionRepository;
         _mapper = mapper;
         _notificationService = notificationService;
         _notifier = notifier;
+        _analyticsService = analyticsService;
+        _teamRepository = teamRepository;
+        _matchRepository = matchRepository;
     }
 
     public async Task<IEnumerable<ObjectionDto>> GetAllAsync()
@@ -81,6 +94,20 @@ public class ObjectionService : IObjectionService
         // Persistent Notification for Admins
         await _notificationService.SendNotificationByTemplateAsync(Guid.Empty, NotificationTemplates.OBJECTION_SUBMITTED, new Dictionary<string, string> { { "matchId", request.MatchId.ToString() } }, "objection");
         
+        // Log Activity
+        var team = await _teamRepository.GetByIdAsync(teamId);
+        var match = await _matchRepository.GetByIdAsync(request.MatchId, new[] { "HomeTeam", "AwayTeam" });
+
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.OBJECTION_SUBMITTED, 
+            new Dictionary<string, string> { 
+                { "matchInfo", $"{match?.HomeTeam?.Name ?? "فريق"} ضد {match?.AwayTeam?.Name ?? "فريق"}" },
+                { "teamName", team?.Name ?? "فريق" }
+            }, 
+            null, 
+            "فريق"
+        );
+
         return dto;
     }
 
@@ -115,6 +142,19 @@ public class ObjectionService : IObjectionService
                 new Dictionary<string, string> { { "matchId", objection.MatchId.ToString() } }, 
                 "objection");
         }
+
+        // Log Activity
+        var matchObj = await _matchRepository.GetByIdAsync(objection.MatchId, new[] { "HomeTeam", "AwayTeam" });
+
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.OBJECTION_RESOLVED, 
+            new Dictionary<string, string> { 
+                { "matchInfo", $"{matchObj?.HomeTeam?.Name ?? "فريق"} ضد {matchObj?.AwayTeam?.Name ?? "فريق"}" },
+                { "resolution", request.Approved ? "مقبول" : "مرفوض" }
+            }, 
+            null, 
+            "إدارة"
+        );
 
         return dto;
     }

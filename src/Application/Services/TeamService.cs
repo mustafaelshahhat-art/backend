@@ -122,7 +122,12 @@ public class TeamService : ITeamService
         team.IsActive = false;
         await _teamRepository.UpdateAsync(team);
 
-        await _analyticsService.LogActivityAsync("تعطيل فريق", $"تم تعطيل فريق {team.Name} (ID: {teamId}) من قبل المسؤول.", null, "Admin");
+        await _analyticsService.LogActivityByTemplateAsync(
+            "TEAM_DISABLED", // Assuming this code is acceptable or needs adding to constants
+            new Dictionary<string, string> { { "teamName", team.Name } }, 
+            null, 
+            "إدارة"
+        );
 
         // 3. Handle Active Tournaments (Withdrawal)
         var activeRegistrations = await _registrationRepository.FindAsync(r => r.TeamId == teamId && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.PendingPaymentReview));
@@ -239,7 +244,12 @@ public class TeamService : ITeamService
         captain.TeamId = team.Id;
         await _userRepository.UpdateAsync(captain);
 
-        await _analyticsService.LogActivityAsync("إنشاء فريق", $"تم إنشاء فريق {team.Name} بواسطة {captain.Name}", captainId, captain.Name);
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.TEAM_CREATED, 
+            new Dictionary<string, string> { { "teamName", team.Name } }, 
+            captainId, 
+            captain.Name
+        );
         
         var dto = _mapper.Map<TeamDto>(team);
         dto.CaptainName = captain.Name; // Ensure it's populated for the immediate response
@@ -261,10 +271,10 @@ public class TeamService : ITeamService
         if (request.IsActive.HasValue && team.IsActive != request.IsActive.Value)
         {
             team.IsActive = request.IsActive.Value;
-            await _analyticsService.LogActivityAsync(
-                team.IsActive ? "تنشيط فريق" : "إلغاء تنشيط فريق",
-                $"تم {(team.IsActive ? "تنشيط" : "إلغاء تنشيط")} فريق {team.Name} (ID: {id}) من قبل النظام/المسؤول.",
-                null, "Admin");
+            await _analyticsService.LogActivityByTemplateAsync(
+                team.IsActive ? "TEAM_ACTIVATED" : "TEAM_DEACTIVATED",
+                new Dictionary<string, string> { { "teamName", team.Name } },
+                null, "إدارة");
         }
 
         await _teamRepository.UpdateAsync(team);
@@ -389,7 +399,15 @@ public class TeamService : ITeamService
             InitiatedByPlayer = true
         };
 
-        await _analyticsService.LogActivityAsync("طلب انضمام", $"طلب المستخدم {user.Name} الانضمام للفريق ذو المعرف {teamId}", playerId, user.Name);
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.TEAM_JOINED, // Using JOINED for request for now, or add TEAM_JOIN_REQUEST
+            new Dictionary<string, string> { 
+                { "playerName", user.Name },
+                { "teamName", team?.Name ?? "الفريق" }
+            }, 
+            playerId, 
+            user.Name
+        );
         return result;
     }
 

@@ -97,7 +97,12 @@ public class AuthService : IAuthService
         user.RefreshToken = refreshToken;
         user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
         await _userRepository.UpdateAsync(user);
-        await _analyticsService.LogActivityAsync("User Registered", $"User {user.Name} registered.", user.Id, user.Name);
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.USER_REGISTERED, 
+            new Dictionary<string, string> { { "userName", user.Name } }, 
+            user.Id, 
+            user.Name
+        );
 
         var mappedUser = await MapUserWithTeamInfoAsync(user);
 
@@ -149,7 +154,12 @@ public class AuthService : IAuthService
         
         try 
         {
-            await _analyticsService.LogActivityAsync("User Login", $"User {user.Name} logged in.", user.Id, user.Name);
+            await _analyticsService.LogActivityByTemplateAsync(
+                ActivityConstants.USER_LOGIN, 
+                new Dictionary<string, string> { { "userName", user.Name } }, 
+                user.Id, 
+                user.Name
+            );
         }
         catch 
         {

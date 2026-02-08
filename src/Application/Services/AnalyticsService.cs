@@ -115,5 +115,27 @@ public class AnalyticsService : IAnalyticsService
         };
         await _activityRepository.AddAsync(activity);
     }
+
+    public async Task LogActivityByTemplateAsync(string code, Dictionary<string, string> placeholders, Guid? userId = null, string? userName = null)
+    {
+        var localized = Application.Common.ActivityConstants.GetLocalized(code, placeholders);
+        
+        // We store "Category" in Type (for Badge/Filter) 
+        // We store "Title: Message" in Message (for readability)
+        // Or better: Just message, and let Frontend map Code if we stored Code.
+        // But user asked to keep compatibility. 
+        // Previously Type was "بدء مباراة" (Title).
+        // Let's stick to storing the Internal Code in Type as requested by "Activity Type Normalization" rule 1.
+        // Frontend will be updated to map Code -> Category.
+        
+        var activity = new Activity
+        {
+            Type = code, 
+            Message = localized.Message,
+            UserId = userId,
+            UserName = userName
+        };
+        await _activityRepository.AddAsync(activity);
+    }
 }
 

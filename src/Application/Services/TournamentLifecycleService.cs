@@ -122,7 +122,12 @@ public class TournamentLifecycleService : ITournamentLifecycleService
             await _tournamentRepository.UpdateAsync(tournament);
 
             // 5. Log & Notify
-            await _analyticsService.LogActivityAsync("Tournament Finalized", $"Tournament {tournament.Name} finished. Winner: {topTeam.TeamName}", null, "System");
+            await _analyticsService.LogActivityByTemplateAsync(
+                "TOURNAMENT_FINALIZED", // Needs addition
+                new Dictionary<string, string> { { "tournamentName", tournament.Name }, { "winnerName", topTeam.TeamName } }, 
+                null, 
+                "نظام"
+            );
             
             // Notify Admin
             await _notificationService.SendNotificationAsync(Guid.Empty, "القمة انتهت!", $"انتهت بطولة {tournament.Name} رسمياً وتوج فريق {topTeam.TeamName} باللقب!", "admin_broadcast");

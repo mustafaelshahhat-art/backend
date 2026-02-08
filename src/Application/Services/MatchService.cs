@@ -71,7 +71,12 @@ public class MatchService : IMatchService
 
         match.Status = MatchStatus.Live;
         await _matchRepository.UpdateAsync(match);
-        await _analyticsService.LogActivityAsync("بدء مباراة", $"بدأت المباراة ذات المعرف {id}.", null, "Referee");
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.MATCH_STARTED, 
+            new Dictionary<string, string> { { "matchInfo", $"{match.HomeTeam?.Name ?? "فريق"} ضد {match.AwayTeam?.Name ?? "فريق"}" } }, 
+            null, 
+            "نظام"
+        );
         
         // Lightweight System Event
         await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Live.ToString() }, $"match:{id}");
@@ -99,7 +104,15 @@ public class MatchService : IMatchService
 
         match.Status = MatchStatus.Finished;
         await _matchRepository.UpdateAsync(match);
-        await _analyticsService.LogActivityAsync("انتهاء مباراة", $"انتهت المباراة ذات المعرف {id}.", null, "Referee");
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.MATCH_ENDED, 
+            new Dictionary<string, string> { 
+                { "matchInfo", $"{match.HomeTeam?.Name ?? "فريق"} ضد {match.AwayTeam?.Name ?? "فريق"}" },
+                { "score", $"{match.HomeScore}-{match.AwayScore}" }
+            }, 
+            null, 
+            "نظام"
+        );
 
         // Lightweight System Event
         await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Finished.ToString() }, $"match:{id}");
@@ -148,7 +161,16 @@ public class MatchService : IMatchService
             
             
             await _matchRepository.UpdateAsync(match);
-            await _analyticsService.LogActivityAsync("تسجيل هدف", $"هدف لفريق {request.TeamId} في المباراة {id}", request.PlayerId, "Player");
+            await _analyticsService.LogActivityByTemplateAsync(
+                ActivityConstants.MATCH_EVENT_ADDED, 
+                new Dictionary<string, string> { 
+                    { "eventType", "هدف" },
+                    { "playerName", request.PlayerId.ToString() }, // Ideally fetch player name
+                    { "matchInfo", id.ToString() }
+                }, 
+                request.PlayerId, 
+                "لاعب"
+            );
         }
 
         await _eventRepository.AddAsync(matchEvent);
@@ -193,7 +215,14 @@ public class MatchService : IMatchService
         }
 
         await _eventRepository.DeleteAsync(matchEvent);
-        await _analyticsService.LogActivityAsync("إزالة حدث", $"تمت إزالة الحدث {eventId} من المباراة {matchId}", null, "Admin");
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.MATCH_EVENT_REMOVED, 
+            new Dictionary<string, string> { 
+                { "matchInfo", matchId.ToString() }
+            }, 
+            null, 
+            "إدارة"
+        );
 
         // Notify
         var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
@@ -256,7 +285,15 @@ public class MatchService : IMatchService
         // 1. Score Update
         if (scoreChanged)
         {
-            await _analyticsService.LogActivityAsync("تحديث النتيجة", $"تم تحديث نتيجة المباراة {id} إلى {match.HomeScore}-{match.AwayScore}", null, "AdminOverride");
+            await _analyticsService.LogActivityByTemplateAsync(
+                ActivityConstants.MATCH_SCORE_UPDATED, 
+                new Dictionary<string, string> { 
+                    { "matchInfo", $"{homeTeam?.Name ?? "فريق"} ضد {awayTeam?.Name ?? "فريق"}" },
+                    { "score", $"{match.HomeScore}-{match.AwayScore}" }
+                }, 
+                null, 
+                "إدارة"
+            );
             var scoreStr = $"{match.HomeScore}-{match.AwayScore}";
             
             if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, "match");
@@ -407,7 +444,14 @@ public class MatchService : IMatchService
             await _matchRepository.AddAsync(match);
         }
 
-        await _analyticsService.LogActivityAsync("توليد مباريات", $"تم توليد {matches.Count} مباراة للبطولة {tournamentId}", null, "System");
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.TOURNAMENT_GENERATED, 
+            new Dictionary<string, string> { 
+                { "tournamentName", tournamentId.ToString() } 
+            }, 
+            null, 
+            "نظام"
+        );
 
         var matchDtos = _mapper.Map<IEnumerable<MatchDto>>(matches);
         await _notifier.SendMatchesGeneratedAsync(matchDtos);

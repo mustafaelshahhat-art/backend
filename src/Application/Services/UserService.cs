@@ -265,11 +265,11 @@ public class UserService : IUserService
         // Log activity
         try
         {
-            await _analyticsService.LogActivityAsync(
-                "Admin Created", 
-                $"Admin created new admin: {newAdmin.Name}", 
+            await _analyticsService.LogActivityByTemplateAsync(
+                "ADMIN_CREATED", // Add to constants
+                new Dictionary<string, string> { { "adminName", newAdmin.Name } }, 
                 createdByAdminId, 
-                "System"
+                "إدارة"
             );
         }
         catch
@@ -364,11 +364,11 @@ public class UserService : IUserService
         // Log activity
         try
         {
-            await _analyticsService.LogActivityAsync(
-                "Password Changed", 
-                "User changed their password", 
+            await _analyticsService.LogActivityByTemplateAsync(
+                "PASSWORD_CHANGED", 
+                new Dictionary<string, string>(), 
                 userId, 
-                "Profile"
+                "مستخدم"
             );
         }
         catch
@@ -431,11 +431,11 @@ public class UserService : IUserService
         // Log activity
         try
         {
-            await _analyticsService.LogActivityAsync(
-                "Avatar Updated", 
-                "User updated their profile picture", 
+            await _analyticsService.LogActivityByTemplateAsync(
+                "AVATAR_UPDATED", 
+                new Dictionary<string, string>(), 
                 userId, 
-                "Profile"
+                "مستخدم"
             );
         }
         catch

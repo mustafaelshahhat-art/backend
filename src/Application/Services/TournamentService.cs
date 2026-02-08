@@ -81,7 +81,12 @@ public class TournamentService : ITournamentService
         };
 
         await _tournamentRepository.AddAsync(tournament);
-        await _analyticsService.LogActivityAsync("إنشاء بطولة", $"تم إنشاء بطولة {tournament.Name}.", null, "Admin");
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.TOURNAMENT_CREATED, 
+            new Dictionary<string, string> { { "tournamentName", tournament.Name } }, 
+            null, 
+            "آدمن"
+        );
         
         // Real-time Event
         await _notifier.SendTournamentCreatedAsync(_mapper.Map<TournamentDto>(tournament));
@@ -127,7 +132,12 @@ public class TournamentService : ITournamentService
         tournament.Status = "registration_closed";
         
         await _tournamentRepository.UpdateAsync(tournament);
-        await _analyticsService.LogActivityAsync("إغلاق التسجيل", $"تم إغلاق التسجيل في بطولة {tournament.Name}", null, "Admin");
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.TOURNAMENT_REGISTRATION_CLOSED, 
+            new Dictionary<string, string> { { "tournamentName", tournament.Name } }, 
+            null, 
+            "إدارة"
+        );
         
         var dto = await GetByIdFreshAsync(id);
         
@@ -162,7 +172,12 @@ public class TournamentService : ITournamentService
         // 3. Delete Tournament
         await _tournamentRepository.DeleteAsync(tournament);
         
-        await _analyticsService.LogActivityAsync("حذف بطولة", $"تم حذف بطولة {tournament.Name} (ID: {id}).", null, "Admin");
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.TOURNAMENT_DELETED, 
+            new Dictionary<string, string> { { "tournamentName", tournament.Name } }, 
+            null, 
+            "إدارة"
+        );
         
         // Real-time Event
         await _notifier.SendTournamentDeletedAsync(id);
@@ -319,11 +334,21 @@ public class TournamentService : ITournamentService
         reg.Status = RegistrationStatus.Approved;
         
         await _registrationRepository.UpdateAsync(reg);
-        await _analyticsService.LogActivityAsync("قبول طلب تسجيل", $"تمت الموافقة على انضمام فريق ID {teamId} لبطولة ID {tournamentId}", null, "Admin");
         
         // Notify Captain
         var team = await _teamRepository.GetByIdAsync(teamId);
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
+        
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.REGISTRATION_APPROVED, 
+            new Dictionary<string, string> { 
+                { "teamName", team?.Name ?? teamId.ToString() }, 
+                { "tournamentName", tournament?.Name ?? tournamentId.ToString() } 
+            }, 
+            null, 
+            "إدارة"
+        );
+
         if (team != null) 
         {
             await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.TEAM_APPROVED, new Dictionary<string, string> { { "tournamentName", tournament?.Name ?? "البطولة" } }, "system");
@@ -569,7 +594,12 @@ public class TournamentService : ITournamentService
             await _notifier.SendTournamentUpdatedAsync(tournamentDto);
         }
 
-        await _analyticsService.LogActivityAsync("توليد مباريات", $"تم توليد {matchNumber} مباراة لبطولة {tournament.Name}", null, "Admin");
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.TOURNAMENT_GENERATED, 
+            new Dictionary<string, string> { { "tournamentName", tournament.Name } }, 
+            null, 
+            "إدارة"
+        );
 
         var matchDtos = _mapper.Map<IEnumerable<MatchDto>>(matches);
         await _notifier.SendMatchesGeneratedAsync(matchDtos);
@@ -708,7 +738,15 @@ public class TournamentService : ITournamentService
         }
 
         var team = await _teamRepository.GetByIdAsync(teamId);
-        await _analyticsService.LogActivityAsync("إقصاء فريق", $"تم إقصاء فريق {team?.Name ?? "Unknown"} من بطولة {tournament.Name}", null, "Admin");
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.TEAM_ELIMINATED, 
+            new Dictionary<string, string> { 
+                { "teamName", team?.Name ?? "Unknown" },
+                { "tournamentName", tournament.Name }
+            }, 
+            null, 
+            "إدارة"
+        );
 
         // Notify Captain
         if (team != null)

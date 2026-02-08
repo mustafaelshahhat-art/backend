@@ -194,6 +194,9 @@ using (var scope = app.Services.CreateScope())
             
             dbContext.SaveChanges();
         }
+        // Initialize Activity Log Migration (Run once or on demand)
+        // var migrationService = scope.ServiceProvider.GetRequiredService<Application.Services.ActivityLogMigrationService>();
+        // await migrationService.MigrateLegacyLogsAsync();
     }
     catch (Exception ex)
     {

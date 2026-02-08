@@ -72,7 +72,7 @@ public class NotificationService : INotificationService
         await _notifier.SendSystemEventAsync("NOTIFICATION_CREATED", new { UserId = userId, NotificationId = notification.Id }, $"user:{userId}");
     }
 
-    public async Task SendNotificationByTemplateAsync(Guid userId, string templateKey, Dictionary<string, string> placeholders = null, string type = "system")
+    public async Task SendNotificationByTemplateAsync(Guid userId, string templateKey, Dictionary<string, string>? placeholders = null, string type = "system")
     {
         var (title, message) = NotificationTemplates.GetTemplate(templateKey, placeholders);
         await SendNotificationAsync(userId, title, message, type);
