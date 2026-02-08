@@ -12,6 +12,7 @@ public class User : BaseEntity
     
     public UserRole Role { get; set; } = UserRole.Player;
     public UserStatus Status { get; set; } = UserStatus.Active;
+    public bool IsEmailVerified { get; set; } = false;
     
     // Profile fields
     public string? Avatar { get; set; }

@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<IMatchMessageRepository, MatchMessageRepository>();
         services.AddScoped<IMatchRepository, MatchRepository>();
+        services.AddScoped<IEmailService, Services.EmailService>();
 
         return services;
     }

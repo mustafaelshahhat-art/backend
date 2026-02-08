@@ -24,6 +24,7 @@ public class UserDto
     public Guid? TeamId { get; set; }
     public string? TeamName { get; set; }
     public bool IsTeamOwner { get; set; }
+    public bool IsEmailVerified { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<UserActivityDto> Activities { get; set; } = new();
 }
@@ -43,6 +44,7 @@ public class UserPublicDto
     public Guid? TeamId { get; set; }
     public string? TeamName { get; set; }
     public bool IsTeamOwner { get; set; }
+    public bool IsEmailVerified { get; set; }
     public string Status { get; set; } = string.Empty;
 }
 

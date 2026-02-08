@@ -33,3 +33,13 @@ public class ConflictException : Exception
 {
     public ConflictException(string message) : base(message) { }
 }
+
+public class EmailNotVerifiedException : Exception
+{
+    public string Email { get; }
+    public EmailNotVerifiedException(string email, string message = "يجب تأكيد البريد الإلكتروني قبل تسجيل الدخول") 
+        : base(message) 
+    {
+        Email = email;
+    }
+}

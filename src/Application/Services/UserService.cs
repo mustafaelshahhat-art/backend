@@ -48,7 +48,7 @@ public class UserService : IUserService
 
     public async Task<IEnumerable<UserDto>> GetAllAsync()
     {
-        var users = await _userRepository.GetAllAsync();
+        var users = await _userRepository.FindAsync(u => u.IsEmailVerified);
         return _mapper.Map<IEnumerable<UserDto>>(users);
     }
 
@@ -180,7 +180,7 @@ public class UserService : IUserService
     {
         if (Enum.TryParse<UserRole>(role, true, out var userRole))
         {
-            var users = await _userRepository.FindAsync(u => u.Role == userRole);
+            var users = await _userRepository.FindAsync(u => u.Role == userRole && u.IsEmailVerified);
             return _mapper.Map<IEnumerable<UserDto>>(users);
         }
         return new List<UserDto>();
@@ -191,7 +191,7 @@ public class UserService : IUserService
         if (Enum.TryParse<UserRole>(role, true, out var userRole))
         {
             if (userRole == UserRole.Admin) return new List<UserPublicDto>();
-            var users = await _userRepository.FindAsync(u => u.Role == userRole);
+            var users = await _userRepository.FindAsync(u => u.Role == userRole && u.IsEmailVerified);
             return _mapper.Map<IEnumerable<UserPublicDto>>(users);
         }
         return new List<UserPublicDto>();
@@ -257,6 +257,7 @@ public class UserService : IUserService
             PasswordHash = _passwordHasher.HashPassword(request.Password),
             Role = UserRole.Admin, // FORCE Admin role - cannot be overridden
             Status = request.Status,
+            IsEmailVerified = true, // Manually created admins are trusted/verified
             DisplayId = "ADM-" + new Random().Next(1000, 9999)
         };
 
@@ -289,7 +290,8 @@ public class UserService : IUserService
     {
         var admins = await _userRepository.FindAsync(u => 
             u.Role == UserRole.Admin && 
-            u.Status != UserStatus.Suspended);
+            u.Status != UserStatus.Suspended &&
+            u.IsEmailVerified);
         
         var adminList = admins.ToList();
         var totalAdmins = adminList.Count;

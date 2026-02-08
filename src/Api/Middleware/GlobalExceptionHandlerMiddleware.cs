@@ -65,10 +65,16 @@ public class GlobalExceptionHandlerMiddleware
                 errorCode = "CONFLICT";
                 message = ex.Message;
                 break;
-            case UnauthorizedAccessException:
+            case EmailNotVerifiedException ex:
+                statusCode = HttpStatusCode.Unauthorized;
+                errorCode = "EMAIL_NOT_VERIFIED";
+                message = ex.Message;
+                details = new { email = ex.Email };
+                break;
+            case UnauthorizedAccessException ex:
                 statusCode = HttpStatusCode.Unauthorized;
                 errorCode = "UNAUTHORIZED";
-                message = "Unauthorized access.";
+                message = ex.Message;
                 break;
         }
 

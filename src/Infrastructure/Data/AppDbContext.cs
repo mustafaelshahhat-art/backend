@@ -26,6 +26,7 @@ public class AppDbContext : DbContext
     public DbSet<TeamJoinRequest> TeamJoinRequests { get; set; }
     public DbSet<MatchMessage> MatchMessages { get; set; }
     public DbSet<SystemSetting> SystemSettings { get; set; }
+    public DbSet<Otp> Otps { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -176,6 +177,15 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<MatchMessage>().HasQueryFilter(mm => 
             !EF.Property<bool>(mm.Match!.HomeTeam!, "IsDeleted") && 
             !EF.Property<bool>(mm.Match!.AwayTeam!, "IsDeleted"));
+
+        // 11. OTP
+        modelBuilder.Entity<Otp>()
+            .HasOne(o => o.User)
+            .WithMany()
+            .HasForeignKey(o => o.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Otp>().HasQueryFilter(o => !EF.Property<bool>(o.User!, "IsDeleted"));
 
         // PERFORMANCE INDEXES
         modelBuilder.Entity<Match>()

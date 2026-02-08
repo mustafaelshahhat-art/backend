@@ -56,6 +56,34 @@ public class AuthController : ControllerBase
         return Ok(response);
     }
 
+    [HttpPost("verify-email")]
+    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
+    {
+        await _authService.VerifyEmailAsync(request.Email, request.Otp);
+        return Ok(new { message = "Email verified successfully." });
+    }
+
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        await _authService.ForgotPasswordAsync(request.Email);
+        return Ok(new { message = "If the email exists, a reset code has been sent." });
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        await _authService.ResetPasswordAsync(request.Email, request.Otp, request.NewPassword);
+        return Ok(new { message = "Password reset successfully." });
+    }
+
+    [HttpPost("resend-otp")]
+    public async Task<IActionResult> ResendOtp([FromBody] ResendOtpRequest request)
+    {
+        await _authService.ResendOtpAsync(request.Email, request.Type);
+        return Ok(new { message = "OTP resent successfully." });
+    }
+
     [Authorize]
     [HttpPost("logout")]
     public IActionResult Logout()

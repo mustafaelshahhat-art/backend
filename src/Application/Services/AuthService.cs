@@ -24,6 +24,8 @@ public class AuthService : IAuthService
     private readonly IAnalyticsService _analyticsService;
     private readonly INotificationService _notificationService;
     private readonly IRealTimeNotifier _notifier;
+    private readonly IOtpService _otpService;
+    private readonly IEmailService _emailService;
 
     public AuthService(
         IRepository<User> userRepository, 
@@ -33,7 +35,9 @@ public class AuthService : IAuthService
         IMapper mapper, 
         IAnalyticsService analyticsService,
         INotificationService notificationService,
-        IRealTimeNotifier notifier)
+        IRealTimeNotifier notifier,
+        IOtpService otpService,
+        IEmailService emailService)
     {
         _userRepository = userRepository;
         _teamRepository = teamRepository;
@@ -43,6 +47,8 @@ public class AuthService : IAuthService
         _analyticsService = analyticsService;
         _notificationService = notificationService;
         _notifier = notifier;
+        _otpService = otpService;
+        _emailService = emailService;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
@@ -106,8 +112,27 @@ public class AuthService : IAuthService
 
         var mappedUser = await MapUserWithTeamInfoAsync(user);
 
-        // Real-time Event - Notify Admins/Users list
-        await _notifier.SendUserCreatedAsync(mappedUser);
+        // DELAYED: Notification moved to VerifyEmailAsync after actual confirmation
+
+        try 
+        {
+            var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY");
+            var body = EmailTemplateHelper.CreateOtpTemplate(
+                "تفعيل حسابك الجديد", 
+                user.Name, 
+                "شكراً لانضمامك إلينا! يرجى استخدام الرمز التالي لتفعيل حسابك والبدء في استخدام المنصة.", 
+                otp, 
+                "10 دقائق"
+            );
+            await _emailService.SendEmailAsync(user.Email, "تأكيد بريدك الإلكتروني – RAMADAN GANA", body);
+        }
+        catch (Exception ex)
+        {
+            // SURGICAL FIX: Throwing here ensures the user sees that email failed.
+            // But User is created. Frontend can guide them to "Resend".
+            // We modify the message to be friendly.
+            throw new Exception("تم إنشاء الحساب ولكن فشل إرسال رمز التحقق. يرجى استخدام خيار 'إعادة الإرسال' في صفحة التحقق.");
+        }
 
         // Persistent Notification for Admins
         await _notificationService.SendNotificationByTemplateAsync(Guid.Empty, NotificationTemplates.ADMIN_NEW_USER_REGISTERED, new Dictionary<string, string> 
@@ -140,9 +165,35 @@ public class AuthService : IAuthService
             throw new BadRequestException("Invalid email or password.");
         }
 
+        // 1. SURGICAL FIX: Enforce Email Verification
+        if (!user.IsEmailVerified)
+        {
+            // NEW LOGIC: Generate a new OTP and resend email
+            try 
+            {
+                var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY");
+                var body = EmailTemplateHelper.CreateOtpTemplate(
+                    "تفعيل الحساب المطلوب", 
+                    user.Name, 
+                    "لقد حاولت تسجيل الدخول ولكن بريدك لم يتم تأكيده بعد. يرجى استخدام الرمز الجديد لتفعيل حسابك.", 
+                    otp, 
+                    "10 دقائق"
+                );
+                await _emailService.SendEmailAsync(user.Email, "تفعيل حسابك – RAMADAN GANA", body);
+            }
+            catch (Exception ex)
+            {
+                // Log but still throw the specific exception to trigger frontend redirect
+                // However, user will see the message from EmailNotVerifiedException
+            }
+
+            throw new EmailNotVerifiedException(user.Email);
+        }
+
+        // 2. SURGICAL FIX: Enforce Active Status (Only block Suspended)
         if (user.Status == UserStatus.Suspended)
         {
-             throw new ForbiddenException("User is suspended.");
+             throw new ForbiddenException("Account is suspended.");
         }
 
         var token = _jwtTokenGenerator.GenerateToken(user);
@@ -198,6 +249,93 @@ public class AuthService : IAuthService
             User = await MapUserWithTeamInfoAsync(user)
         };
     }
+    public async Task VerifyEmailAsync(string email, string otp)
+    {
+        var user = (await _userRepository.FindAsync(u => u.Email == email)).FirstOrDefault();
+        if (user == null) throw new NotFoundException("User not found.");
+
+        if (user.IsEmailVerified) return; // Already verified
+
+        var isValid = await _otpService.VerifyOtpAsync(user.Id, otp, "EMAIL_VERIFY");
+        if (!isValid) throw new BadRequestException("Invalid or expired OTP.");
+
+        user.IsEmailVerified = true;
+        
+        await _userRepository.UpdateAsync(user);
+
+        // NEW: Notify Admins that a new VERIFIED user joined
+        var mappedUser = await MapUserWithTeamInfoAsync(user);
+        await _notifier.SendUserCreatedAsync(mappedUser);
+    }
+
+    public async Task ForgotPasswordAsync(string email)
+    {
+        var user = (await _userRepository.FindAsync(u => u.Email == email)).FirstOrDefault();
+        if (user == null) return; // Silent success
+
+        var otp = await _otpService.GenerateOtpAsync(user.Id, "PASSWORD_RESET");
+
+        // Send Email
+        try
+        {
+            var body = EmailTemplateHelper.CreateOtpTemplate(
+                "إعادة تعيين كلمة المرور", 
+                user.Name, 
+                "لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بك. يرجى استخدام الرمز التالي للمتابعة.", 
+                otp, 
+                "10 دقائق"
+            );
+            await _emailService.SendEmailAsync(user.Email, "طلب إعادة تعيين كلمة المرور – RAMADAN GANA", body);
+        }
+        catch 
+        {
+            // Log
+        }
+    }
+
+    public async Task ResetPasswordAsync(string email, string otp, string newPassword)
+    {
+        var user = (await _userRepository.FindAsync(u => u.Email == email)).FirstOrDefault();
+        if (user == null) throw new NotFoundException("User not found.");
+
+        var isValid = await _otpService.VerifyOtpAsync(user.Id, otp, "PASSWORD_RESET");
+        if (!isValid) throw new BadRequestException("Invalid or expired OTP.");
+
+        user.PasswordHash = _passwordHasher.HashPassword(newPassword);
+        
+        // Revoke tokens?
+        user.RefreshToken = null; 
+        
+        await _userRepository.UpdateAsync(user);
+    }
+
+    public async Task ResendOtpAsync(string email, string type)
+    {
+        var user = (await _userRepository.FindAsync(u => u.Email == email)).FirstOrDefault();
+        if (user == null) return; 
+
+        if (type == "EMAIL_VERIFY" && user.IsEmailVerified) return;
+
+        var otp = await _otpService.GenerateOtpAsync(user.Id, type);
+
+        try
+        {
+            string title = type == "EMAIL_VERIFY" ? "تفعيل حسابك" : "إعادة تعيين كلمة المرور";
+            string subject = type == "EMAIL_VERIFY" ? "تأكيد بريدك الإلكتروني" : "طلب إعادة تعيين كلمة المرور";
+            string message = type == "EMAIL_VERIFY" 
+                ? "لقد طلبت إعادة إرسال رمز التفعيل. يرجى استخدامه لتأكيد بريدك الإليكتروني." 
+                : "لقد طلبت إعادة إرسال رمز استعادة الحساب. يرجى استخدامه لتعيين كلمة مرور جديدة.";
+
+            var body = EmailTemplateHelper.CreateOtpTemplate(title, user.Name, message, otp, "10 دقائق");
+            await _emailService.SendEmailAsync(user.Email, $"{subject} – RAMADAN GANA", body);
+        }
+        catch 
+        {
+            // If explicit user action to resend, throw so they know it failed
+            throw new Exception("فشل إرسال البريد الإلكتروني. يرجى المحاولة لاحقاً.");
+        }
+    }
+
     private async Task<UserDto> MapUserWithTeamInfoAsync(User user)
     {
         var dto = _mapper.Map<UserDto>(user);

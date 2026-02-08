@@ -7,7 +7,9 @@
       "launchBrowser": false,
       "applicationUrl": "http://localhost:5125",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "GMAIL_USER": "jokermaster159@gmail.com",
+        "GMAIL_APP_PASSWORD": "qqsrpqoehohozbor"
       }
     },
     "https": {
@@ -16,7 +18,9 @@
       "launchBrowser": false,
       "applicationUrl": "https://localhost:7047;http://localhost:5125",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "GMAIL_USER": "jokermaster159@gmail.com",
+        "GMAIL_APP_PASSWORD": "qqsrpqoehohozbor"
       }
     }
   }
