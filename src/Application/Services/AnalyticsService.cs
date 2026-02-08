@@ -44,7 +44,7 @@ public class AnalyticsService : IAnalyticsService
 
     public async Task<AnalyticsOverview> GetOverviewAsync()
     {
-        var totalUsers = await _userRepository.CountAsync(_ => true);
+        var totalUsers = await _userRepository.CountAsync(u => u.IsEmailVerified);
         var totalTeams = await _teamRepository.CountAsync(_ => true);
         var activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == "registration_open" || t.Status == "active");
         var pendingObjections = await _objectionRepository.CountAsync(o => o.Status == Domain.Enums.ObjectionStatus.Pending);
