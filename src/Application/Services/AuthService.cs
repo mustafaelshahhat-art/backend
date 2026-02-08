@@ -20,8 +20,16 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IMapper _mapper;
     private readonly IAnalyticsService _analyticsService;
+    private readonly IRealTimeNotifier _notifier;
 
-    public AuthService(IRepository<User> userRepository, IRepository<Team> teamRepository, IJwtTokenGenerator jwtTokenGenerator, IPasswordHasher passwordHasher, IMapper mapper, IAnalyticsService analyticsService)
+    public AuthService(
+        IRepository<User> userRepository, 
+        IRepository<Team> teamRepository, 
+        IJwtTokenGenerator jwtTokenGenerator, 
+        IPasswordHasher passwordHasher, 
+        IMapper mapper, 
+        IAnalyticsService analyticsService,
+        IRealTimeNotifier notifier)
     {
         _userRepository = userRepository;
         _teamRepository = teamRepository;
@@ -29,6 +37,7 @@ public class AuthService : IAuthService
         _passwordHasher = passwordHasher;
         _mapper = mapper;
         _analyticsService = analyticsService;
+        _notifier = notifier;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
@@ -85,11 +94,16 @@ public class AuthService : IAuthService
         await _userRepository.UpdateAsync(user);
         await _analyticsService.LogActivityAsync("User Registered", $"User {user.Name} registered.", user.Id, user.Name);
 
+        var mappedUser = await MapUserWithTeamInfoAsync(user);
+
+        // Real-time Event - Notify Admins/Users list
+        await _notifier.SendUserCreatedAsync(mappedUser);
+
         return new AuthResponse
         {
             Token = token,
             RefreshToken = refreshToken,
-            User = await MapUserWithTeamInfoAsync(user)
+            User = mappedUser
         };
     }
 
