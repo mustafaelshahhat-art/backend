@@ -32,5 +32,9 @@ public interface IRealTimeNotifier
     Task SendRegistrationApprovedAsync(Application.DTOs.Tournaments.TournamentDto tournament);
     Task SendRegistrationRejectedAsync(Application.DTOs.Tournaments.TournamentDto tournament);
 
+    // Objection Real-Time Events
+    Task SendObjectionSubmittedAsync(Application.DTOs.Objections.ObjectionDto objection);
+    Task SendObjectionResolvedAsync(Application.DTOs.Objections.ObjectionDto objection);
+
     Task SendSystemEventAsync(string type, object metadata, string group = null);
 }

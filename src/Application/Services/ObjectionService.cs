@@ -15,11 +15,13 @@ public class ObjectionService : IObjectionService
 {
     private readonly IRepository<Objection> _objectionRepository;
     private readonly IMapper _mapper;
+    private readonly IRealTimeNotifier _notifier;
 
-    public ObjectionService(IRepository<Objection> objectionRepository, IMapper mapper)
+    public ObjectionService(IRepository<Objection> objectionRepository, IMapper mapper, IRealTimeNotifier notifier)
     {
         _objectionRepository = objectionRepository;
         _mapper = mapper;
+        _notifier = notifier;
     }
 
     public async Task<IEnumerable<ObjectionDto>> GetAllAsync()
@@ -67,7 +69,12 @@ public class ObjectionService : IObjectionService
         };
 
         await _objectionRepository.AddAsync(objection);
-        return _mapper.Map<ObjectionDto>(objection);
+        var dto = _mapper.Map<ObjectionDto>(objection);
+        
+        // Broadcast real-time event
+        await _notifier.SendObjectionSubmittedAsync(dto);
+        
+        return dto;
     }
 
     public async Task<ObjectionDto> ResolveAsync(Guid id, ResolveObjectionRequest request)
@@ -82,6 +89,11 @@ public class ObjectionService : IObjectionService
         }
 
         await _objectionRepository.UpdateAsync(objection);
-        return _mapper.Map<ObjectionDto>(objection);
+        var dto = _mapper.Map<ObjectionDto>(objection);
+
+        // Broadcast real-time event
+        await _notifier.SendObjectionResolvedAsync(dto);
+
+        return dto;
     }
 }

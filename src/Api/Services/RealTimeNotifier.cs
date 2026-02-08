@@ -263,6 +263,30 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
+    public async Task SendObjectionSubmittedAsync(Application.DTOs.Objections.ObjectionDto objection)
+    {
+        try
+        {
+            await _hubContext.Clients.All.SendAsync("ObjectionSubmitted", objection);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending objection submitted: {ex.Message}");
+        }
+    }
+
+    public async Task SendObjectionResolvedAsync(Application.DTOs.Objections.ObjectionDto objection)
+    {
+        try
+        {
+            await _hubContext.Clients.All.SendAsync("ObjectionResolved", objection);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending objection resolved: {ex.Message}");
+        }
+    }
+
     public async Task SendSystemEventAsync(string type, object metadata, string group = null)
     {
         try
