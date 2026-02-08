@@ -271,7 +271,7 @@ public class AuthService : IAuthService
     public async Task ForgotPasswordAsync(string email)
     {
         var user = (await _userRepository.FindAsync(u => u.Email == email)).FirstOrDefault();
-        if (user == null) return; // Silent success
+        if (user == null) throw new NotFoundException("عذراً، هذا البريد الإلكتروني غير مسجل لدينا.");
 
         var otp = await _otpService.GenerateOtpAsync(user.Id, "PASSWORD_RESET");
 
