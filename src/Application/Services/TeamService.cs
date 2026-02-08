@@ -539,6 +539,8 @@ public class TeamService : ITeamService
             Id = request.Id,
             PlayerId = userId,
             PlayerName = user.Name,
+            TeamId = request.TeamId,
+            TeamName = request.Team?.Name ?? "Unknown",
             Status = "approved",
             RequestDate = request.CreatedAt
         };
