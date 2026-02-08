@@ -165,8 +165,8 @@ public class AuthService : IAuthService
             throw new BadRequestException("Invalid email or password.");
         }
 
-        // 1. SURGICAL FIX: Enforce Email Verification
-        if (!user.IsEmailVerified)
+        // 1. SURGICAL FIX: Enforce Email Verification (Skip for Admins)
+        if (!user.IsEmailVerified && user.Role != UserRole.Admin)
         {
             // NEW LOGIC: Generate a new OTP and resend email
             try 

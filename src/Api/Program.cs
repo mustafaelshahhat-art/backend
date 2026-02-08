@@ -162,10 +162,11 @@ using (var scope = app.Services.CreateScope())
             adminUser = new Domain.Entities.User
             {
                 Email = "admin@test.com",
-                Name = "Admin User",
+                Name = "Admin",
                 PasswordHash = hasher.HashPassword(adminPassword),
                 Role = UserRole.Admin,
                 Status = UserStatus.Active,
+                IsEmailVerified = true,
                 DisplayId = "ADM-001",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -183,6 +184,7 @@ using (var scope = app.Services.CreateScope())
             var hasher = scope.ServiceProvider.GetRequiredService<Application.Interfaces.IPasswordHasher>();
             adminUser.Role = UserRole.Admin;
             adminUser.Status = UserStatus.Active;
+            adminUser.IsEmailVerified = true;
             
             if (!string.IsNullOrEmpty(adminPassword))
             {
