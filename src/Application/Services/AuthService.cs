@@ -11,6 +11,8 @@ using AutoMapper;
 using System.Linq;
 using Application.DTOs.Users;
 using System.Collections.Generic;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Application.Services;
 
@@ -26,6 +28,8 @@ public class AuthService : IAuthService
     private readonly IRealTimeNotifier _notifier;
     private readonly IOtpService _otpService;
     private readonly IEmailService _emailService;
+    private readonly ILogger<AuthService> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public AuthService(
         IRepository<User> userRepository, 
@@ -37,7 +41,9 @@ public class AuthService : IAuthService
         INotificationService notificationService,
         IRealTimeNotifier notifier,
         IOtpService otpService,
-        IEmailService emailService)
+        IEmailService emailService,
+        ILogger<AuthService> logger,
+        IServiceScopeFactory scopeFactory)
     {
         _userRepository = userRepository;
         _teamRepository = teamRepository;
@@ -49,6 +55,8 @@ public class AuthService : IAuthService
         _notifier = notifier;
         _otpService = otpService;
         _emailService = emailService;
+        _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
@@ -114,25 +122,31 @@ public class AuthService : IAuthService
 
         // DELAYED: Notification moved to VerifyEmailAsync after actual confirmation
 
-        try 
+        // OTP generation is fast (DB), keep it sync to ensure it exists
+        var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY");
+        
+        // FIRE-AND-FORGET Email: Move to background to make registration instant
+        _ = Task.Run(async () => 
         {
-            var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY");
-            var body = EmailTemplateHelper.CreateOtpTemplate(
-                "تفعيل حسابك الجديد", 
-                user.Name, 
-                "شكراً لانضمامك إلينا! يرجى استخدام الرمز التالي لتفعيل حسابك والبدء في استخدام المنصة.", 
-                otp, 
-                "10 دقائق"
-            );
-            await _emailService.SendEmailAsync(user.Email, "تأكيد بريدك الإلكتروني – RAMADAN GANA", body);
-        }
-        catch (Exception ex)
-        {
-            // SURGICAL FIX: Throwing here ensures the user sees that email failed.
-            // But User is created. Frontend can guide them to "Resend".
-            // We modify the message to be friendly.
-            throw new Exception("تم إنشاء الحساب ولكن فشل إرسال رمز التحقق. يرجى استخدام خيار 'إعادة الإرسال' في صفحة التحقق.");
-        }
+            using var scope = _scopeFactory.CreateScope();
+            var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+            try 
+            {
+                var body = EmailTemplateHelper.CreateOtpTemplate(
+                    "تفعيل حسابك الجديد", 
+                    user.Name, 
+                    "شكراً لانضمامك إلينا! يرجى استخدام الرمز التالي لتفعيل حسابك والبدء في استخدام المنصة.", 
+                    otp, 
+                    "10 دقائق"
+                );
+                await emailSvc.SendEmailAsync(user.Email, "تأكيد بريدك الإلكتروني – RAMADAN GANA", body);
+            }
+            catch (Exception ex)
+            {
+                // Silently log email failure; user can still use "Resend" on verification page
+                _logger.LogError(ex, "Failed to send registration OTP email to {Email}", user.Email);
+            }
+        });
 
         // Persistent Notification for Admins
         await _notificationService.SendNotificationByTemplateAsync(Guid.Empty, NotificationTemplates.ADMIN_NEW_USER_REGISTERED, new Dictionary<string, string> 
@@ -168,23 +182,30 @@ public class AuthService : IAuthService
         // 1. SURGICAL FIX: Enforce Email Verification (Skip for Admins)
         if (!user.IsEmailVerified && user.Role != UserRole.Admin)
         {
-            // NEW LOGIC: Generate a new OTP and resend email
+            // NEW LOGIC: Generate a new OTP and resend email in background
             try 
             {
                 var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY");
-                var body = EmailTemplateHelper.CreateOtpTemplate(
-                    "تفعيل الحساب المطلوب", 
-                    user.Name, 
-                    "لقد حاولت تسجيل الدخول ولكن بريدك لم يتم تأكيده بعد. يرجى استخدام الرمز الجديد لتفعيل حسابك.", 
-                    otp, 
-                    "10 دقائق"
-                );
-                await _emailService.SendEmailAsync(user.Email, "تفعيل حسابك – RAMADAN GANA", body);
+                
+                _ = Task.Run(async () => 
+                {
+                    using var scope = _scopeFactory.CreateScope();
+                    var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                    try {
+                        var body = EmailTemplateHelper.CreateOtpTemplate(
+                            "تفعيل الحساب المطلوب", 
+                            user.Name, 
+                            "لقد حاولت تسجيل الدخول ولكن بريدك لم يتم تأكيده بعد. يرجى استخدام الرمز الجديد لتفعيل حسابك.", 
+                            otp, 
+                            "10 دقائق"
+                        );
+                        await emailSvc.SendEmailAsync(user.Email, "تفعيل حسابك – RAMADAN GANA", body);
+                    } catch { /* Ignored for login flow */ }
+                });
             }
             catch (Exception ex)
             {
-                // Log but still throw the specific exception to trigger frontend redirect
-                // However, user will see the message from EmailNotVerifiedException
+                // OTP Gen failure or Task.Run failure, ignore to let LoginException proceed
             }
 
             throw new EmailNotVerifiedException(user.Email);
@@ -273,24 +294,34 @@ public class AuthService : IAuthService
         var user = (await _userRepository.FindAsync(u => u.Email == email)).FirstOrDefault();
         if (user == null) throw new NotFoundException("عذراً، هذا البريد الإلكتروني غير مسجل لدينا.");
 
+        if (user.Role == UserRole.Admin)
+        {
+            throw new ForbiddenException("لا يمكن استعادة كلمة المرور لحسابات الإدارة من هنا. يرجى التواصل مع الدعم الفني.");
+        }
+
         var otp = await _otpService.GenerateOtpAsync(user.Id, "PASSWORD_RESET");
 
-        // Send Email
-        try
+        // FIRE-AND-FORGET Email: Move to background to make request instant
+        _ = Task.Run(async () => 
         {
-            var body = EmailTemplateHelper.CreateOtpTemplate(
-                "إعادة تعيين كلمة المرور", 
-                user.Name, 
-                "لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بك. يرجى استخدام الرمز التالي للمتابعة.", 
-                otp, 
-                "10 دقائق"
-            );
-            await _emailService.SendEmailAsync(user.Email, "طلب إعادة تعيين كلمة المرور – RAMADAN GANA", body);
-        }
-        catch 
-        {
-            // Log
-        }
+            using var scope = _scopeFactory.CreateScope();
+            var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+            try 
+            {
+                var body = EmailTemplateHelper.CreateOtpTemplate(
+                    "إعادة تعيين كلمة المرور", 
+                    user.Name, 
+                    "لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بك. يرجى استخدام الرمز التالي للمتابعة.", 
+                    otp, 
+                    "10 دقائق"
+                );
+                await emailSvc.SendEmailAsync(user.Email, "طلب إعادة تعيين كلمة المرور – RAMADAN GANA", body);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send password reset OTP email to {Email}", user.Email);
+            }
+        });
     }
 
     public async Task ResetPasswordAsync(string email, string otp, string newPassword)
@@ -299,7 +330,13 @@ public class AuthService : IAuthService
         if (user == null) throw new NotFoundException("User not found.");
 
         var isValid = await _otpService.VerifyOtpAsync(user.Id, otp, "PASSWORD_RESET");
-        if (!isValid) throw new BadRequestException("Invalid or expired OTP.");
+        if (!isValid) throw new BadRequestException("كود التفعيل غير صحيح أو منتهي الصلاحية.");
+
+        // Check if new password is same as current
+        if (_passwordHasher.VerifyPassword(newPassword, user.PasswordHash))
+        {
+            throw new BadRequestException("عذراً، يجب أن تكون كلمة المرور الجديدة مختلفة عن كلمة المرور الحالية.");
+        }
 
         user.PasswordHash = _passwordHasher.HashPassword(newPassword);
         
