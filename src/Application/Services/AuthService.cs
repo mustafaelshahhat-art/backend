@@ -66,7 +66,7 @@ public class AuthService : IAuthService
             Email = email,
             Name = name,
             PasswordHash = _passwordHasher.HashPassword(request.Password),
-            Role = request.Role,
+            Role = (request.Role == UserRole.Admin) ? UserRole.Player : request.Role,
             Status = UserStatus.Pending, 
             DisplayId = "U-" + new Random().Next(1000, 9999),
             Phone = request.Phone?.Trim(),
