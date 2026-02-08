@@ -11,6 +11,7 @@ public interface IRepository<T> where T : BaseEntity
     Task<T?> GetByIdAsync(Guid id);
     Task<T?> GetByIdAsync(Guid id, params Expression<Func<T, object>>[] includes);
     Task<T?> GetByIdAsync(Guid id, string[] includePaths);
+    Task<T?> GetByIdNoTrackingAsync(Guid id, string[] includePaths);
     Task<IEnumerable<T>> GetAllAsync();
     Task<IEnumerable<T>> GetAllAsync(params Expression<Func<T, object>>[] includes);
     Task<IEnumerable<T>> GetAllAsync(string[] includePaths);
@@ -20,5 +21,6 @@ public interface IRepository<T> where T : BaseEntity
     Task UpdateAsync(T entity);
     Task DeleteAsync(T entity);
     Task DeleteAsync(Guid id);
+    Task HardDeleteAsync(T entity);
     Task<int> CountAsync(Expression<Func<T, bool>> predicate);
 }

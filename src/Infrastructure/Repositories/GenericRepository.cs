@@ -46,6 +46,16 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
         return await query.FirstOrDefaultAsync(e => e.Id == id);
     }
 
+    public async Task<T?> GetByIdNoTrackingAsync(Guid id, string[] includePaths)
+    {
+        IQueryable<T> query = _dbSet.AsNoTracking();
+        foreach (var path in includePaths)
+        {
+            query = query.Include(path);
+        }
+        return await query.FirstOrDefaultAsync(e => e.Id == id);
+    }
+
     public async Task<IEnumerable<T>> GetAllAsync()
     {
         return await _dbSet.ToListAsync();
@@ -112,6 +122,13 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
             await DeleteAsync(entity);
         }
     }
+
+    public async Task HardDeleteAsync(T entity)
+    {
+        _dbSet.Remove(entity);
+        await _context.SaveChangesAsync();
+    }
+
     public async Task<int> CountAsync(Expression<Func<T, bool>> predicate)
     {
         return await _dbSet.CountAsync(predicate);

@@ -56,6 +56,12 @@ public class TournamentService : ITournamentService
         return tournament == null ? null : _mapper.Map<TournamentDto>(tournament);
     }
 
+    private async Task<TournamentDto?> GetByIdFreshAsync(Guid id)
+    {
+        var tournament = await _tournamentRepository.GetByIdNoTrackingAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
+        return tournament == null ? null : _mapper.Map<TournamentDto>(tournament);
+    }
+
     public async Task<TournamentDto> CreateAsync(CreateTournamentRequest request)
     {
         var tournament = new Tournament
@@ -84,7 +90,7 @@ public class TournamentService : ITournamentService
 
     public async Task<TournamentDto> UpdateAsync(Guid id, UpdateTournamentRequest request)
     {
-        var tournament = await _tournamentRepository.GetByIdAsync(id);
+        var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
         if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
 
         if (request.Name != null) tournament.Name = request.Name;
@@ -101,15 +107,20 @@ public class TournamentService : ITournamentService
 
         await _tournamentRepository.UpdateAsync(tournament);
 
-        // Real-time Event
-        await _notifier.SendTournamentUpdatedAsync(_mapper.Map<TournamentDto>(tournament));
+        var dto = await GetByIdFreshAsync(id);
 
-        return _mapper.Map<TournamentDto>(tournament);
+        // Real-time Event
+        if (dto != null)
+        {
+            await _notifier.SendTournamentUpdatedAsync(dto);
+        }
+
+        return dto ?? _mapper.Map<TournamentDto>(tournament);
     }
 
     public async Task<TournamentDto> CloseRegistrationAsync(Guid id)
     {
-        var tournament = await _tournamentRepository.GetByIdAsync(id);
+        var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
         if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
 
         tournament.Status = "registration_closed";
@@ -117,12 +128,15 @@ public class TournamentService : ITournamentService
         await _tournamentRepository.UpdateAsync(tournament);
         await _analyticsService.LogActivityAsync("إغلاق التسجيل", $"تم إغلاق التسجيل في بطولة {tournament.Name}", null, "Admin");
         
-        var dto = _mapper.Map<TournamentDto>(tournament);
+        var dto = await GetByIdFreshAsync(id);
         
         // Real-time Event - Emit AFTER DB commit
-        await _notifier.SendTournamentUpdatedAsync(dto);
+        if (dto != null)
+        {
+            await _notifier.SendTournamentUpdatedAsync(dto);
+        }
         
-        return dto;
+        return dto ?? _mapper.Map<TournamentDto>(tournament);
     }
 
     public async Task DeleteAsync(Guid id)
@@ -178,15 +192,36 @@ public class TournamentService : ITournamentService
             throw new ForbiddenException("فقط صاحب الفريق (الرئيس) يمكنه تسجيل الفريق في البطولات.");
         }
 
-        // 3. Check if team is already registered in THIS tournament
-        var existing = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == request.TeamId);
-        if (existing.Any()) throw new ConflictException("الفريق مسجل بالفعل في هذه البطولة.");
-
-        // 4. Check if team is registered in ANY other active tournament
-        var allRegistrations = await _registrationRepository.FindAsync(r => r.TeamId == request.TeamId);
-        foreach (var reg in allRegistrations)
+        // 3. Handle existing registration for THIS tournament
+        var existing = (await _registrationRepository.FindAsync(r => 
+            r.TournamentId == tournamentId && 
+            r.TeamId == request.TeamId)).ToList();
+        
+        if (existing.Any(r => r.Status == RegistrationStatus.Approved))
         {
-            if (reg.Status == RegistrationStatus.Rejected) continue;
+            throw new ConflictException("الفريق مسجل بالفعل ومقبول في هذه البطولة.");
+        }
+
+        // Clean up any old attempts (Rejected, Withdrawn, or even stuck Pending) to allow a fresh one
+        foreach (var reg in existing)
+        {
+            // If we're removing a registration that was already counted in CurrentTeams, decrement it
+            if (reg.Status == RegistrationStatus.PendingPaymentReview)
+            {
+                tournament.CurrentTeams = Math.Max(0, tournament.CurrentTeams - 1);
+            }
+            
+            await _registrationRepository.HardDeleteAsync(reg);
+        }
+
+        // 4. Check if team is registered in ANY OTHER active tournament
+        var otherRegistrations = await _registrationRepository.FindAsync(r => 
+            r.TeamId == request.TeamId && 
+            r.TournamentId != tournamentId);
+            
+        foreach (var reg in otherRegistrations)
+        {
+            if (reg.Status == RegistrationStatus.Rejected || reg.Status == RegistrationStatus.Withdrawn) continue;
 
             var t = await _tournamentRepository.GetByIdAsync(reg.TournamentId);
             if (t != null && t.Status != "completed" && t.Status != "cancelled")
@@ -196,7 +231,9 @@ public class TournamentService : ITournamentService
         }
 
         // 5. Check capacity
-        var regCount = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.Status != RegistrationStatus.Rejected)).Count();
+        var regCount = (await _registrationRepository.FindAsync(r => 
+            r.TournamentId == tournamentId && 
+            (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.PendingPaymentReview))).Count();
         if (regCount >= tournament.MaxTeams) throw new ConflictException("عذراً، اكتمل العدد الأقصى للفرق في هذه البطولة.");
 
         var registration = new TeamRegistration
@@ -211,6 +248,13 @@ public class TournamentService : ITournamentService
         tournament.CurrentTeams++;
         await _tournamentRepository.UpdateAsync(tournament);
         
+        // Real-time Event - Notify everyone about the new registration and updated team count
+        var tournamentDto = await GetByIdFreshAsync(tournamentId);
+        if (tournamentDto != null)
+        {
+            await _notifier.SendTournamentUpdatedAsync(tournamentDto);
+        }
+
         return _mapper.Map<TeamRegistrationDto>(registration);
     }
 
@@ -254,10 +298,15 @@ public class TournamentService : ITournamentService
         reg.SenderNumber = request.SenderNumber;
         
         await _registrationRepository.UpdateAsync(reg);
+
+        var regDto = _mapper.Map<TeamRegistrationDto>(reg);
+
+        // Real-time Event - Update the registration status/receipt in the tournament store
+        await _notifier.SendRegistrationUpdatedAsync(regDto);
         
         // Notify Admins
         await _notificationService.SendNotificationAsync(Guid.Empty, "طلب دفع جديد للمراجعة", $"تم تقديم إيصال دفع جديد لفريق {team.Name} في بطولة {tournament.Name}", "admin_broadcast");
-        return _mapper.Map<TeamRegistrationDto>(reg);
+        return regDto;
     }
 
     public async Task<TeamRegistrationDto> ApproveRegistrationAsync(Guid tournamentId, Guid teamId)
@@ -285,8 +334,11 @@ public class TournamentService : ITournamentService
         // Real-time Event - Emit FULL Tournament with updated registrations
         if (tournament != null)
         {
-            var tournamentDto = _mapper.Map<TournamentDto>(tournament);
-            await _notifier.SendRegistrationApprovedAsync(tournamentDto);
+            var tournamentDto = await GetByIdFreshAsync(tournamentId);
+            if (tournamentDto != null)
+            {
+                await _notifier.SendRegistrationApprovedAsync(tournamentDto);
+            }
         }
 
         // Check if tournament is now full with approved teams - auto-generate matches
@@ -345,6 +397,13 @@ public class TournamentService : ITournamentService
         tournament.Status = "active";
         await _tournamentRepository.UpdateAsync(tournament);
 
+        // Real-time Event - Notify status change
+        var tournamentDto = await GetByIdAsync(tournamentId);
+        if (tournamentDto != null)
+        {
+            await _notifier.SendTournamentUpdatedAsync(tournamentDto);
+        }
+
         await _analyticsService.LogActivityAsync("توليد مباريات تلقائي", $"تم توليد {matchNumber} مباراة لبطولة {tournament.Name}", null, "System");
         
         // Notify all captains
@@ -390,8 +449,11 @@ public class TournamentService : ITournamentService
         // Real-time Event - Emit FULL Tournament with updated registrations
         if (tournament != null)
         {
-            var tournamentDto = _mapper.Map<TournamentDto>(tournament);
-            await _notifier.SendRegistrationRejectedAsync(tournamentDto);
+            var tournamentDto = await GetByIdFreshAsync(tournamentId);
+            if (tournamentDto != null)
+            {
+                await _notifier.SendRegistrationRejectedAsync(tournamentDto);
+            }
         }
 
         return _mapper.Map<TeamRegistrationDto>(reg);
@@ -495,6 +557,13 @@ public class TournamentService : ITournamentService
         // Update tournament status to Active
         tournament.Status = "active";
         await _tournamentRepository.UpdateAsync(tournament);
+
+        // Real-time Event - Notify status change
+        var tournamentDto = await GetByIdAsync(tournamentId);
+        if (tournamentDto != null)
+        {
+            await _notifier.SendTournamentUpdatedAsync(tournamentDto);
+        }
 
         await _analyticsService.LogActivityAsync("توليد مباريات", $"تم توليد {matchNumber} مباراة لبطولة {tournament.Name}", null, "Admin");
 
