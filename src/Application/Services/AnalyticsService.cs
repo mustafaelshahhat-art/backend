@@ -124,9 +124,9 @@ public class AnalyticsService : IAnalyticsService
     private string FormatTime(DateTime timestamp)
     {
         var diff = DateTime.UtcNow - timestamp;
-        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes} mins ago";
-        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours} hours ago";
-        return $"{(int)diff.TotalDays} days ago";
+        if (diff.TotalMinutes < 60) return $"منذ {(int)diff.TotalMinutes} دقيقة";
+        if (diff.TotalHours < 24) return $"منذ {(int)diff.TotalHours} ساعة";
+        return $"منذ {(int)diff.TotalDays} يوم";
     }
 }
 

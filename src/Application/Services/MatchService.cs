@@ -70,7 +70,7 @@ public class MatchService : IMatchService
 
         match.Status = MatchStatus.Live;
         await _matchRepository.UpdateAsync(match);
-        await _analyticsService.LogActivityAsync("Match Started", $"Match ID {id} started.", null, "Referee");
+        await _analyticsService.LogActivityAsync("بدء مباراة", $"بدأت المباراة ذات المعرف {id}.", null, "Referee");
         
         // Lightweight System Event
         await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Live.ToString() }, $"match:{id}");
@@ -83,8 +83,8 @@ public class MatchService : IMatchService
         var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
         var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
 
-        if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "Match Started", $"Your match against {awayTeam?.Name ?? "Opponent"} has started.", "match");
-        if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "Match Started", $"Your match against {homeTeam?.Name ?? "Opponent"} has started.", "match");
+        if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "بدأت المباراة", $"بدأت مباراتكم ضد {awayTeam?.Name ?? "الخصم"}.", "match");
+        if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "بدأت المباراة", $"بدأت مباراتكم ضد {homeTeam?.Name ?? "الخصم"}.", "match");
 
         var matchDto = _mapper.Map<MatchDto>(match);
         await _notifier.SendMatchUpdatedAsync(matchDto);
@@ -98,7 +98,7 @@ public class MatchService : IMatchService
 
         match.Status = MatchStatus.Finished;
         await _matchRepository.UpdateAsync(match);
-        await _analyticsService.LogActivityAsync("Match Ended", $"Match ID {id} ended.", null, "Referee");
+        await _analyticsService.LogActivityAsync("انتهاء مباراة", $"انتهت المباراة ذات المعرف {id}.", null, "Referee");
 
         // Lightweight System Event
         await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Finished.ToString() }, $"match:{id}");
@@ -107,8 +107,8 @@ public class MatchService : IMatchService
         var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
         var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
 
-        if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "Match Ended", $"Match ended. Score: {match.HomeScore}-{match.AwayScore}", "match");
-        if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "Match Ended", $"Match ended. Score: {match.HomeScore}-{match.AwayScore}", "match");
+        if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "انتهت المباراة", $"انتهت المباراة. النتيجة: {match.HomeScore}-{match.AwayScore}", "match");
+        if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "انتهت المباراة", $"انتهت المباراة. النتيجة: {match.HomeScore}-{match.AwayScore}", "match");
 
         // Trigger Lifecycle check
         await _lifecycleService.CheckAndFinalizeTournamentAsync(match.TournamentId);
@@ -147,7 +147,7 @@ public class MatchService : IMatchService
             
             
             await _matchRepository.UpdateAsync(match);
-            await _analyticsService.LogActivityAsync("Goal Scored", $"Goal for Team {request.TeamId} in Match {id}", request.PlayerId, "Player");
+            await _analyticsService.LogActivityAsync("تسجيل هدف", $"هدف لفريق {request.TeamId} في المباراة {id}", request.PlayerId, "Player");
         }
 
         await _eventRepository.AddAsync(matchEvent);
@@ -188,7 +188,7 @@ public class MatchService : IMatchService
         }
 
         await _eventRepository.DeleteAsync(matchEvent);
-        await _analyticsService.LogActivityAsync("Event Removed", $"Event {eventId} removed from Match {matchId}", null, "Admin");
+        await _analyticsService.LogActivityAsync("إزالة حدث", $"تمت إزالة الحدث {eventId} من المباراة {matchId}", null, "Admin");
 
         // Notify
         var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
@@ -250,7 +250,7 @@ public class MatchService : IMatchService
         // 1. Score Update
         if (scoreChanged)
         {
-            await _analyticsService.LogActivityAsync("Score Updated", $"Match {id} score updated to {match.HomeScore}-{match.AwayScore}", null, "AdminOverride");
+            await _analyticsService.LogActivityAsync("تحديث النتيجة", $"تم تحديث نتيجة المباراة {id} إلى {match.HomeScore}-{match.AwayScore}", null, "AdminOverride");
             string msg = "تم تعديل نتيجة المباراة بواسطة الإدارة";
             if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "تعديل نتيجة", msg, "match");
             if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "تعديل نتيجة", msg, "match");
@@ -386,9 +386,12 @@ public class MatchService : IMatchService
             await _matchRepository.AddAsync(match);
         }
 
-        await _analyticsService.LogActivityAsync("Matches Generated", $"Generated {matches.Count} matches for Tournament {tournamentId}", null, "System");
+        await _analyticsService.LogActivityAsync("توليد مباريات", $"تم توليد {matches.Count} مباراة للبطولة {tournamentId}", null, "System");
 
-        return _mapper.Map<IEnumerable<MatchDto>>(matches);
+        var matchDtos = _mapper.Map<IEnumerable<MatchDto>>(matches);
+        await _notifier.SendMatchesGeneratedAsync(matchDtos);
+
+        return matchDtos;
     }
 
     public async Task<IEnumerable<MatchDto>> GetMatchesByRefereeAsync(Guid refereeId)

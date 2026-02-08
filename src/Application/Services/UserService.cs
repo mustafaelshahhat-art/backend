@@ -97,7 +97,9 @@ public class UserService : IUserService
         if (request.Age.HasValue) user.Age = request.Age;
 
         await _userRepository.UpdateAsync(user);
-        return _mapper.Map<UserDto>(user);
+        var dto = _mapper.Map<UserDto>(user);
+        await _realTimeNotifier.SendUserUpdatedAsync(dto);
+        return dto;
     }
 
     public async Task DeleteAsync(Guid id)
@@ -117,6 +119,7 @@ public class UserService : IUserService
 
         await _userRepository.DeleteAsync(id);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, "Deleted");
+        await _realTimeNotifier.SendUserDeletedAsync(id);
     }
 
     public async Task SuspendAsync(Guid id)
@@ -138,6 +141,10 @@ public class UserService : IUserService
         await _userRepository.UpdateAsync(user);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Suspended.ToString());
         
+        // Full Update for Lists
+        var dto = _mapper.Map<UserDto>(user);
+        await _realTimeNotifier.SendUserUpdatedAsync(dto);
+        
         // Lightweight System Event
         await _realTimeNotifier.SendSystemEventAsync("USER_BLOCKED", new { UserId = id }, $"user:{id}");
     }
@@ -150,6 +157,10 @@ public class UserService : IUserService
         user.Status = UserStatus.Active;
         await _userRepository.UpdateAsync(user);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Active.ToString());
+
+        // Full Update for Lists
+        var dto = _mapper.Map<UserDto>(user);
+        await _realTimeNotifier.SendUserUpdatedAsync(dto);
 
         // Lightweight System Event
         await _realTimeNotifier.SendSystemEventAsync("USER_APPROVED", new { UserId = id }, $"user:{id}");
@@ -227,7 +238,9 @@ public class UserService : IUserService
             // Don't fail if analytics logging fails
         }
 
-        return _mapper.Map<UserDto>(newAdmin);
+        var dto = _mapper.Map<UserDto>(newAdmin);
+        await _realTimeNotifier.SendUserCreatedAsync(dto);
+        return dto;
     }
 
     /// <summary>

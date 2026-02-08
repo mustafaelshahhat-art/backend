@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Application.DTOs.Teams;
+using Application.DTOs.Users;
 using Application.Interfaces;
 using AutoMapper;
 using Domain.Entities;
@@ -103,7 +104,7 @@ public class TeamService : ITeamService
         team.IsActive = false;
         await _teamRepository.UpdateAsync(team);
 
-        await _analyticsService.LogActivityAsync("Team Disabled", $"Team {team.Name} (ID: {teamId}) has been disabled by Admin.", null, "Admin");
+        await _analyticsService.LogActivityAsync("تعطيل فريق", $"تم تعطيل فريق {team.Name} (ID: {teamId}) من قبل المسؤول.", null, "Admin");
 
         // 3. Handle Active Tournaments (Withdrawal)
         var activeRegistrations = await _registrationRepository.FindAsync(r => r.TeamId == teamId && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.PendingPaymentReview));
@@ -221,10 +222,13 @@ public class TeamService : ITeamService
         captain.TeamId = team.Id;
         await _userRepository.UpdateAsync(captain);
 
-        await _analyticsService.LogActivityAsync("Team Created", $"Team {team.Name} created by {captain.Name}", captainId, captain.Name);
+        await _analyticsService.LogActivityAsync("إنشاء فريق", $"تم إنشاء فريق {team.Name} بواسطة {captain.Name}", captainId, captain.Name);
         
         var dto = _mapper.Map<TeamDto>(team);
         dto.CaptainName = captain.Name; // Ensure it's populated for the immediate response
+        
+        await _realTimeNotifier.SendTeamCreatedAsync(dto);
+        
         return dto;
     }
 
@@ -241,13 +245,15 @@ public class TeamService : ITeamService
         {
             team.IsActive = request.IsActive.Value;
             await _analyticsService.LogActivityAsync(
-                team.IsActive ? "Team Activated" : "Team Deactivated",
-                $"Team {team.Name} (ID: {id}) {(team.IsActive ? "activated" : "deactivated")} by system/admin.",
+                team.IsActive ? "تنشيط فريق" : "إلغاء تنشيط فريق",
+                $"تم {(team.IsActive ? "تنشيط" : "إلغاء تنشيط")} فريق {team.Name} (ID: {id}) من قبل النظام/المسؤول.",
                 null, "Admin");
         }
 
         await _teamRepository.UpdateAsync(team);
-        return _mapper.Map<TeamDto>(team);
+        var dto = _mapper.Map<TeamDto>(team);
+        await _realTimeNotifier.SendTeamUpdatedAsync(dto);
+        return dto;
     }
 
     public async Task DeleteAsync(Guid id)
@@ -264,6 +270,7 @@ public class TeamService : ITeamService
         {
             user.TeamId = null;
             await _userRepository.UpdateAsync(user);
+            await _realTimeNotifier.SendUserUpdatedAsync(_mapper.Map<UserDto>(user));
         }
 
         // 3. Delete Players (Dependent Entity)
@@ -281,14 +288,32 @@ public class TeamService : ITeamService
             await _joinRequestRepository.DeleteAsync(r);
         }
 
-        // Note: TeamRegistrations are not currently cleaned up. 
-        // If a team is in a tournament, this might still fail (which is good safety).
+        // 5. Delete TeamRegistrations and collect affected tournaments
+        var registrations = await _registrationRepository.FindAsync(r => r.TeamId == id);
+        var affectedTournamentIds = registrations.Select(r => r.TournamentId).Distinct().ToList();
+        
+        foreach (var reg in registrations)
+        {
+            await _registrationRepository.DeleteAsync(reg);
+        }
 
-        // 5. Delete Team
+        // 6. Delete Team
         await _teamRepository.DeleteAsync(id);
 
-        // 6. Notify all members
+        // 7. Notify all members (Specific) AND Global List (General)
         await _realTimeNotifier.SendTeamDeletedAsync(id, memberUserIds);
+        await _realTimeNotifier.SendTeamDeletedAsync(id);
+
+        // 8. Emit TournamentUpdated for each affected tournament (with updated registrations)
+        foreach (var tournamentId in affectedTournamentIds)
+        {
+            var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+            if (tournament != null)
+            {
+                var dto = _mapper.Map<Application.DTOs.Tournaments.TournamentDto>(tournament);
+                await _realTimeNotifier.SendTournamentUpdatedAsync(dto);
+            }
+        }
     }
 
     public async Task<JoinRequestDto> RequestJoinAsync(Guid teamId, Guid playerId)
@@ -337,7 +362,7 @@ public class TeamService : ITeamService
             InitiatedByPlayer = true
         };
 
-        await _analyticsService.LogActivityAsync("Join Request", $"User {user.Name} requested to join team id {teamId}", playerId, user.Name);
+        await _analyticsService.LogActivityAsync("طلب انضمام", $"طلب المستخدم {user.Name} الانضمام للفريق ذو المعرف {teamId}", playerId, user.Name);
         return result;
     }
 
@@ -379,6 +404,7 @@ public class TeamService : ITeamService
                  if (user.TeamId.HasValue) throw new ConflictException("هذا اللاعب مسجل بالفعل في فريق آخر.");
                  user.TeamId = teamId;
                  await _userRepository.UpdateAsync(user);
+                 await _realTimeNotifier.SendUserUpdatedAsync(_mapper.Map<UserDto>(user));
 
                  var player = new Player
                  {
@@ -396,6 +422,10 @@ public class TeamService : ITeamService
         }
 
         await _joinRequestRepository.UpdateAsync(request);
+        if (approve)
+        {
+            await BroadcastTeamSnapshotAsync(teamId);
+        }
 
         var team = await _teamRepository.GetByIdAsync(teamId);
         user = await _userRepository.GetByIdAsync(request.UserId);
@@ -486,6 +516,7 @@ public class TeamService : ITeamService
         // 2. Add to Team
         user.TeamId = request.TeamId;
         await _userRepository.UpdateAsync(user);
+        await _realTimeNotifier.SendUserUpdatedAsync(_mapper.Map<UserDto>(user));
 
         var player = new Player
         {
@@ -495,6 +526,7 @@ public class TeamService : ITeamService
             TeamId = request.TeamId
         };
         await _playerRepository.AddAsync(player);
+        await BroadcastTeamSnapshotAsync(request.TeamId);
 
         // 3. Notify Captain
         if (request.Team != null)
@@ -608,6 +640,7 @@ public class TeamService : ITeamService
                 {
                     user.TeamId = null;
                     await _userRepository.UpdateAsync(user);
+                    await _realTimeNotifier.SendUserUpdatedAsync(_mapper.Map<UserDto>(user));
 
                     // Send real-time notification to the removed player
                     await _realTimeNotifier.SendRemovedFromTeamAsync(userId, teamId, playerId);
@@ -615,6 +648,16 @@ public class TeamService : ITeamService
             }
 
             await _playerRepository.DeleteAsync(player);
+            await BroadcastTeamSnapshotAsync(teamId);
+        }
+    }
+
+    private async Task BroadcastTeamSnapshotAsync(Guid teamId)
+    {
+        var teamDto = await GetByIdAsync(teamId);
+        if (teamDto != null)
+        {
+            await _realTimeNotifier.SendTeamUpdatedAsync(teamDto);
         }
     }
 

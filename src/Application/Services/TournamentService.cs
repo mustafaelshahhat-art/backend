@@ -74,10 +74,10 @@ public class TournamentService : ITournamentService
         };
 
         await _tournamentRepository.AddAsync(tournament);
-        await _analyticsService.LogActivityAsync("Tournament Created", $"Tournament {tournament.Name} created.", null, "Admin");
+        await _analyticsService.LogActivityAsync("إنشاء بطولة", $"تم إنشاء بطولة {tournament.Name}.", null, "Admin");
         
-        // Lightweight System Event
-        await _notifier.SendSystemEventAsync("TOURNAMENT_CREATED", new { TournamentId = tournament.Id });
+        // Real-time Event
+        await _notifier.SendTournamentCreatedAsync(_mapper.Map<TournamentDto>(tournament));
         
         return _mapper.Map<TournamentDto>(tournament);
     }
@@ -101,8 +101,8 @@ public class TournamentService : ITournamentService
 
         await _tournamentRepository.UpdateAsync(tournament);
 
-        // Lightweight System Event
-        await _notifier.SendSystemEventAsync("TOURNAMENT_UPDATED", new { TournamentId = tournament.Id });
+        // Real-time Event
+        await _notifier.SendTournamentUpdatedAsync(_mapper.Map<TournamentDto>(tournament));
 
         return _mapper.Map<TournamentDto>(tournament);
     }
@@ -115,9 +115,14 @@ public class TournamentService : ITournamentService
         tournament.Status = "registration_closed";
         
         await _tournamentRepository.UpdateAsync(tournament);
-        await _analyticsService.LogActivityAsync("Registration Closed", $"Registration closed for Tournament {tournament.Name}", null, "Admin");
+        await _analyticsService.LogActivityAsync("إغلاق التسجيل", $"تم إغلاق التسجيل في بطولة {tournament.Name}", null, "Admin");
         
-        return _mapper.Map<TournamentDto>(tournament);
+        var dto = _mapper.Map<TournamentDto>(tournament);
+        
+        // Real-time Event - Emit AFTER DB commit
+        await _notifier.SendTournamentUpdatedAsync(dto);
+        
+        return dto;
     }
 
     public async Task DeleteAsync(Guid id)
@@ -142,7 +147,10 @@ public class TournamentService : ITournamentService
         // 3. Delete Tournament
         await _tournamentRepository.DeleteAsync(tournament);
         
-        await _analyticsService.LogActivityAsync("Tournament Deleted", $"Tournament {tournament.Name} (ID: {id}) was deleted.", null, "Admin");
+        await _analyticsService.LogActivityAsync("حذف بطولة", $"تم حذف بطولة {tournament.Name} (ID: {id}).", null, "Admin");
+        
+        // Real-time Event
+        await _notifier.SendTournamentDeletedAsync(id);
     }
 
     public async Task<TeamRegistrationDto> RegisterTeamAsync(Guid tournamentId, RegisterTeamRequest request, Guid userId)
@@ -248,7 +256,7 @@ public class TournamentService : ITournamentService
         await _registrationRepository.UpdateAsync(reg);
         
         // Notify Admins
-        await _notificationService.SendNotificationAsync(Guid.Empty, "New payment awaiting review", $"New payment receipt submitted for Team {team.Name} in Tournament {tournament.Name}", "admin_broadcast");
+        await _notificationService.SendNotificationAsync(Guid.Empty, "طلب دفع جديد للمراجعة", $"تم تقديم إيصال دفع جديد لفريق {team.Name} في بطولة {tournament.Name}", "admin_broadcast");
         return _mapper.Map<TeamRegistrationDto>(reg);
     }
 
@@ -261,17 +269,24 @@ public class TournamentService : ITournamentService
         reg.Status = RegistrationStatus.Approved;
         
         await _registrationRepository.UpdateAsync(reg);
-        await _analyticsService.LogActivityAsync("Registration Approved", $"Team ID {teamId} approved for Tournament ID {tournamentId}", null, "Admin");
+        await _analyticsService.LogActivityAsync("قبول طلب تسجيل", $"تمت الموافقة على انضمام فريق ID {teamId} لبطولة ID {tournamentId}", null, "Admin");
         
         // Notify Captain
         var team = await _teamRepository.GetByIdAsync(teamId);
-        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
         if (team != null) 
         {
-            await _notificationService.SendNotificationAsync(team.CaptainId, "Registration Approved", $"Your registration for {tournament?.Name} has been approved.", "system");
+            await _notificationService.SendNotificationAsync(team.CaptainId, "تمت الموافقة على التسجيل", $"تمت الموافقة على تسجيلكم في بطولة {tournament?.Name}.", "system");
             
-            // Lightweight System Event
+            // Lightweight System Event for backward compatibility
             await _notifier.SendSystemEventAsync("PAYMENT_APPROVED", new { TournamentId = tournamentId, TeamId = teamId }, $"user:{team.CaptainId}");
+        }
+
+        // Real-time Event - Emit FULL Tournament with updated registrations
+        if (tournament != null)
+        {
+            var tournamentDto = _mapper.Map<TournamentDto>(tournament);
+            await _notifier.SendRegistrationApprovedAsync(tournamentDto);
         }
 
         // Check if tournament is now full with approved teams - auto-generate matches
@@ -330,7 +345,7 @@ public class TournamentService : ITournamentService
         tournament.Status = "active";
         await _tournamentRepository.UpdateAsync(tournament);
 
-        await _analyticsService.LogActivityAsync("Matches Auto-Generated", $"Generated {matchNumber} matches for Tournament {tournament.Name}", null, "System");
+        await _analyticsService.LogActivityAsync("توليد مباريات تلقائي", $"تم توليد {matchNumber} مباراة لبطولة {tournament.Name}", null, "System");
         
         // Notify all captains
         foreach (var reg in approvedRegs)
@@ -355,7 +370,7 @@ public class TournamentService : ITournamentService
         await _registrationRepository.UpdateAsync(reg);
         
         // Decrement capacity
-        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
         if (tournament != null)
         {
             tournament.CurrentTeams = Math.Max(0, tournament.CurrentTeams - 1);
@@ -366,10 +381,17 @@ public class TournamentService : ITournamentService
         var team = await _teamRepository.GetByIdAsync(teamId);
         if (team != null) 
         {
-            await _notificationService.SendNotificationAsync(team.CaptainId, "Registration Rejected", $"Your registration for {tournament?.Name} was rejected: {request.Reason}", "system");
+            await _notificationService.SendNotificationAsync(team.CaptainId, "تم رفض التسجيل", $"تم رفض تسجيلكم في بطولة {tournament?.Name}: {request.Reason}", "system");
             
-            // Lightweight System Event
+            // Lightweight System Event for backward compatibility
             await _notifier.SendSystemEventAsync("PAYMENT_REJECTED", new { TournamentId = tournamentId, TeamId = teamId, Reason = request.Reason }, $"user:{team.CaptainId}");
+        }
+
+        // Real-time Event - Emit FULL Tournament with updated registrations
+        if (tournament != null)
+        {
+            var tournamentDto = _mapper.Map<TournamentDto>(tournament);
+            await _notifier.SendRegistrationRejectedAsync(tournamentDto);
         }
 
         return _mapper.Map<TeamRegistrationDto>(reg);
@@ -474,7 +496,10 @@ public class TournamentService : ITournamentService
         tournament.Status = "active";
         await _tournamentRepository.UpdateAsync(tournament);
 
-        await _analyticsService.LogActivityAsync("Matches Generated", $"Generated {matchNumber} matches for Tournament {tournament.Name}", null, "Admin");
+        await _analyticsService.LogActivityAsync("توليد مباريات", $"تم توليد {matchNumber} مباراة لبطولة {tournament.Name}", null, "Admin");
+
+        var matchDtos = _mapper.Map<IEnumerable<MatchDto>>(matches);
+        await _notifier.SendMatchesGeneratedAsync(matchDtos);
 
         return _mapper.Map<IEnumerable<MatchDto>>(matches);
     }
