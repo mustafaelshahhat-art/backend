@@ -18,7 +18,7 @@ public class TeamService : ITeamService
     private readonly IRepository<Team> _teamRepository;
     private readonly IRepository<User> _userRepository;
     private readonly IRepository<Player> _playerRepository;
-    private readonly IRepository<Match> _matchRepository;
+    private readonly IMatchRepository _matchRepository;
     private readonly IRepository<TeamJoinRequest> _joinRequestRepository;
     private readonly IRepository<TeamRegistration> _registrationRepository;
     private readonly IRepository<Tournament> _tournamentRepository;
@@ -33,7 +33,7 @@ public class TeamService : ITeamService
         IRepository<Team> teamRepository,
         IRepository<User> userRepository,
         IRepository<Player> playerRepository,
-        IRepository<Match> matchRepository,
+        IMatchRepository matchRepository,
         IRepository<TeamJoinRequest> joinRequestRepository,
         IRepository<TeamRegistration> registrationRepository,
         IRepository<Tournament> tournamentRepository,
@@ -59,34 +59,51 @@ public class TeamService : ITeamService
         _systemSettingsService = systemSettingsService;
     }
 
-    public async Task<IEnumerable<TeamDto>> GetAllAsync()
+    public async Task<IEnumerable<TeamDto>> GetAllAsync(Guid? captainId = null, Guid? playerId = null)
     {
-        var teams = await _teamRepository.GetAllAsync(t => t.Captain!, t => t.Players);
-        var teamDtos = _mapper.Map<IEnumerable<TeamDto>>(teams).ToList();
+        IEnumerable<Team> teams;
 
-        // Fetch all finished matches once to calculate stats for all teams efficiently
-        var finishedMatches = (await _matchRepository.FindAsync(m => m.Status == Domain.Enums.MatchStatus.Finished)).ToList();
-
-        foreach (var dto in teamDtos)
+        if (captainId.HasValue)
         {
-            var stats = new TeamStatsDto();
-            var teamMatches = finishedMatches.Where(m => m.HomeTeamId == dto.Id || m.AwayTeamId == dto.Id);
+            teams = await _teamRepository.FindAsync(t => t.CaptainId == captainId.Value, new[] { "Captain", "Players" });
+        }
+        else if (playerId.HasValue)
+        {
+            teams = await _teamRepository.FindAsync(t => t.Players.Any(p => p.UserId == playerId.Value), new[] { "Captain", "Players" });
+        }
+        else
+        {
+            teams = await _teamRepository.GetAllAsync(t => t.Captain!, t => t.Players);
+        }
 
-            foreach (var match in teamMatches)
-            {
-                stats.Matches++;
-                bool isHome = match.HomeTeamId == dto.Id;
-                int teamScore = isHome ? match.HomeScore : match.AwayScore;
-                int opponentScore = isHome ? match.AwayScore : match.HomeScore;
+        var teamDtos = _mapper.Map<IEnumerable<TeamDto>>(teams).ToList();
+        
+        // OPTIMIZED STATS CALCULATION: Fetch lightweight DTOs instead of full entities
+        var finishedMatches = (await _matchRepository.GetFinishedMatchOutcomesAsync()).ToList();
 
-                stats.GoalsFor += teamScore;
-                stats.GoalsAgainst += opponentScore;
+        if (finishedMatches.Any()) 
+        {
+             foreach (var dto in teamDtos)
+             {
+                 var stats = new TeamStatsDto();
+                 var teamMatches = finishedMatches.Where(m => m.HomeTeamId == dto.Id || m.AwayTeamId == dto.Id);
 
-                if (teamScore > opponentScore) stats.Wins++;
-                else if (teamScore == opponentScore) stats.Draws++;
-                else stats.Losses++;
-            }
-            dto.Stats = stats;
+                 foreach (var match in teamMatches)
+                 {
+                     stats.Matches++;
+                     bool isHome = match.HomeTeamId == dto.Id;
+                     int teamScore = isHome ? match.HomeScore : match.AwayScore;
+                     int opponentScore = isHome ? match.AwayScore : match.HomeScore;
+
+                     stats.GoalsFor += teamScore;
+                     stats.GoalsAgainst += opponentScore;
+
+                     if (teamScore > opponentScore) stats.Wins++;
+                     else if (teamScore == opponentScore) stats.Draws++;
+                     else stats.Losses++;
+                 }
+                 dto.Stats = stats;
+             }
         }
 
         return teamDtos;
@@ -157,10 +174,9 @@ public class TeamService : ITeamService
 
         var teamDto = _mapper.Map<TeamDto>(team);
 
-        // Calculate stats from matches efficiently
-        var finishedMatches = await _matchRepository.FindAsync(m => 
-            (m.HomeTeamId == id || m.AwayTeamId == id) && 
-            m.Status == Domain.Enums.MatchStatus.Finished);
+        // OPTIMIZED STATS: Fetch lightweight DTOs
+        var finishedMatches = (await _matchRepository.GetFinishedMatchOutcomesAsync())
+            .Where(m => m.HomeTeamId == id || m.AwayTeamId == id); // In-memory filter on lightweight list
 
         var stats = new TeamStatsDto();
         foreach (var match in finishedMatches)
@@ -378,19 +394,17 @@ public class TeamService : ITeamService
 
     public async Task<IEnumerable<JoinRequestDto>> GetJoinRequestsAsync(Guid teamId)
     {
-        var requests = await _joinRequestRepository.FindAsync(r => r.TeamId == teamId);
-        // Need to load user for name mapping?
-        // Mapping loop manually or mapper.
+        // Eager load User to avoid N+1 problem
+        var requests = await _joinRequestRepository.FindAsync(r => r.TeamId == teamId, new[] { "User" });
+        
         var dtos = new List<JoinRequestDto>();
         foreach (var r in requests)
         {
-             // inefficient N+1 but ok for MVP
-             var u = await _userRepository.GetByIdAsync(r.UserId);
              dtos.Add(new JoinRequestDto
              {
                  Id = r.Id,
                  PlayerId = r.UserId,
-                 PlayerName = u?.Name ?? "Unknown",
+                 PlayerName = r.User?.Name ?? "Unknown",
                  Status = r.Status,
                  RequestDate = r.CreatedAt,
                  InitiatedByPlayer = r.InitiatedByPlayer

@@ -7,7 +7,7 @@ namespace Application.Interfaces;
 
 public interface ITeamService
 {
-    Task<IEnumerable<TeamDto>> GetAllAsync();
+    Task<IEnumerable<TeamDto>> GetAllAsync(Guid? captainId = null, Guid? playerId = null);
     Task<TeamDto?> GetByIdAsync(Guid id);
     Task<TeamDto> CreateAsync(CreateTeamRequest request, Guid captainId);
     Task<TeamDto> UpdateAsync(Guid id, UpdateTeamRequest request);

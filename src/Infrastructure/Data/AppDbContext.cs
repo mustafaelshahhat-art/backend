@@ -110,30 +110,56 @@ public class AppDbContext : DbContext
         // Tournament precision
         modelBuilder.Entity<Tournament>().Property(t => t.EntryFee).HasPrecision(18, 2);
 
-        // Soft Delete filter for User
-        modelBuilder.Entity<User>().HasQueryFilter(u => u.Status != UserStatus.Suspended); // Or use a separate IsDeleted flag?
-        // Requirement says "Use soft delete for Users". Usually implies an IsDeleted flag.
-        // But status "Suspended" might be different. 
-        // I'll add IsDeleted property to User entity via shadow property or explicit if needed.
-        // Requirement: "Use soft delete for Users".
-        // I will stick to Status for logic, but for "Soft Delete" usually it means physically keeping the record but filtering it out.
-        // I'll add IsDeleted to BaseEntity or User? BaseEntity is common.
-        // Let's add IsDeleted to BaseEntity to be safe/standard
-        // Re-reading entities: BaseEntity has Id, CreatedAt, UpdatedAt.
-        // I'll add IsDeleted shadow property to User instead. Or explicit field.
-        // I'll assume UserStatus.Suspended IS the soft delete equivalent or I should separate it.
-        // "Delete user (or deactivate)" in contract implies soft delete.
-        // I'll use a shadow property "IsDeleted" for User.
+        // Soft Delete Configuration & Propagation
+        
+        // 1. User
         modelBuilder.Entity<User>().Property<bool>("IsDeleted");
         modelBuilder.Entity<User>().HasQueryFilter(u => !EF.Property<bool>(u, "IsDeleted"));
 
-        // Soft Delete for Team
+        // 2. Team (Principal: User/Captain)
         modelBuilder.Entity<Team>().Property<bool>("IsDeleted");
-        modelBuilder.Entity<Team>().HasQueryFilter(t => !EF.Property<bool>(t, "IsDeleted"));
+        modelBuilder.Entity<Team>().HasQueryFilter(t => 
+            !EF.Property<bool>(t, "IsDeleted") && 
+            !EF.Property<bool>(t.Captain, "IsDeleted"));
 
-        // Soft Delete for Player
+        // 3. Player (Principal: Team)
         modelBuilder.Entity<Player>().Property<bool>("IsDeleted");
-        modelBuilder.Entity<Player>().HasQueryFilter(p => !EF.Property<bool>(p, "IsDeleted"));
+        modelBuilder.Entity<Player>().HasQueryFilter(p => 
+            !EF.Property<bool>(p, "IsDeleted") && 
+            !EF.Property<bool>(p.Team, "IsDeleted"));
+
+        // 4. Match (Principals: HomeTeam, AwayTeam)
+        // Match does not have its own IsDeleted, but relies on Teams
+        modelBuilder.Entity<Match>().HasQueryFilter(m => 
+            !EF.Property<bool>(m.HomeTeam, "IsDeleted") && 
+            !EF.Property<bool>(m.AwayTeam, "IsDeleted"));
+
+        // 5. TeamRegistration (Principal: Team)
+        modelBuilder.Entity<TeamRegistration>().HasQueryFilter(tr => 
+            !EF.Property<bool>(tr.Team, "IsDeleted"));
+
+        // 6. Objection (Principal: Team)
+        modelBuilder.Entity<Objection>().HasQueryFilter(o => 
+            !EF.Property<bool>(o.Team, "IsDeleted"));
+
+        // 7. TeamJoinRequest (Principals: Team, User)
+        modelBuilder.Entity<TeamJoinRequest>().HasQueryFilter(r => 
+            !EF.Property<bool>(r.Team, "IsDeleted") && 
+            !EF.Property<bool>(r.User, "IsDeleted"));
+
+        // 8. Notification (Principal: User)
+        modelBuilder.Entity<Notification>().HasQueryFilter(n => 
+            !EF.Property<bool>(n.User, "IsDeleted"));
+
+        // 9. MatchEvent (Principal: Match -> Teams)
+        modelBuilder.Entity<MatchEvent>().HasQueryFilter(me => 
+            !EF.Property<bool>(me.Match.HomeTeam, "IsDeleted") && 
+            !EF.Property<bool>(me.Match.AwayTeam, "IsDeleted"));
+
+        // 10. MatchMessage (Principal: Match -> Teams)
+        modelBuilder.Entity<MatchMessage>().HasQueryFilter(mm => 
+            !EF.Property<bool>(mm.Match.HomeTeam, "IsDeleted") && 
+            !EF.Property<bool>(mm.Match.AwayTeam, "IsDeleted"));
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

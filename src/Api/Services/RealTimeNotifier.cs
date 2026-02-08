@@ -6,16 +6,19 @@ using Api.Hubs;
 using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 
 namespace Api.Services;
 
 public class RealTimeNotifier : IRealTimeNotifier
 {
     private readonly IHubContext<NotificationHub> _hubContext;
+    private readonly ILogger<RealTimeNotifier> _logger;
 
-    public RealTimeNotifier(IHubContext<NotificationHub> hubContext)
+    public RealTimeNotifier(IHubContext<NotificationHub> hubContext, ILogger<RealTimeNotifier> logger)
     {
         _hubContext = hubContext;
+        _logger = logger;
     }
 
     public async Task SafeSendNotificationAsync(Guid userId, Notification notification)
@@ -28,7 +31,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         catch (Exception ex)
         {
             // Log error but don't fail the operation
-            Console.WriteLine($"Error sending real-time notification: {ex.Message}");
+            _logger.LogError(ex, "Error sending real-time notification");
         }
     }
 
@@ -40,7 +43,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending account status update: {ex.Message}");
+            _logger.LogError(ex, "Error sending account status update");
         }
     }
 
@@ -52,7 +55,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending removed from team notification: {ex.Message}");
+            _logger.LogError(ex, "Error sending removed from team notification");
         }
     }
 
@@ -65,7 +68,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending team deleted notification: {ex.Message}");
+            _logger.LogError(ex, "Error sending team deleted notification");
         }
     }
 
@@ -77,7 +80,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending match update: {ex.Message}");
+            _logger.LogError(ex, "Error sending match update");
         }
     }
 
@@ -89,7 +92,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-             Console.WriteLine($"Error sending match created: {ex.Message}");
+             _logger.LogError(ex, "Error sending match created");
         }
     }
 
@@ -101,7 +104,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending matches generated: {ex.Message}");
+            _logger.LogError(ex, "Error sending matches generated");
         }
     }
 
@@ -113,7 +116,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending match deleted: {ex.Message}");
+            _logger.LogError(ex, "Error sending match deleted");
         }
     }
 
@@ -125,7 +128,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending tournament update: {ex.Message}");
+            _logger.LogError(ex, "Error sending tournament update");
         }
     }
 
@@ -137,7 +140,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending tournament created: {ex.Message}");
+            _logger.LogError(ex, "Error sending tournament created");
         }
     }
 
@@ -149,7 +152,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending tournament deleted: {ex.Message}");
+            _logger.LogError(ex, "Error sending tournament deleted");
         }
     }
 
@@ -161,7 +164,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending user update: {ex.Message}");
+            _logger.LogError(ex, "Error sending user update");
         }
     }
 
@@ -174,7 +177,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending user created: {ex.Message}");
+            _logger.LogError(ex, "Error sending user created");
         }
     }
 
@@ -186,7 +189,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending user deleted: {ex.Message}");
+            _logger.LogError(ex, "Error sending user deleted");
         }
     }
 
@@ -198,7 +201,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending team created: {ex.Message}");
+            _logger.LogError(ex, "Error sending team created");
         }
     }
 
@@ -210,7 +213,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending team updated: {ex.Message}");
+            _logger.LogError(ex, "Error sending team updated");
         }
     }
     
@@ -223,7 +226,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending team deleted (global): {ex.Message}");
+            _logger.LogError(ex, "Error sending team deleted (global)");
         }
     }
 
@@ -235,7 +238,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending registration updated: {ex.Message}");
+            _logger.LogError(ex, "Error sending registration updated");
         }
     }
 
@@ -247,7 +250,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending registration approved: {ex.Message}");
+            _logger.LogError(ex, "Error sending registration approved");
         }
     }
 
@@ -259,7 +262,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending registration rejected: {ex.Message}");
+            _logger.LogError(ex, "Error sending registration rejected");
         }
     }
 
@@ -271,7 +274,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending objection submitted: {ex.Message}");
+            _logger.LogError(ex, "Error sending objection submitted");
         }
     }
 
@@ -283,7 +286,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending objection resolved: {ex.Message}");
+            _logger.LogError(ex, "Error sending objection resolved");
         }
     }
 
@@ -303,7 +306,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending system event: {ex.Message}");
+            _logger.LogError(ex, "Error sending system event");
         }
     }
 }

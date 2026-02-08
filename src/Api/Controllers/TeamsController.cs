@@ -20,9 +20,9 @@ public class TeamsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<TeamDto>>> GetAll()
+    public async Task<ActionResult<IEnumerable<TeamDto>>> GetAll([FromQuery] Guid? captainId, [FromQuery] Guid? playerId)
     {
-        var teams = await _teamService.GetAllAsync();
+        var teams = await _teamService.GetAllAsync(captainId, playerId);
         return Ok(teams);
     }
 
