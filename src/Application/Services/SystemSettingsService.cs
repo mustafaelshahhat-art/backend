@@ -33,7 +33,7 @@ public class SystemSettingsService : ISystemSettingsService
     {
         var settings = await GetOrCreateSettingsAsync();
 
-        var logMsg = $"[{DateTime.Now}] Updating Settings. ID: {settings.Id}, New Team={dto.AllowTeamCreation}, New Maint={dto.MaintenanceMode}{Environment.NewLine}";
+        var logMsg = $"[{DateTime.UtcNow}] Updating Settings. ID: {settings.Id}, New Team={dto.AllowTeamCreation}, New Maint={dto.MaintenanceMode}{Environment.NewLine}";
         System.IO.File.AppendAllText("settings_debug.log", logMsg);
 
         settings.AllowTeamCreation = dto.AllowTeamCreation;

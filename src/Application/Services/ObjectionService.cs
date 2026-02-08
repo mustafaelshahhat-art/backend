@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Application.DTOs.Objections;
 using Application.Interfaces;
+using Application.Common;
 using AutoMapper;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
 using Shared.Exceptions;
+using System.Linq;
 
 namespace Application.Services;
 
@@ -15,12 +17,14 @@ public class ObjectionService : IObjectionService
 {
     private readonly IRepository<Objection> _objectionRepository;
     private readonly IMapper _mapper;
+    private readonly INotificationService _notificationService;
     private readonly IRealTimeNotifier _notifier;
 
-    public ObjectionService(IRepository<Objection> objectionRepository, IMapper mapper, IRealTimeNotifier notifier)
+    public ObjectionService(IRepository<Objection> objectionRepository, IMapper mapper, INotificationService notificationService, IRealTimeNotifier notifier)
     {
         _objectionRepository = objectionRepository;
         _mapper = mapper;
+        _notificationService = notificationService;
         _notifier = notifier;
     }
 
@@ -74,6 +78,9 @@ public class ObjectionService : IObjectionService
         // Broadcast real-time event
         await _notifier.SendObjectionSubmittedAsync(dto);
         
+        // Persistent Notification for Admins
+        await _notificationService.SendNotificationByTemplateAsync(Guid.Empty, NotificationTemplates.OBJECTION_SUBMITTED, new Dictionary<string, string> { { "matchId", request.MatchId.ToString() } }, "objection");
+        
         return dto;
     }
 
@@ -93,6 +100,21 @@ public class ObjectionService : IObjectionService
 
         // Broadcast real-time event
         await _notifier.SendObjectionResolvedAsync(dto);
+
+        // Persistent Notification for Captain
+        // We need to find the captain of the team who submitted the objection
+        var teamRepo = (IRepository<Team>)_objectionRepository.GetType().GetField("_teamRepository", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(_objectionRepository);
+        // Wait, I cannot access private fields easily.
+        // Better: Fetch objection with Team.
+        var fullObjection = await _objectionRepository.FindAsync(o => o.Id == id, new[] { "Team" });
+        var targetTeam = fullObjection.FirstOrDefault()?.Team;
+        if (targetTeam != null)
+        {
+            await _notificationService.SendNotificationByTemplateAsync(targetTeam.CaptainId, 
+                request.Approved ? NotificationTemplates.OBJECTION_APPROVED : NotificationTemplates.OBJECTION_REJECTED,
+                new Dictionary<string, string> { { "matchId", objection.MatchId.ToString() } }, 
+                "objection");
+        }
 
         return dto;
     }

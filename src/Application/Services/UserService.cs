@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Application.DTOs.Users;
 using Application.Interfaces;
+using Application.Common;
 using AutoMapper;
 using Domain.Entities;
 using Domain.Enums;
@@ -18,6 +19,7 @@ public class UserService : IUserService
     private readonly IRepository<Team> _teamRepository;
     private readonly IMapper _mapper;
     private readonly IRealTimeNotifier _realTimeNotifier;
+    private readonly INotificationService _notificationService;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IAnalyticsService _analyticsService;
     private readonly ISystemSettingsService _systemSettingsService;
@@ -28,6 +30,7 @@ public class UserService : IUserService
         IRepository<Team> teamRepository,
         IMapper mapper,
         IRealTimeNotifier realTimeNotifier,
+        INotificationService notificationService,
         IPasswordHasher passwordHasher,
         IAnalyticsService analyticsService,
         ISystemSettingsService systemSettingsService)
@@ -37,6 +40,7 @@ public class UserService : IUserService
         _teamRepository = teamRepository;
         _mapper = mapper;
         _realTimeNotifier = realTimeNotifier;
+        _notificationService = notificationService;
         _passwordHasher = passwordHasher;
         _analyticsService = analyticsService;
         _systemSettingsService = systemSettingsService;
@@ -141,6 +145,9 @@ public class UserService : IUserService
         await _userRepository.UpdateAsync(user);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Suspended.ToString());
         
+        // Persistent Notification
+        await _notificationService.SendNotificationByTemplateAsync(id, NotificationTemplates.ACCOUNT_SUSPENDED);
+        
         // Full Update for Lists
         var dto = _mapper.Map<UserDto>(user);
         await _realTimeNotifier.SendUserUpdatedAsync(dto);
@@ -157,6 +164,9 @@ public class UserService : IUserService
         user.Status = UserStatus.Active;
         await _userRepository.UpdateAsync(user);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Active.ToString());
+
+        // Persistent Notification
+        await _notificationService.SendNotificationByTemplateAsync(id, NotificationTemplates.ACCOUNT_APPROVED);
 
         // Full Update for Lists
         var dto = _mapper.Map<UserDto>(user);

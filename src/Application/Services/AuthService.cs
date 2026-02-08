@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Application.DTOs.Auth;
 using Application.Interfaces;
+using Application.Common;
 using Domain.Entities;
 using Domain.Interfaces;
 using Shared.Exceptions;
@@ -9,6 +10,7 @@ using Domain.Enums;
 using AutoMapper;
 using System.Linq;
 using Application.DTOs.Users;
+using System.Collections.Generic;
 
 namespace Application.Services;
 
@@ -20,6 +22,7 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IMapper _mapper;
     private readonly IAnalyticsService _analyticsService;
+    private readonly INotificationService _notificationService;
     private readonly IRealTimeNotifier _notifier;
 
     public AuthService(
@@ -29,6 +32,7 @@ public class AuthService : IAuthService
         IPasswordHasher passwordHasher, 
         IMapper mapper, 
         IAnalyticsService analyticsService,
+        INotificationService notificationService,
         IRealTimeNotifier notifier)
     {
         _userRepository = userRepository;
@@ -37,6 +41,7 @@ public class AuthService : IAuthService
         _passwordHasher = passwordHasher;
         _mapper = mapper;
         _analyticsService = analyticsService;
+        _notificationService = notificationService;
         _notifier = notifier;
     }
 
@@ -98,6 +103,13 @@ public class AuthService : IAuthService
 
         // Real-time Event - Notify Admins/Users list
         await _notifier.SendUserCreatedAsync(mappedUser);
+
+        // Persistent Notification for Admins
+        await _notificationService.SendNotificationByTemplateAsync(Guid.Empty, NotificationTemplates.ADMIN_NEW_USER_REGISTERED, new Dictionary<string, string> 
+        { 
+            { "name", user.Name },
+            { "role", user.Role.ToString() }
+        });
 
         return new AuthResponse
         {

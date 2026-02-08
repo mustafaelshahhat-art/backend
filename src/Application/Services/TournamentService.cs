@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Application.DTOs.Tournaments;
 using Application.DTOs.Matches;
 using Application.Interfaces;
+using Application.Common;
 using AutoMapper;
 using Domain.Entities;
 using Domain.Enums;
@@ -325,8 +326,11 @@ public class TournamentService : ITournamentService
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
         if (team != null) 
         {
-            await _notificationService.SendNotificationAsync(team.CaptainId, "تمت الموافقة على التسجيل", $"تمت الموافقة على تسجيلكم في بطولة {tournament?.Name}.", "system");
+            await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.TEAM_APPROVED, new Dictionary<string, string> { { "tournamentName", tournament?.Name ?? "البطولة" } }, "system");
             
+            // Persistent Notification for Payment Success (Optional but good)
+            await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.PAYMENT_APPROVED, new Dictionary<string, string> { { "tournamentName", tournament?.Name ?? "البطولة" } }, "payment");
+
             // Lightweight System Event for backward compatibility
             await _notifier.SendSystemEventAsync("PAYMENT_APPROVED", new { TournamentId = tournamentId, TeamId = teamId }, $"user:{team.CaptainId}");
         }
@@ -412,7 +416,7 @@ public class TournamentService : ITournamentService
             var t = await _teamRepository.GetByIdAsync(reg.TeamId);
             if (t != null)
             {
-                await _notificationService.SendNotificationAsync(t.CaptainId, "جدول المباريات جاهز!", $"تم توليد جدول المباريات لبطولة {tournament.Name}. تحقق من المباريات القادمة.", "tournament");
+                await _notificationService.SendNotificationByTemplateAsync(t.CaptainId, NotificationTemplates.TOURNAMENT_MATCHES_READY, new Dictionary<string, string> { { "tournamentName", tournament.Name } }, "tournament");
             }
         }
     }
@@ -440,7 +444,7 @@ public class TournamentService : ITournamentService
         var team = await _teamRepository.GetByIdAsync(teamId);
         if (team != null) 
         {
-            await _notificationService.SendNotificationAsync(team.CaptainId, "تم رفض التسجيل", $"تم رفض تسجيلكم في بطولة {tournament?.Name}: {request.Reason}", "system");
+            await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.TEAM_REJECTED, new Dictionary<string, string> { { "tournamentName", tournament?.Name ?? "البطولة" }, { "reason", request.Reason } }, "system");
             
             // Lightweight System Event for backward compatibility
             await _notifier.SendSystemEventAsync("PAYMENT_REJECTED", new { TournamentId = tournamentId, TeamId = teamId, Reason = request.Reason }, $"user:{team.CaptainId}");
@@ -709,7 +713,7 @@ public class TournamentService : ITournamentService
         // Notify Captain
         if (team != null)
         {
-            await _notificationService.SendNotificationAsync(team.CaptainId, "تم إقصاء الفريق من البطولة", $"للأسف، تم إقصاء فريقكم {team.Name} من بطولة {tournament.Name} من قبل اللجنة المنظمة. نأمل رؤيتكم في بطولات قادمة.", "tournament_elimination");
+            await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.TOURNAMENT_ELIMINATED, new Dictionary<string, string> { { "teamName", team.Name }, { "tournamentName", tournament.Name } }, "tournament_elimination");
         }
 
         // Real-time update

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Application.Interfaces;
+using Application.Common;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
@@ -69,6 +70,12 @@ public class NotificationService : INotificationService
         
         // Lightweight System Event
         await _notifier.SendSystemEventAsync("NOTIFICATION_CREATED", new { UserId = userId, NotificationId = notification.Id }, $"user:{userId}");
+    }
+
+    public async Task SendNotificationByTemplateAsync(Guid userId, string templateKey, Dictionary<string, string> placeholders = null, string type = "system")
+    {
+        var (title, message) = NotificationTemplates.GetTemplate(templateKey, placeholders);
+        await SendNotificationAsync(userId, title, message, type);
     }
 
     public async Task<IEnumerable<Notification>> GetUserNotificationsAsync(Guid userId)

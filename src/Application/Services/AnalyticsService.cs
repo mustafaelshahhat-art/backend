@@ -94,19 +94,14 @@ public class AnalyticsService : IAnalyticsService
         // Sort DESC
         var sorted = activities.OrderByDescending(a => a.CreatedAt).Take(20);
         
-        var dtos = new List<ActivityDto>();
-        foreach (var a in sorted)
+        return sorted.Select(a => new ActivityDto
         {
-            dtos.Add(new ActivityDto
-            {
-                Type = a.Type,
-                Message = a.Message,
-                Timestamp = a.CreatedAt,
-                Time = FormatTime(a.CreatedAt),
-                UserName = a.UserName
-            });
-        }
-        return dtos;
+            Type = a.Type,
+            Message = a.Message,
+            Timestamp = a.CreatedAt,
+            Time = "", // Deprecated, frontend will use Timestamp with pipe
+            UserName = a.UserName
+        });
     }
 
     public async Task LogActivityAsync(string type, string message, Guid? userId = null, string? userName = null)
@@ -119,14 +114,6 @@ public class AnalyticsService : IAnalyticsService
             UserName = userName
         };
         await _activityRepository.AddAsync(activity);
-    }
-    
-    private string FormatTime(DateTime timestamp)
-    {
-        var diff = DateTime.UtcNow - timestamp;
-        if (diff.TotalMinutes < 60) return $"منذ {(int)diff.TotalMinutes} دقيقة";
-        if (diff.TotalHours < 24) return $"منذ {(int)diff.TotalHours} ساعة";
-        return $"منذ {(int)diff.TotalDays} يوم";
     }
 }
 

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Application.DTOs.Teams;
 using Application.DTOs.Users;
 using Application.Interfaces;
+using Application.Common;
 using AutoMapper;
 using Domain.Entities;
 using Domain.Interfaces;
@@ -164,7 +165,7 @@ public class TeamService : ITeamService
         }
 
         // 5. Notify Captain
-        await _notificationService.SendNotificationAsync(team.CaptainId, "تم تعطيل الفريق", "تم تعطيل فريقك من قبل الإدارة وسحب جميع نتائجه القادمة.", "team_disabled");
+        await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.ACCOUNT_SUSPENDED, null, "team_disabled");
     }
 
     public async Task<TeamDto?> GetByIdAsync(Guid id)
@@ -373,7 +374,7 @@ public class TeamService : ITeamService
         var team = await _teamRepository.GetByIdAsync(teamId);
         if (team != null)
         {
-            await _notificationService.SendNotificationAsync(team.CaptainId, "طلب انضمام جديد", $"يرغب اللاعب {user.Name} في الانضمام لفريقك.", "join_request");
+            await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.JOIN_REQUEST_RECEIVED, new Dictionary<string, string> { { "playerName", user.Name } }, "join_request");
         }
 
         var result = new JoinRequestDto
@@ -455,9 +456,9 @@ public class TeamService : ITeamService
         user = await _userRepository.GetByIdAsync(request.UserId);
 
         // Notify player
-        await _notificationService.SendNotificationAsync(request.UserId, 
-            approve ? "تم قبول طلب الانضمام" : "تم رفض طلب الانضمام",
-            approve ? $"لقد وافق فريق {team?.Name} على طلب انضمامك." : $"لقد رفض فريق {team?.Name} طلب انضمامك.",
+        await _notificationService.SendNotificationByTemplateAsync(request.UserId, 
+            approve ? NotificationTemplates.PLAYER_JOINED_TEAM : NotificationTemplates.JOIN_REQUEST_REJECTED,
+            new Dictionary<string, string> { { "teamName", team?.Name ?? "الفريق" } },
             approve ? "join_accepted" : "join_rejected");
 
          // Helper to return DTO
@@ -508,7 +509,7 @@ public class TeamService : ITeamService
         await _joinRequestRepository.AddAsync(joinRequest);
 
         // 5. Notify Player
-        await _notificationService.SendNotificationAsync(user.Id, "دعوة للانضمام لفريق", $"لقد دعاك فريق {team.Name} للانضمام إليه.", "invite");
+        await _notificationService.SendNotificationByTemplateAsync(user.Id, NotificationTemplates.INVITE_RECEIVED, new Dictionary<string, string> { { "teamName", team.Name } }, "invite");
 
         return new JoinRequestDto
         {
@@ -555,7 +556,7 @@ public class TeamService : ITeamService
         // 3. Notify Captain
         if (request.Team != null)
         {
-            await _notificationService.SendNotificationAsync(request.Team.CaptainId, "تم قبول الدعوة", $"لقد قبل اللاعب {user.Name} دعوتك للانضمام للفريق.", "invite_accepted");
+            await _notificationService.SendNotificationByTemplateAsync(request.Team.CaptainId, NotificationTemplates.INVITE_ACCEPTED, new Dictionary<string, string> { { "playerName", user.Name } }, "invite_accepted");
         }
 
         return new JoinRequestDto
@@ -584,7 +585,7 @@ public class TeamService : ITeamService
         if (request.Team != null)
         {
             var user = await _userRepository.GetByIdAsync(userId);
-            await _notificationService.SendNotificationAsync(request.Team.CaptainId, "تم رفض الدعوة", $"لقد رفض اللاعب {user?.Name ?? "مجهول"} دعوتك للانضمام للفريق.", "invite_rejected");
+            await _notificationService.SendNotificationByTemplateAsync(request.Team.CaptainId, NotificationTemplates.INVITE_REJECTED, new Dictionary<string, string> { { "playerName", user?.Name ?? "اللاعب" } }, "invite_rejected");
         }
 
         return new JoinRequestDto
@@ -670,6 +671,9 @@ public class TeamService : ITeamService
 
                     // Send real-time notification to the removed player
                     await _realTimeNotifier.SendRemovedFromTeamAsync(userId, teamId, playerId);
+                    
+                    // Persistent Notification
+                    await _notificationService.SendNotificationByTemplateAsync(userId, NotificationTemplates.PLAYER_REMOVED, new Dictionary<string, string> { { "teamName", team?.Name ?? "الفريق" } }, "team_removal");
                 }
             }
 

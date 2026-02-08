@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Application.DTOs.Matches;
 using Application.Interfaces;
+using Application.Common;
 using AutoMapper;
 using Domain.Entities;
 using Domain.Enums;
@@ -83,8 +84,8 @@ public class MatchService : IMatchService
         var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
         var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
 
-        if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "بدأت المباراة", $"بدأت مباراتكم ضد {awayTeam?.Name ?? "الخصم"}.", "match");
-        if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "بدأت المباراة", $"بدأت مباراتكم ضد {homeTeam?.Name ?? "الخصم"}.", "match");
+        if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_STARTED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" } }, "match");
+        if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_STARTED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" } }, "match");
 
         var matchDto = _mapper.Map<MatchDto>(match);
         await _notifier.SendMatchUpdatedAsync(matchDto);
@@ -107,8 +108,8 @@ public class MatchService : IMatchService
         var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
         var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
 
-        if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "انتهت المباراة", $"انتهت المباراة. النتيجة: {match.HomeScore}-{match.AwayScore}", "match");
-        if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "انتهت المباراة", $"انتهت المباراة. النتيجة: {match.HomeScore}-{match.AwayScore}", "match");
+        if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_ENDED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "score", $"{match.HomeScore}-{match.AwayScore}" } }, "match");
+        if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_ENDED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "score", $"{match.HomeScore}-{match.AwayScore}" } }, "match");
 
         // Trigger Lifecycle check
         await _lifecycleService.CheckAndFinalizeTournamentAsync(match.TournamentId);
@@ -159,9 +160,13 @@ public class MatchService : IMatchService
         // Notify
         var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
         var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
-        if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "حدث جديد", "تم تحديث أحداث المباراة", "match");
-        if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "حدث جديد", "تم تحديث أحداث المباراة", "match");
-        if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationAsync(match.RefereeId.Value, "حدث جديد", "تم تحديث أحداث المباراة", "match");
+        string eventLabel = eventType == MatchEventType.Goal ? "هدف" : eventType == MatchEventType.YellowCard ? "بطاقة صفراء" : "بطاقة حمراء";
+        
+        var placeholders = new Dictionary<string, string> { { "eventType", eventLabel } };
+        
+        if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
+        if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
+        if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationByTemplateAsync(match.RefereeId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
 
         var matchDto = _mapper.Map<MatchDto>(match);
         await _notifier.SendMatchUpdatedAsync(matchDto);
@@ -193,9 +198,10 @@ public class MatchService : IMatchService
         // Notify
         var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
         var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
-        if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "تحديث أحداث", "تم تحديث أحداث المباراة", "match");
-        if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "تحديث أحداث", "تم تحديث أحداث المباراة", "match");
-        if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationAsync(match.RefereeId.Value, "تحديث أحداث", "تم تحديث أحداث المباراة", "match");
+        var placeholders = new Dictionary<string, string> { { "eventType", "تعديل في الأحداث" } };
+        if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
+        if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
+        if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationByTemplateAsync(match.RefereeId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
 
         // Refresh events
         var events = await _eventRepository.FindAsync(e => e.MatchId == matchId, new[] { "Player" });
@@ -251,50 +257,65 @@ public class MatchService : IMatchService
         if (scoreChanged)
         {
             await _analyticsService.LogActivityAsync("تحديث النتيجة", $"تم تحديث نتيجة المباراة {id} إلى {match.HomeScore}-{match.AwayScore}", null, "AdminOverride");
-            string msg = "تم تعديل نتيجة المباراة بواسطة الإدارة";
-            if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "تعديل نتيجة", msg, "match");
-            if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "تعديل نتيجة", msg, "match");
-            if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationAsync(match.RefereeId.Value, "تعديل نتيجة", msg, "match");
+            var scoreStr = $"{match.HomeScore}-{match.AwayScore}";
+            
+            if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, "match");
+            if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, "match");
+            if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationByTemplateAsync(match.RefereeId.Value, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", "الفريقين" }, { "score", scoreStr } }, "match");
         }
 
         // 2. Referee Change
         if (request.RefereeId.HasValue && request.RefereeId.Value != oldRefereeId)
         {
+            var placeholders = new Dictionary<string, string> { { "homeTeam", homeTeam?.Name ?? "فريق 1" }, { "awayTeam", awayTeam?.Name ?? "فريق 2" } };
+            
             if (oldRefereeId.HasValue && oldRefereeId.Value != Guid.Empty)
-                await _notificationService.SendNotificationAsync(oldRefereeId.Value, "إلغاء تعيين", "تم إلغاء تعيينك من المباراة", "match");
+                await _notificationService.SendNotificationByTemplateAsync(oldRefereeId.Value, NotificationTemplates.MATCH_REFEREE_UNASSIGNED, placeholders, "match");
             
-            await _notificationService.SendNotificationAsync(request.RefereeId.Value, "تعيين جديد", "تم تعيينك حكماً للمباراة", "match");
+            await _notificationService.SendNotificationByTemplateAsync(request.RefereeId.Value, NotificationTemplates.MATCH_REFEREE_ASSIGNED, placeholders, "match");
             
-            string msg = "تم تغيير حكم المباراة";
-            if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "تغيير الحكم", msg, "match");
-            if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "تغيير الحكم", msg, "match");
+            if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_TIME_CHANGED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "date", "تم تغيير الحكم" } }, "match");
+            if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_TIME_CHANGED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "date", "تم تغيير الحكم" } }, "match");
         }
 
         // 3. Status Changes (Postpone, Cancel, Reschedule)
         if (newStatus.HasValue && newStatus.Value != oldStatus)
         {
-            string msg = "";
+            string templateKey = "";
+            var placeholders = new Dictionary<string, string> { 
+                { "opponent", "الخصم" }, 
+                { "date", $"{match.Date:yyyy/MM/dd} {match.Date:HH:mm}" } 
+            };
+
             switch (newStatus.Value)
             {
                 case MatchStatus.Postponed:
-                    msg = $"تم تأجيل المباراة إلى {match.Date:yyyy/MM/dd} الساعة {match.Date:HH:mm}";
+                    templateKey = NotificationTemplates.MATCH_POSTPONED;
                     break;
                 case MatchStatus.Cancelled:
-                    msg = "تم إلغاء المباراة رسمياً";
+                    templateKey = NotificationTemplates.MATCH_CANCELED;
                     break;
                 case MatchStatus.Rescheduled:
-                    msg = $"سيتم إعادة المباراة يوم {match.Date:yyyy/MM/dd} الساعة {match.Date:HH:mm}";
+                    templateKey = NotificationTemplates.MATCH_TIME_CHANGED;
                     break;
             }
 
-            if (!string.IsNullOrEmpty(msg))
+            if (!string.IsNullOrEmpty(templateKey))
             {
-                if (homeTeam != null) await _notificationService.SendNotificationAsync(homeTeam.CaptainId, "تحديث حالة المباراة", msg, "match");
-                if (awayTeam != null) await _notificationService.SendNotificationAsync(awayTeam.CaptainId, "تحديث حالة المباراة", msg, "match");
-                if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationAsync(match.RefereeId.Value, "تحديث حالة المباراة", msg, "match");
+                if (homeTeam != null) {
+                    placeholders["opponent"] = awayTeam?.Name ?? "الخصم";
+                    await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, templateKey, placeholders, "match");
+                }
+                if (awayTeam != null) {
+                     placeholders["opponent"] = homeTeam?.Name ?? "الخصم";
+                     await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, templateKey, placeholders, "match");
+                }
+                if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) {
+                     placeholders["opponent"] = "الفريقين";
+                     await _notificationService.SendNotificationByTemplateAsync(match.RefereeId.Value, templateKey, placeholders, "match");
+                }
             }
-
-            // Lightweight System Events
+      // Lightweight System Events
             if (newStatus == MatchStatus.Postponed)
                 await _notifier.SendSystemEventAsync("MATCH_RESCHEDULED", new { MatchId = id, Date = match.Date }, $"match:{id}");
             else
