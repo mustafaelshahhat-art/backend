@@ -10,7 +10,7 @@ public class UserDto
     public string DisplayId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
-    public string Role { get; set; } = string.Empty; // returning string representation
+    public string Role { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string? Avatar { get; set; }
     public string? Phone { get; set; }
@@ -26,6 +26,24 @@ public class UserDto
     public bool IsTeamOwner { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<UserActivityDto> Activities { get; set; } = new();
+}
+
+/// <summary>
+/// Publicly accessible user information. No sensitive ID or contact info.
+/// </summary>
+public class UserPublicDto
+{
+    public Guid Id { get; set; }
+    public string DisplayId { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Role { get; set; } = string.Empty;
+    public string? Avatar { get; set; }
+    public string? Governorate { get; set; }
+    public string? City { get; set; }
+    public Guid? TeamId { get; set; }
+    public string? TeamName { get; set; }
+    public bool IsTeamOwner { get; set; }
+    public string Status { get; set; } = string.Empty;
 }
 
 public class UserActivityDto

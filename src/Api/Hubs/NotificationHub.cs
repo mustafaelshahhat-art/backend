@@ -27,6 +27,13 @@ public class NotificationHub : Hub
 
     public async Task SubscribeToRole(string role)
     {
+        // SECURITY FIX: Verify the user actually has the role they are trying to subscribe to.
+        // This prevents a normal user from subscribing to "Admin" notifications.
+        if (Context.User == null || !Context.User.IsInRole(role))
+        {
+            throw new HubException($"Unauthorized: You do not possess the role '{role}'.");
+        }
+
         await Groups.AddToGroupAsync(Context.ConnectionId, $"role:{role}");
     }
 

@@ -160,7 +160,21 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("UserUpdated", user);
+            // Broadcast restricted view to All to protect sensitive data (NationalID, Phone)
+            var publicView = new {
+                user.Id,
+                user.DisplayId,
+                user.Name,
+                user.Role,
+                user.Avatar,
+                user.Governorate,
+                user.City,
+                user.TeamId,
+                user.TeamName,
+                user.IsTeamOwner,
+                user.Status
+            };
+            await _hubContext.Clients.All.SendAsync("UserUpdated", publicView);
         }
         catch (Exception ex)
         {
@@ -172,8 +186,20 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            // Only admins usually see this list, but we can broadcast to All or specific Admin group
-            await _hubContext.Clients.All.SendAsync("UserCreated", user);
+            var publicView = new {
+                user.Id,
+                user.DisplayId,
+                user.Name,
+                user.Role,
+                user.Avatar,
+                user.Governorate,
+                user.City,
+                user.TeamId,
+                user.TeamName,
+                user.IsTeamOwner,
+                user.Status
+            };
+            await _hubContext.Clients.All.SendAsync("UserCreated", publicView);
         }
         catch (Exception ex)
         {
@@ -270,7 +296,14 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("ObjectionSubmitted", objection);
+            // Security: Only admins and the submitting team should know about the objection
+            await _hubContext.Clients.Group("role:Admin").SendAsync("ObjectionSubmitted", objection);
+            
+            // Notify the specific captain
+            if (objection.CaptainId != Guid.Empty)
+            {
+                await _hubContext.Clients.User(objection.CaptainId.ToString()).SendAsync("ObjectionSubmitted", objection);
+            }
         }
         catch (Exception ex)
         {
@@ -282,7 +315,13 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("ObjectionResolved", objection);
+            // Security: Broadcast resolution only to Admins and the involved captain
+            await _hubContext.Clients.Group("role:Admin").SendAsync("ObjectionResolved", objection);
+            
+            if (objection.CaptainId != Guid.Empty)
+            {
+                await _hubContext.Clients.User(objection.CaptainId.ToString()).SendAsync("ObjectionResolved", objection);
+            }
         }
         catch (Exception ex)
         {
@@ -290,7 +329,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendSystemEventAsync(string type, object metadata, string group = null)
+    public async Task SendSystemEventAsync(string type, object metadata, string? group = null)
     {
         try
         {

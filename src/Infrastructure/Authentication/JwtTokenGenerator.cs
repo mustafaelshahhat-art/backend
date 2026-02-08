@@ -32,9 +32,12 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JwtSettings:Secret"]));
+        var secret = _configuration["JwtSettings:Secret"] ?? throw new InvalidOperationException("JWT Secret is not configured.");
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        var expiry = DateTime.Now.AddMinutes(double.Parse(_configuration["JwtSettings:ExpiryMinutes"]));
+        
+        var expiryMinutesStr = _configuration["JwtSettings:ExpiryMinutes"] ?? "60";
+        var expiry = DateTime.Now.AddMinutes(double.Parse(expiryMinutesStr));
 
         var token = new JwtSecurityToken(
             issuer: _configuration["JwtSettings:Issuer"],

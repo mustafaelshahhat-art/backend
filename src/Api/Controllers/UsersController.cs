@@ -28,18 +28,38 @@ public class UsersController : ControllerBase
 
     [HttpGet("role/{role}")]
     [Authorize]
-    public async Task<ActionResult<IEnumerable<UserDto>>> GetByRole(string role)
+    public async Task<ActionResult> GetByRole(string role)
     {
-        var users = await _userService.GetByRoleAsync(role);
-        return Ok(users);
+        var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+        
+        if (userRole == "Admin")
+        {
+            var users = await _userService.GetByRoleAsync(role);
+            return Ok(users);
+        }
+        
+        // Non-admins get public/restricted view
+        var publicUsers = await _userService.GetPublicByRoleAsync(role);
+        return Ok(publicUsers);
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<UserDto>> GetById(Guid id)
+    public async Task<ActionResult> GetById(Guid id)
     {
-        var user = await _userService.GetByIdAsync(id);
-        if (user == null) return NotFound();
-        return Ok(user);
+        var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var currentUserRole = User.FindFirst(ClaimTypes.Role)?.Value;
+
+        if (currentUserId == id.ToString() || currentUserRole == "Admin")
+        {
+            var user = await _userService.GetByIdAsync(id);
+            if (user == null) return NotFound();
+            return Ok(user);
+        }
+
+        // Public view
+        var publicUser = await _userService.GetPublicByIdAsync(id);
+        if (publicUser == null) return NotFound();
+        return Ok(publicUser);
     }
 
     [HttpPatch("{id}")]

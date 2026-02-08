@@ -5,6 +5,7 @@ using Application.Interfaces;
 using Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Api.Hubs;
 
@@ -14,15 +15,18 @@ public class MatchChatHub : Hub
     private readonly IMatchMessageRepository _messageRepository;
     private readonly Domain.Interfaces.IRepository<Match> _matchRepository;
     private readonly Application.Interfaces.IUserService _userService;
+    private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
 
     public MatchChatHub(
         IMatchMessageRepository messageRepository,
         Domain.Interfaces.IRepository<Match> matchRepository,
-        Application.Interfaces.IUserService userService)
+        Application.Interfaces.IUserService userService,
+        Microsoft.Extensions.Caching.Memory.IMemoryCache cache)
     {
         _messageRepository = messageRepository;
         _matchRepository = matchRepository;
         _userService = userService;
+        _cache = cache;
     }
 
     public async Task JoinMatchGroup(string matchId)
@@ -46,18 +50,20 @@ public class MatchChatHub : Hub
         // Security Check: Verify user belongs to the match
         if (role != "Admin" && role != "Referee")
         {
-            var user = await _userService.GetByIdAsync(userId);
-            if (user == null || !user.TeamId.HasValue) return;
-
-            var matchGuid = Guid.Parse(matchId);
-            var match = await _matchRepository.GetByIdAsync(matchGuid);
-            if (match == null) return;
-
-            if (match.HomeTeamId != user.TeamId && match.AwayTeamId != user.TeamId)
+            // PERFORMANCE FIX: Cache match participant checks for 5 minutes.
+            // This prevents a DB query on every single chat message.
+            var cacheKey = $"match_access_{matchId}_{userId}";
+            
+            if (!_cache.TryGetValue(cacheKey, out bool hasAccess))
             {
-                // User is in a team but NOT one of the teams in this match. Rejected.
-                return;
+                hasAccess = await VerifyMatchAccessAsync(matchId, userId);
+                var cacheOptions = new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions()
+                    .SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
+                
+                _cache.Set(cacheKey, hasAccess, cacheOptions);
             }
+
+            if (!hasAccess) return;
         }
 
         var message = new MatchMessage
@@ -75,5 +81,19 @@ public class MatchChatHub : Hub
 
         // Broadcast to group
         await Clients.Group($"match-{matchId}").SendAsync("ReceiveMessage", message);
+    }
+
+    private async Task<bool> VerifyMatchAccessAsync(string matchId, Guid userId)
+    {
+        var user = await _userService.GetByIdAsync(userId);
+        if (user == null || !user.TeamId.HasValue) return false;
+
+        if (!Guid.TryParse(matchId, out var matchGuid)) return false;
+        
+        // Use a projection query if possible, but GetById is fine for now as we cache it.
+        var match = await _matchRepository.GetByIdAsync(matchGuid);
+        if (match == null) return false;
+
+        return match.HomeTeamId == user.TeamId || match.AwayTeamId == user.TeamId;
     }
 }

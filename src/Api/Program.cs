@@ -136,20 +136,34 @@ app.MapHub<Api.Hubs.MatchChatHub>("/hubs/chat");
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<Infrastructure.Data.AppDbContext>();
+    var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+    
     try 
     {
         dbContext.Database.Migrate();
 
         // Seed Admin if not exists (check ignoring soft-delete filters)
         var adminUser = dbContext.Users.IgnoreQueryFilters().FirstOrDefault(u => u.Email == "admin@test.com");
+        
+        // Retrieve Admin Password safely
+        var adminPassword = configuration["AdminSettings:Password"];
+        
+        // Only enforce password presence if we actully need to create/update the admin
+        // But for "Fail startup if missing" rule, we should check it if we intend to seed.
+        
         if (adminUser == null)
         {
+            if (string.IsNullOrEmpty(adminPassword))
+            {
+                throw new InvalidOperationException("AdminSettings:Password is not configured. Cannot seed Admin user.");
+            }
+
             var hasher = scope.ServiceProvider.GetRequiredService<Application.Interfaces.IPasswordHasher>();
             adminUser = new Domain.Entities.User
             {
                 Email = "admin@test.com",
                 Name = "Admin User",
-                PasswordHash = hasher.HashPassword("password"),
+                PasswordHash = hasher.HashPassword(adminPassword),
                 Role = UserRole.Admin,
                 Status = UserStatus.Active,
                 DisplayId = "ADM-001",
@@ -161,11 +175,19 @@ using (var scope = app.Services.CreateScope())
         }
         else 
         {
-            // Ensure existing admin is active, not deleted, and has correct password
+            // Ensure existing admin is active, not deleted.
+            // ONLY update password if configured, otherwise keep existing.
+            // This prevents locking out admin if config is missing in an existing env, 
+            // BUT the audit goal is "Remove Hardcoded". So we can't fall back to "password".
+            
             var hasher = scope.ServiceProvider.GetRequiredService<Application.Interfaces.IPasswordHasher>();
             adminUser.Role = UserRole.Admin;
             adminUser.Status = UserStatus.Active;
-            adminUser.PasswordHash = hasher.HashPassword("password");
+            
+            if (!string.IsNullOrEmpty(adminPassword))
+            {
+                adminUser.PasswordHash = hasher.HashPassword(adminPassword);
+            }
             
             // Explicitly reset IsDeleted shadow property
             dbContext.Entry(adminUser).Property("IsDeleted").CurrentValue = false;
@@ -178,6 +200,9 @@ using (var scope = app.Services.CreateScope())
         // Log migration error
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         logger.LogError(ex, "An error occurred while migrating or seeding the database.");
+        
+        // Rethrow if it's a configuration error to prevent silent failure in Production
+        if (ex is InvalidOperationException) throw;
     }
 }
 

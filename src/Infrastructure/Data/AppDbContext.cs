@@ -120,46 +120,59 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Team>().Property<bool>("IsDeleted");
         modelBuilder.Entity<Team>().HasQueryFilter(t => 
             !EF.Property<bool>(t, "IsDeleted") && 
-            !EF.Property<bool>(t.Captain, "IsDeleted"));
+            !EF.Property<bool>(t.Captain!, "IsDeleted"));
 
         // 3. Player (Principal: Team)
         modelBuilder.Entity<Player>().Property<bool>("IsDeleted");
         modelBuilder.Entity<Player>().HasQueryFilter(p => 
             !EF.Property<bool>(p, "IsDeleted") && 
-            !EF.Property<bool>(p.Team, "IsDeleted"));
+            !EF.Property<bool>(p.Team!, "IsDeleted"));
 
         // 4. Match (Principals: HomeTeam, AwayTeam)
         // Match does not have its own IsDeleted, but relies on Teams
         modelBuilder.Entity<Match>().HasQueryFilter(m => 
-            !EF.Property<bool>(m.HomeTeam, "IsDeleted") && 
-            !EF.Property<bool>(m.AwayTeam, "IsDeleted"));
+            !EF.Property<bool>(m.HomeTeam!, "IsDeleted") && 
+            !EF.Property<bool>(m.AwayTeam!, "IsDeleted"));
 
         // 5. TeamRegistration (Principal: Team)
         modelBuilder.Entity<TeamRegistration>().HasQueryFilter(tr => 
-            !EF.Property<bool>(tr.Team, "IsDeleted"));
+            !EF.Property<bool>(tr.Team!, "IsDeleted"));
 
         // 6. Objection (Principal: Team)
         modelBuilder.Entity<Objection>().HasQueryFilter(o => 
-            !EF.Property<bool>(o.Team, "IsDeleted"));
+            !EF.Property<bool>(o.Team!, "IsDeleted"));
 
         // 7. TeamJoinRequest (Principals: Team, User)
         modelBuilder.Entity<TeamJoinRequest>().HasQueryFilter(r => 
-            !EF.Property<bool>(r.Team, "IsDeleted") && 
-            !EF.Property<bool>(r.User, "IsDeleted"));
+            !EF.Property<bool>(r.Team!, "IsDeleted") && 
+            !EF.Property<bool>(r.User!, "IsDeleted"));
 
         // 8. Notification (Principal: User)
         modelBuilder.Entity<Notification>().HasQueryFilter(n => 
-            !EF.Property<bool>(n.User, "IsDeleted"));
+            !EF.Property<bool>(n.User!, "IsDeleted"));
 
         // 9. MatchEvent (Principal: Match -> Teams)
         modelBuilder.Entity<MatchEvent>().HasQueryFilter(me => 
-            !EF.Property<bool>(me.Match.HomeTeam, "IsDeleted") && 
-            !EF.Property<bool>(me.Match.AwayTeam, "IsDeleted"));
+            !EF.Property<bool>(me.Match!.HomeTeam!, "IsDeleted") && 
+            !EF.Property<bool>(me.Match!.AwayTeam!, "IsDeleted"));
 
         // 10. MatchMessage (Principal: Match -> Teams)
         modelBuilder.Entity<MatchMessage>().HasQueryFilter(mm => 
-            !EF.Property<bool>(mm.Match.HomeTeam, "IsDeleted") && 
-            !EF.Property<bool>(mm.Match.AwayTeam, "IsDeleted"));
+            !EF.Property<bool>(mm.Match!.HomeTeam!, "IsDeleted") && 
+            !EF.Property<bool>(mm.Match!.AwayTeam!, "IsDeleted"));
+
+        // PERFORMANCE INDEXES
+        modelBuilder.Entity<Match>()
+            .HasIndex(m => m.Date)
+            .HasDatabaseName("IX_Matches_Date");
+
+        modelBuilder.Entity<Match>()
+            .HasIndex(m => m.Status)
+            .HasDatabaseName("IX_Matches_Status");
+
+        modelBuilder.Entity<Match>()
+            .HasIndex(m => new { m.TournamentId, m.Status })
+            .HasDatabaseName("IX_Matches_Tournament_Status");
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

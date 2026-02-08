@@ -19,8 +19,13 @@ public class MappingProfile : Profile
         CreateMap<User, UserDto>()
             .ForMember(d => d.Role, o => o.MapFrom(s => s.Role.ToString()))
             .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()))
-            .ForMember(d => d.TeamName, o => o.Ignore()) // Polished in service or via custom resolver if complex
+            .ForMember(d => d.TeamName, o => o.Ignore())
             .ForMember(d => d.Activities, o => o.Ignore());
+
+        CreateMap<User, UserPublicDto>()
+            .ForMember(d => d.Role, o => o.MapFrom(s => s.Role.ToString()))
+            .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()))
+            .ForMember(d => d.TeamName, o => o.Ignore());
 
         CreateMap<Activity, UserActivityDto>();
 
@@ -64,6 +69,7 @@ public class MappingProfile : Profile
         // Objection
         CreateMap<Objection, ObjectionDto>()
             .ForMember(d => d.TeamName, o => o.MapFrom(s => s.Team != null ? s.Team.Name : string.Empty))
+            .ForMember(d => d.CaptainId, o => o.MapFrom(s => s.Team != null ? s.Team.CaptainId : Guid.Empty))
             .ForMember(d => d.CaptainName, o => o.MapFrom(s => s.Team != null && s.Team.Captain != null ? s.Team.Captain.Name : string.Empty))
             .ForMember(d => d.TournamentName, o => o.MapFrom(s => s.Match != null && s.Match.Tournament != null ? s.Match.Tournament.Name : string.Empty))
             .ForMember(d => d.Type, o => o.MapFrom(s => s.Type.ToString()))

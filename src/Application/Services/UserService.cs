@@ -176,6 +176,35 @@ public class UserService : IUserService
         return new List<UserDto>();
     }
 
+    public async Task<IEnumerable<UserPublicDto>> GetPublicByRoleAsync(string role)
+    {
+        if (Enum.TryParse<UserRole>(role, true, out var userRole))
+        {
+            if (userRole == UserRole.Admin) return new List<UserPublicDto>();
+            var users = await _userRepository.FindAsync(u => u.Role == userRole);
+            return _mapper.Map<IEnumerable<UserPublicDto>>(users);
+        }
+        return new List<UserPublicDto>();
+    }
+
+    public async Task<UserPublicDto?> GetPublicByIdAsync(Guid id)
+    {
+        var user = await _userRepository.GetByIdAsync(id);
+        if (user == null) return null;
+        var dto = _mapper.Map<UserPublicDto>(user);
+        if (user.TeamId.HasValue)
+        {
+            var team = await _teamRepository.GetByIdAsync(user.TeamId.Value);
+            if (team != null)
+            {
+                dto.TeamName = team.Name;
+                dto.IsTeamOwner = team.CaptainId == id;
+            }
+        }
+        return dto;
+    }
+
+
     /// <summary>
     /// Creates a new admin user. Role is always forced to Admin.
     /// </summary>

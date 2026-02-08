@@ -10,11 +10,13 @@ public interface IUserService
 {
     Task<IEnumerable<UserDto>> GetAllAsync();
     Task<UserDto?> GetByIdAsync(Guid id);
+    Task<UserPublicDto?> GetPublicByIdAsync(Guid id);
     Task<UserDto> UpdateAsync(Guid id, UpdateUserRequest request);
     Task DeleteAsync(Guid id);
     Task SuspendAsync(Guid id);
     Task ActivateAsync(Guid id);
     Task<IEnumerable<UserDto>> GetByRoleAsync(string role);
+    Task<IEnumerable<UserPublicDto>> GetPublicByRoleAsync(string role);
     
     /// <summary>
     /// Creates a new admin user. Only callable by existing admins.
