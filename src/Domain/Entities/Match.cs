@@ -17,6 +17,10 @@ public class Match : BaseEntity
 
     public int HomeScore { get; set; }
     public int AwayScore { get; set; }
+
+    public int? GroupId { get; set; }
+    public int? RoundNumber { get; set; } // 1 = Group Stage MD1 / R16, 2 = QF, etc.
+    public string? StageName { get; set; } // "Group Stage", "Quarter Final", "Semi Final", "Final"
     
     public MatchStatus Status { get; set; } = MatchStatus.Scheduled;
     public DateTime? Date { get; set; }

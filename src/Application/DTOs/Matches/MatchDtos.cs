@@ -15,6 +15,9 @@ public class MatchDto
     public string? AwayTeamLogoUrl { get; set; }
     public int HomeScore { get; set; }
     public int AwayScore { get; set; }
+    public int? GroupId { get; set; }
+    public int? RoundNumber { get; set; }
+    public string? StageName { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime? Date { get; set; }
     public Guid? RefereeId { get; set; }

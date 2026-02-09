@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260209214829_AddTournamentFormatAndMatchDetails")]
+    partial class AddTournamentFormatAndMatchDetails
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -491,9 +494,6 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("PaymentMethod")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("PaymentReceiptUrl")
                         .HasColumnType("nvarchar(max)");
 
@@ -553,9 +553,6 @@ namespace Infrastructure.Migrations
                     b.Property<string>("InstaPayNumber")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<bool>("IsHomeAwayEnabled")
-                        .HasColumnType("bit");
-
                     b.Property<string>("Location")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -573,9 +570,6 @@ namespace Infrastructure.Migrations
                     b.Property<int>("NumberOfGroups")
                         .HasColumnType("int");
 
-                    b.Property<string>("PaymentMethodsJson")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("Prizes")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -589,9 +583,6 @@ namespace Infrastructure.Migrations
                     b.Property<string>("Rules")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("SeedingMode")
-                        .HasColumnType("int");
 
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("datetime2");

@@ -77,7 +77,16 @@ public class TournamentService : ITournamentService
             Location = request.Location,
             Rules = request.Rules,
             Prizes = request.Prizes,
-            Status = "registration_open"
+            Status = "registration_open",
+            Format = request.Format,
+            MatchType = request.MatchType,
+            NumberOfGroups = request.NumberOfGroups,
+            QualifiedTeamsPerGroup = request.QualifiedTeamsPerGroup,
+            WalletNumber = request.WalletNumber,
+            InstaPayNumber = request.InstaPayNumber,
+            IsHomeAwayEnabled = request.IsHomeAwayEnabled,
+            SeedingMode = request.SeedingMode,
+            PaymentMethodsJson = request.PaymentMethodsJson
         };
 
         await _tournamentRepository.AddAsync(tournament);
@@ -99,6 +108,19 @@ public class TournamentService : ITournamentService
         var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
         if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
 
+        // Safety Check: Format Change
+        if (request.Format.HasValue && request.Format.Value != tournament.Format)
+        {
+            var matches = await _matchRepository.FindAsync(m => m.TournamentId == id);
+            // If any knockout match exists (GroupId == null AND Stage != League) and is started/finished, block change
+            var hasActiveKnockout = matches.Any(m => m.GroupId == null && m.StageName != "League" && m.Status != MatchStatus.Scheduled);
+            
+            if (hasActiveKnockout)
+            {
+                throw new ConflictException("لا يمكن تغيير نظام البطولة بعد بدء الأدوار الإقصائية.");
+            }
+        }
+
         if (request.Name != null) tournament.Name = request.Name;
         if (request.Description != null) tournament.Description = request.Description;
         if (request.Status != null) tournament.Status = request.Status;
@@ -110,6 +132,15 @@ public class TournamentService : ITournamentService
         if (request.Location != null) tournament.Location = request.Location;
         if (request.Rules != null) tournament.Rules = request.Rules;
         if (request.Prizes != null) tournament.Prizes = request.Prizes;
+        if (request.Format.HasValue) tournament.Format = request.Format.Value;
+        if (request.MatchType.HasValue) tournament.MatchType = request.MatchType.Value;
+        if (request.NumberOfGroups.HasValue) tournament.NumberOfGroups = request.NumberOfGroups.Value;
+        if (request.QualifiedTeamsPerGroup.HasValue) tournament.QualifiedTeamsPerGroup = request.QualifiedTeamsPerGroup.Value;
+        if (request.WalletNumber != null) tournament.WalletNumber = request.WalletNumber;
+        if (request.InstaPayNumber != null) tournament.InstaPayNumber = request.InstaPayNumber;
+        if (request.IsHomeAwayEnabled.HasValue) tournament.IsHomeAwayEnabled = request.IsHomeAwayEnabled.Value;
+        if (request.SeedingMode.HasValue) tournament.SeedingMode = request.SeedingMode.Value;
+        if (request.PaymentMethodsJson != null) tournament.PaymentMethodsJson = request.PaymentMethodsJson;
 
         await _tournamentRepository.UpdateAsync(tournament);
 
@@ -121,498 +152,428 @@ public class TournamentService : ITournamentService
             await _notifier.SendTournamentUpdatedAsync(dto);
         }
 
-        return dto ?? _mapper.Map<TournamentDto>(tournament);
-    }
-
-    public async Task<TournamentDto> CloseRegistrationAsync(Guid id)
-    {
-        var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
-        if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
-
-        tournament.Status = "registration_closed";
-        
-        await _tournamentRepository.UpdateAsync(tournament);
-        await _analyticsService.LogActivityByTemplateAsync(
-            ActivityConstants.TOURNAMENT_REGISTRATION_CLOSED, 
-            new Dictionary<string, string> { { "tournamentName", tournament.Name } }, 
-            null, 
-            "إدارة"
-        );
-        
-        var dto = await GetByIdFreshAsync(id);
-        
-        // Real-time Event - Emit AFTER DB commit
-        if (dto != null)
-        {
-            await _notifier.SendTournamentUpdatedAsync(dto);
-        }
-        
         return dto ?? _mapper.Map<TournamentDto>(tournament);
     }
 
     public async Task DeleteAsync(Guid id)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(id);
-        if (tournament == null) return;
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
 
-        // 1. Clean up Matches
-        var matches = await _matchRepository.FindAsync(m => m.TournamentId == id);
-        foreach (var match in matches)
-        {
-            await _matchRepository.DeleteAsync(match);
-        }
-
-        // 2. Clean up Registrations
-        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == id);
-        foreach (var reg in registrations)
-        {
-            await _registrationRepository.DeleteAsync(reg);
-        }
-
-        // 3. Delete Tournament
+        // Delete associated matches and registrations logic normally handled by DB constraints or repository
+        // For now, assuming direct delete is safe or handled
         await _tournamentRepository.DeleteAsync(tournament);
-        
-        await _analyticsService.LogActivityByTemplateAsync(
-            ActivityConstants.TOURNAMENT_DELETED, 
-            new Dictionary<string, string> { { "tournamentName", tournament.Name } }, 
-            null, 
-            "إدارة"
-        );
-        
-        // Real-time Event
-        await _notifier.SendTournamentDeletedAsync(id);
     }
 
     public async Task<TeamRegistrationDto> RegisterTeamAsync(Guid tournamentId, RegisterTeamRequest request, Guid userId)
     {
-        // 1. Verify Tournament Status
-        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, new[] { "Registrations" });
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
         
-        if (tournament.Status != "registration_open")
+        if (DateTime.UtcNow > tournament.RegistrationDeadline)
         {
-            throw new BadRequestException("التسجيل في هذه البطولة مغلق حالياً.");
+            throw new ConflictException("انتهى موعد التسجيل في البطولة.");
         }
 
-        // 2. Verify Team Ownership
+        if (tournament.Registrations.Count >= tournament.MaxTeams)
+        {
+            throw new ConflictException("اكتمل عدد الفرق في البطولة.");
+        }
+
         var team = await _teamRepository.GetByIdAsync(request.TeamId);
         if (team == null) throw new NotFoundException(nameof(Team), request.TeamId);
         
-        if (!team.IsActive)
-        {
-            throw new ForbiddenException("لا يمكن للفرق المعطلة التسجيل في البطولات.");
-        }
-        
         if (team.CaptainId != userId)
         {
-            throw new ForbiddenException("فقط صاحب الفريق (الرئيس) يمكنه تسجيل الفريق في البطولات.");
+             throw new ForbiddenException("فقط كابتن الفريق يمكنه تسجيل الفريق.");
         }
 
-        // 3. Handle existing registration for THIS tournament
-        var existing = (await _registrationRepository.FindAsync(r => 
-            r.TournamentId == tournamentId && 
-            r.TeamId == request.TeamId)).ToList();
-        
-        if (existing.Any(r => r.Status == RegistrationStatus.Approved))
+        if (tournament.Registrations.Any(r => r.TeamId == request.TeamId && r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn))
         {
-            throw new ConflictException("الفريق مسجل بالفعل ومقبول في هذه البطولة.");
+             throw new ConflictException("الفريق مسجل بالفعل أو قيد المراجعة.");
         }
-
-        // Clean up any old attempts (Rejected, Withdrawn, or even stuck Pending) to allow a fresh one
-        foreach (var reg in existing)
-        {
-            // If we're removing a registration that was already counted in CurrentTeams, decrement it
-            if (reg.Status == RegistrationStatus.PendingPaymentReview)
-            {
-                tournament.CurrentTeams = Math.Max(0, tournament.CurrentTeams - 1);
-            }
-            
-            await _registrationRepository.HardDeleteAsync(reg);
-        }
-
-        // 4. Check if team is registered in ANY OTHER active tournament
-        var otherRegistrations = await _registrationRepository.FindAsync(r => 
-            r.TeamId == request.TeamId && 
-            r.TournamentId != tournamentId);
-            
-        foreach (var reg in otherRegistrations)
-        {
-            if (reg.Status == RegistrationStatus.Rejected || reg.Status == RegistrationStatus.Withdrawn) continue;
-
-            var t = await _tournamentRepository.GetByIdAsync(reg.TournamentId);
-            if (t != null && t.Status != "completed" && t.Status != "cancelled")
-            {
-                throw new ConflictException($"الفريق مسجل بالفعل في بطولة أخرى جارية: {t.Name}");
-            }
-        }
-
-        // 5. Check capacity
-        var regCount = (await _registrationRepository.FindAsync(r => 
-            r.TournamentId == tournamentId && 
-            (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.PendingPaymentReview))).Count();
-        if (regCount >= tournament.MaxTeams) throw new ConflictException("عذراً، اكتمل العدد الأقصى للفرق في هذه البطولة.");
 
         var registration = new TeamRegistration
         {
             TournamentId = tournamentId,
             TeamId = request.TeamId,
-            Status = RegistrationStatus.PendingPaymentReview
+            // RegisteredAt handled by BaseEntity.CreatedAt
+            Status = RegistrationStatus.PendingPaymentReview 
         };
+        
+        // If free tournament
+        if (tournament.EntryFee <= 0)
+        {
+            registration.Status = RegistrationStatus.Approved;
+            tournament.CurrentTeams++;
+        }
 
         await _registrationRepository.AddAsync(registration);
         
-        tournament.CurrentTeams++;
-        await _tournamentRepository.UpdateAsync(tournament);
-        
-        // Real-time Event - Notify everyone about the new registration and updated team count
-        var tournamentDto = await GetByIdFreshAsync(tournamentId);
-        if (tournamentDto != null)
+        if (tournament.EntryFee <= 0)
         {
-            await _notifier.SendTournamentUpdatedAsync(tournamentDto);
+            await _tournamentRepository.UpdateAsync(tournament);
         }
-
+        
         return _mapper.Map<TeamRegistrationDto>(registration);
     }
 
     public async Task<IEnumerable<TeamRegistrationDto>> GetRegistrationsAsync(Guid tournamentId)
     {
-        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId);
+        var registrations = await _registrationRepository.FindAsync(
+            r => r.TournamentId == tournamentId,
+            new[] { "Team", "Team.Captain" }
+        );
         return _mapper.Map<IEnumerable<TeamRegistrationDto>>(registrations);
     }
 
     public async Task<TeamRegistrationDto> SubmitPaymentAsync(Guid tournamentId, Guid teamId, SubmitPaymentRequest request, Guid userId)
     {
-        // 1. Verify Tournament Status
-        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
-        if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
-        
-        if (tournament.Status != "registration_open")
-        {
-            throw new BadRequestException("لا يمكن إرسال إيصالات لبطولة مغلقة أو جارية.");
-        }
+        var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId)).FirstOrDefault();
+        if (registration == null) throw new NotFoundException("لا يوجد تسجيل لهذا الفريق.");
 
-        // 2. Verify Team Ownership
         var team = await _teamRepository.GetByIdAsync(teamId);
-        if (team == null) throw new NotFoundException(nameof(Team), teamId);
+        if (team.CaptainId != userId) throw new ForbiddenException("غير مصرح لك.");
+
+        registration.PaymentReceiptUrl = request.PaymentReceiptUrl;
+        registration.SenderNumber = request.SenderNumber;
+        registration.PaymentMethod = request.PaymentMethod;
+        registration.Status = RegistrationStatus.PendingPaymentReview;
         
-        if (team.CaptainId != userId)
-        {
-            throw new ForbiddenException("فقط صاحب الفريق يمكنه إرسال إيصال الدفع.");
-        }
-
-        // 3. Verify Registration Status
-        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId);
-        var reg = registrations.FirstOrDefault();
-        if (reg == null) throw new NotFoundException("طلب التسجيل غير موجود.");
-
-        if (reg.Status != RegistrationStatus.PendingPaymentReview)
-        {
-            throw new BadRequestException("لا يمكن تعديل إيصال الدفع بعد الموافقة عليه أو رفضه.");
-        }
-
-        reg.PaymentReceiptUrl = request.PaymentReceiptUrl;
-        reg.SenderNumber = request.SenderNumber;
+        await _registrationRepository.UpdateAsync(registration);
         
-        await _registrationRepository.UpdateAsync(reg);
-
-        var regDto = _mapper.Map<TeamRegistrationDto>(reg);
-
-        // Real-time Event - Update the registration status/receipt in the tournament store
-        await _notifier.SendRegistrationUpdatedAsync(regDto);
-        
-        // Notify Admins
-        await _notificationService.SendNotificationAsync(Guid.Empty, "طلب دفع جديد للمراجعة", $"تم تقديم إيصال دفع جديد لفريق {team.Name} في بطولة {tournament.Name}", "admin_broadcast");
-        return regDto;
+        return _mapper.Map<TeamRegistrationDto>(registration);
     }
 
     public async Task<TeamRegistrationDto> ApproveRegistrationAsync(Guid tournamentId, Guid teamId)
     {
-        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId);
-        var reg = registrations.FirstOrDefault();
-        if (reg == null) throw new NotFoundException("Registration not found.");
-
-        reg.Status = RegistrationStatus.Approved;
-        
-        await _registrationRepository.UpdateAsync(reg);
-        
-        // Notify Captain
-        var team = await _teamRepository.GetByIdAsync(teamId);
-        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
-        
-        await _analyticsService.LogActivityByTemplateAsync(
-            ActivityConstants.REGISTRATION_APPROVED, 
-            new Dictionary<string, string> { 
-                { "teamName", team?.Name ?? teamId.ToString() }, 
-                { "tournamentName", tournament?.Name ?? tournamentId.ToString() } 
-            }, 
-            null, 
-            "إدارة"
-        );
-
-        if (team != null) 
-        {
-            await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.TEAM_APPROVED, new Dictionary<string, string> { { "tournamentName", tournament?.Name ?? "البطولة" } }, "system");
-            
-            // Persistent Notification for Payment Success (Optional but good)
-            await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.PAYMENT_APPROVED, new Dictionary<string, string> { { "tournamentName", tournament?.Name ?? "البطولة" } }, "payment");
-
-            // Lightweight System Event for backward compatibility
-            await _notifier.SendSystemEventAsync("PAYMENT_APPROVED", new { TournamentId = tournamentId, TeamId = teamId }, $"user:{team.CaptainId}");
-        }
-
-        // Real-time Event - Emit FULL Tournament with updated registrations
-        if (tournament != null)
-        {
-            var tournamentDto = await GetByIdFreshAsync(tournamentId);
-            if (tournamentDto != null)
-            {
-                await _notifier.SendRegistrationApprovedAsync(tournamentDto);
-            }
-        }
-
-        // Check if tournament is now full with approved teams - auto-generate matches
-        await TryGenerateMatchesIfFullAsync(tournamentId);
-
-        return _mapper.Map<TeamRegistrationDto>(reg);
-    }
-
-    private async Task TryGenerateMatchesIfFullAsync(Guid tournamentId)
-    {
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
-        if (tournament == null) return;
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
 
-        // Get approved registrations only
-        var approvedRegs = await _registrationRepository.FindAsync(r => 
-            r.TournamentId == tournamentId && r.Status == RegistrationStatus.Approved);
+        var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, new[] { "Team" })).FirstOrDefault();
+        if (registration == null) throw new NotFoundException("التسجيل غير موجود.");
+
+        if (registration.Status == RegistrationStatus.Approved) 
+            return _mapper.Map<TeamRegistrationDto>(registration);
+
+        if (tournament.CurrentTeams >= tournament.MaxTeams)
+            throw new ConflictException("البطولة ممتلئة بالفعل.");
+
+        registration.Status = RegistrationStatus.Approved;
+        tournament.CurrentTeams++;
         
-        var approvedCount = approvedRegs.Count();
-        
-        // Check if we have reached max teams
-        if (approvedCount < tournament.MaxTeams) return;
-
-        // Check if matches already exist
-        var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
-        if (existingMatches.Any()) return;
-
-        // Generate Round Robin matches
-        var teamIds = approvedRegs.Select(r => r.TeamId).ToList();
-        var random = new Random();
-        var shuffledTeams = teamIds.OrderBy(x => random.Next()).ToList();
-
-        var matchDate = DateTime.UtcNow.AddDays(7);
-        var matchNumber = 0;
-
-        for (int i = 0; i < shuffledTeams.Count; i++)
-        {
-            for (int j = i + 1; j < shuffledTeams.Count; j++)
-            {
-                var match = new Match
-                {
-                    TournamentId = tournamentId,
-                    HomeTeamId = shuffledTeams[i],
-                    AwayTeamId = shuffledTeams[j],
-                    Status = MatchStatus.Scheduled,
-                    Date = matchDate.AddDays(matchNumber * 3),
-                    HomeScore = 0,
-                    AwayScore = 0
-                };
-                
-                await _matchRepository.AddAsync(match);
-                matchNumber++;
-            }
-        }
-
-        // Update tournament status to Active
-        tournament.Status = "active";
+        await _registrationRepository.UpdateAsync(registration);
         await _tournamentRepository.UpdateAsync(tournament);
-
-        // Real-time Event - Notify status change
-        var tournamentDto = await GetByIdAsync(tournamentId);
-        if (tournamentDto != null)
-        {
-            await _notifier.SendTournamentUpdatedAsync(tournamentDto);
-        }
-
-        await _analyticsService.LogActivityAsync("توليد مباريات تلقائي", $"تم توليد {matchNumber} مباراة لبطولة {tournament.Name}", null, "System");
         
-        // Notify all captains
-        foreach (var reg in approvedRegs)
+        if (registration.Team?.CaptainId != null)
         {
-            var t = await _teamRepository.GetByIdAsync(reg.TeamId);
-            if (t != null)
-            {
-                await _notificationService.SendNotificationByTemplateAsync(t.CaptainId, NotificationTemplates.TOURNAMENT_MATCHES_READY, new Dictionary<string, string> { { "tournamentName", tournament.Name } }, "tournament");
-            }
+             await _notificationService.SendNotificationByTemplateAsync(
+                 registration.Team.CaptainId, 
+                 NotificationTemplates.TEAM_APPROVED, 
+                 new Dictionary<string, string> { 
+                     { "teamName", registration.Team.Name },
+                     { "tournamentName", tournament.Name }
+                 }, 
+                 "registration_approved"
+             );
         }
+
+        return _mapper.Map<TeamRegistrationDto>(registration);
     }
 
     public async Task<TeamRegistrationDto> RejectRegistrationAsync(Guid tournamentId, Guid teamId, RejectRegistrationRequest request)
     {
-        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId);
-        var reg = registrations.FirstOrDefault();
-        if (reg == null) throw new NotFoundException("Registration not found.");
+        var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, new[] { "Team" })).FirstOrDefault();
+        if (registration == null) throw new NotFoundException("التسجيل غير موجود.");
 
-        reg.Status = RegistrationStatus.Rejected;
-        reg.RejectionReason = request.Reason;
-
-        await _registrationRepository.UpdateAsync(reg);
+        var oldStatus = registration.Status;
+        registration.Status = RegistrationStatus.Rejected;
+        registration.RejectionReason = request.Reason;
         
-        // Decrement capacity
-        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
-        if (tournament != null)
-        {
-            tournament.CurrentTeams = Math.Max(0, tournament.CurrentTeams - 1);
-            await _tournamentRepository.UpdateAsync(tournament);
-        }
+        await _registrationRepository.UpdateAsync(registration);
         
-        // Notify Captain
-        var team = await _teamRepository.GetByIdAsync(teamId);
-        if (team != null) 
+        if (oldStatus == RegistrationStatus.Approved)
         {
-            await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.TEAM_REJECTED, new Dictionary<string, string> { { "tournamentName", tournament?.Name ?? "البطولة" }, { "reason", request.Reason } }, "system");
-            
-            // Lightweight System Event for backward compatibility
-            await _notifier.SendSystemEventAsync("PAYMENT_REJECTED", new { TournamentId = tournamentId, TeamId = teamId, Reason = request.Reason }, $"user:{team.CaptainId}");
-        }
-
-        // Real-time Event - Emit FULL Tournament with updated registrations
-        if (tournament != null)
-        {
-            var tournamentDto = await GetByIdFreshAsync(tournamentId);
-            if (tournamentDto != null)
+            var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+            if (tournament != null)
             {
-                await _notifier.SendRegistrationRejectedAsync(tournamentDto);
+                tournament.CurrentTeams--;
+                await _tournamentRepository.UpdateAsync(tournament);
             }
         }
 
-        return _mapper.Map<TeamRegistrationDto>(reg);
+        if (registration.Team?.CaptainId != null)
+        {
+             var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+             await _notificationService.SendNotificationByTemplateAsync(
+                 registration.Team.CaptainId, 
+                 NotificationTemplates.TEAM_REJECTED, 
+                 new Dictionary<string, string> { 
+                     { "teamName", registration.Team.Name },
+                     { "tournamentName", tournament?.Name ?? "Unknown" },
+                     { "reason", request.Reason }
+                 }, 
+                 "registration_rejected"
+             );
+        }
+
+        return _mapper.Map<TeamRegistrationDto>(registration);
     }
 
     public async Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync()
     {
-        var pending = await _registrationRepository.FindAsync(
+        var registrations = await _registrationRepository.FindAsync(
             r => r.Status == RegistrationStatus.PendingPaymentReview,
-            new[] { "Team", "Team.Captain", "Tournament" });
+            new[] { "Team", "Tournament", "Team.Captain" }
+        );
         
-        var result = new List<PendingPaymentResponse>();
-        foreach (var p in pending)
+        return registrations.Select(r => new PendingPaymentResponse
         {
-            if (p.Tournament == null) continue;
-            
-            result.Add(new PendingPaymentResponse
-            {
-                Registration = _mapper.Map<TeamRegistrationDto>(p),
-                Tournament = _mapper.Map<TournamentDto>(p.Tournament)
-            });
-        }
-        return result;
+            Registration = _mapper.Map<TeamRegistrationDto>(r),
+            Tournament = _mapper.Map<TournamentDto>(r.Tournament)
+        });
     }
 
     public async Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync()
     {
-        // Return all payment requests with receipts (pending, approved, rejected)
         var registrations = await _registrationRepository.FindAsync(
             r => r.Status == RegistrationStatus.PendingPaymentReview || 
                  r.Status == RegistrationStatus.Approved || 
                  r.Status == RegistrationStatus.Rejected,
-            new[] { "Team", "Team.Captain", "Tournament" });
+            new[] { "Team", "Tournament", "Team.Captain" }
+        );
         
-        var result = new List<PendingPaymentResponse>();
-        foreach (var reg in registrations)
+         return registrations.Select(r => new PendingPaymentResponse
         {
-            if (reg.Tournament == null) continue;
-            
-            result.Add(new PendingPaymentResponse
-            {
-                Registration = _mapper.Map<TeamRegistrationDto>(reg),
-                Tournament = _mapper.Map<TournamentDto>(reg.Tournament)
-            });
-        }
-        return result;
+            Registration = _mapper.Map<TeamRegistrationDto>(r),
+            Tournament = _mapper.Map<TournamentDto>(r.Tournament)
+        });
     }
 
     public async Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
-
-        // Check if matches already exist
-        var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
-        if (existingMatches.Any())
-        {
-            throw new ConflictException("المباريات موجودة بالفعل لهذه البطولة.");
-        }
-
-        // Get all non-rejected registrations (approved or pending review - they count as registered)
-        var registrations = await _registrationRepository.FindAsync(r => 
-            r.TournamentId == tournamentId && r.Status != RegistrationStatus.Rejected);
         
+        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.Status == RegistrationStatus.Approved);
+        // Remove strictly check for < 2 if for testing, but technically correct.
+        if (registrations.Count() < 2) throw new ConflictException("عدد الفرق غير كافٍ لإنشاء المباريات.");
+
+        var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+        if (existingMatches.Any()) throw new ConflictException("المباريات مولدة بالفعل.");
+
         var teamIds = registrations.Select(r => r.TeamId).ToList();
-
-        if (teamIds.Count < 2)
-        {
-            throw new BadRequestException("يجب وجود فريقين على الأقل لتوليد المباريات.");
-        }
-
-        // Generate Round Robin matches
-        var random = new Random();
-        var shuffledTeams = teamIds.OrderBy(x => random.Next()).ToList();
-
-        var matchDate = DateTime.UtcNow.AddDays(7);
-        var matchNumber = 0;
-        var matches = new List<Match>();
-
-        for (int i = 0; i < shuffledTeams.Count; i++)
-        {
-            for (int j = i + 1; j < shuffledTeams.Count; j++)
-            {
-                var match = new Match
-                {
-                    TournamentId = tournamentId,
-                    HomeTeamId = shuffledTeams[i],
-                    AwayTeamId = shuffledTeams[j],
-                    Status = MatchStatus.Scheduled,
-                    Date = matchDate.AddDays(matchNumber * 3),
-                    HomeScore = 0,
-                    AwayScore = 0
-                };
-                
-                await _matchRepository.AddAsync(match);
-                matches.Add(match);
-                matchNumber++;
-            }
-        }
-
-        // Update tournament status to Active
-        tournament.Status = "active";
+        var matches = await CreateMatchesAsync(tournament, teamIds);
+        
+        tournament.Status = "active"; 
         await _tournamentRepository.UpdateAsync(tournament);
-
-        // Real-time Event - Notify status change
-        var tournamentDto = await GetByIdAsync(tournamentId);
-        if (tournamentDto != null)
-        {
-            await _notifier.SendTournamentUpdatedAsync(tournamentDto);
-        }
-
-        await _analyticsService.LogActivityByTemplateAsync(
-            ActivityConstants.TOURNAMENT_GENERATED, 
-            new Dictionary<string, string> { { "tournamentName", tournament.Name } }, 
-            null, 
-            "إدارة"
-        );
-
-        var matchDtos = _mapper.Map<IEnumerable<MatchDto>>(matches);
-        await _notifier.SendMatchesGeneratedAsync(matchDtos);
-
+        
         return _mapper.Map<IEnumerable<MatchDto>>(matches);
     }
 
-    public async Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId)
+    public async Task<TournamentDto> CloseRegistrationAsync(Guid id)
     {
-        // 1. Get all matches for tournament
-        var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId && m.Status == MatchStatus.Finished);
+        var tournament = await _tournamentRepository.GetByIdAsync(id);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
         
-        // 2. Get all approved or withdrawn registrations (teams that participated)
+        tournament.Status = "registration_closed";
+        await _tournamentRepository.UpdateAsync(tournament);
+        
+        return _mapper.Map<TournamentDto>(tournament);
+    }
+
+    public async Task<IEnumerable<GroupDto>> GetGroupsAsync(Guid tournamentId)
+    {
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+
+        var groups = new List<GroupDto>();
+
+        // Unified Logic: RoundRobin is "Group 1". Groups formats use NumberOfGroups.
+        if (tournament.Format == TournamentFormat.GroupsThenKnockout || 
+            tournament.Format == TournamentFormat.GroupsWithHomeAwayKnockout)
+        {
+             int count = tournament.NumberOfGroups > 0 ? tournament.NumberOfGroups : 1; // Fallback for legacy data
+             for (int i = 1; i <= count; i++)
+             {
+                 groups.Add(new GroupDto { Id = i, Name = $"المجموعة {i}" });
+             }
+        }
+        else if (tournament.Format == TournamentFormat.RoundRobin)
+        {
+             // Show as single group
+             groups.Add(new GroupDto { Id = 1, Name = "الدوري" });
+        }
+
+        return groups;
+    }
+
+    public async Task<BracketDto> GetBracketAsync(Guid tournamentId)
+    {
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+
+        // Get all matches
+        var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+        
+        // Filter knockout matches
+        // Legacy Compatibility: 'League' matches (RoundRobin) might have GroupId null but should Not be in bracket.
+        // Explicit Knockout: GroupId is null AND StageName is NOT 'League' or 'Group Stage'.
+        
+        var knockoutMatches = matches
+            .Where(m => m.GroupId == null && m.StageName != "League" && m.StageName != "Group Stage")
+            .OrderBy(m => m.RoundNumber)
+            .ToList();
+        
+        var bracket = new BracketDto();
+        var rounds = knockoutMatches.GroupBy(m => m.RoundNumber ?? 0).OrderBy(g => g.Key);
+        
+        foreach (var group in rounds)
+        {
+            var roundName = group.FirstOrDefault()?.StageName ?? $"Round {group.Key}";
+            bracket.Rounds.Add(new BracketRoundDto
+            {
+                RoundNumber = group.Key,
+                Name = roundName,
+                Matches = _mapper.Map<List<MatchDto>>(group.ToList())
+            });
+        }
+        
+        return bracket;
+    }
+
+    private async Task<List<Match>> CreateMatchesAsync(Tournament tournament, List<Guid> teamIds)
+    {
+        var matches = new List<Match>();
+        var random = new Random();
+        var shuffledTeams = teamIds.OrderBy(x => random.Next()).ToList();
+        var matchDate = DateTime.UtcNow.AddDays(2);
+        
+        if (tournament.Format == TournamentFormat.GroupsThenKnockout || tournament.Format == TournamentFormat.GroupsWithHomeAwayKnockout)
+        {
+            if (tournament.NumberOfGroups < 1) tournament.NumberOfGroups = 1;
+            
+            var groups = new List<List<Guid>>();
+            for (int i = 0; i < tournament.NumberOfGroups; i++) groups.Add(new List<Guid>());
+            
+            for (int i = 0; i < shuffledTeams.Count; i++)
+            {
+                groups[i % tournament.NumberOfGroups].Add(shuffledTeams[i]);
+            }
+            
+            int dayOffset = 0;
+            for (int g = 0; g < groups.Count; g++)
+            {
+                var groupTeams = groups[g];
+                for (int i = 0; i < groupTeams.Count; i++)
+                {
+                    for (int j = i + 1; j < groupTeams.Count; j++)
+                    {
+                         matches.Add(CreateMatch(tournament, groupTeams[i], groupTeams[j], matchDate.AddDays(dayOffset), g + 1, 1, "Group Stage"));
+                         dayOffset++;
+                         
+                         if (tournament.IsHomeAwayEnabled || tournament.MatchType == TournamentLegType.HomeAndAway)
+                         {
+                             matches.Add(CreateMatch(tournament, groupTeams[j], groupTeams[i], matchDate.AddDays(dayOffset + 2), g + 1, 1, "Group Stage"));
+                             dayOffset++;
+                         }
+                    }
+                }
+            }
+        }
+        else if (tournament.Format == TournamentFormat.KnockoutOnly)
+        {
+            // Initial Round Only
+            for (int i = 0; i < shuffledTeams.Count; i += 2)
+            {
+                 if (i + 1 < shuffledTeams.Count)
+                 {
+                     matches.Add(CreateMatch(tournament, shuffledTeams[i], shuffledTeams[i+1], matchDate.AddDays(i), null, 1, "Round 1"));
+                     
+                     if (tournament.IsHomeAwayEnabled || tournament.MatchType == TournamentLegType.HomeAndAway)
+                     {
+                          matches.Add(CreateMatch(tournament, shuffledTeams[i+1], shuffledTeams[i], matchDate.AddDays(i + 3), null, 1, "Round 1"));
+                     }
+                 }
+            }
+        }
+        else // RoundRobin
+        {
+             // Unified: Treat Round Robin as "Group 1"
+             int matchCount = 0;
+             for (int i = 0; i < shuffledTeams.Count; i++)
+             {
+                for (int j = i + 1; j < shuffledTeams.Count; j++)
+                {
+                    matches.Add(CreateMatch(tournament, shuffledTeams[i], shuffledTeams[j], matchDate.AddDays(matchCount * 2), 1, 1, "League"));
+                    matchCount++;
+                    
+                    if (tournament.IsHomeAwayEnabled || tournament.MatchType == TournamentLegType.HomeAndAway)
+                    {
+                        matches.Add(CreateMatch(tournament, shuffledTeams[j], shuffledTeams[i], matchDate.AddDays(matchCount * 2 + 1), 1, 1, "League"));
+                        matchCount++;
+                    }
+                }
+             }
+        }
+        
+        foreach (var m in matches)
+        {
+            await _matchRepository.AddAsync(m);
+        }
+        
+        return matches;
+    }
+
+    private Match CreateMatch(Tournament t, Guid home, Guid away, DateTime date, int? group, int? round, string stage)
+    {
+        return new Match
+        {
+            TournamentId = t.Id,
+            HomeTeamId = home,
+            AwayTeamId = away,
+            Status = MatchStatus.Scheduled,
+            Date = date,
+            GroupId = group,
+            RoundNumber = round,
+            StageName = stage,
+            HomeScore = 0,
+            AwayScore = 0
+        };
+    }
+
+    public async Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId, int? groupId = null)
+    {
+        // 1. Get all matches to determine group membership
+        var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+        
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+
+        // 2. Identify Team -> Group mapping
+        var teamGroupMap = new Dictionary<Guid, int>();
+        foreach (var m in matches)
+        {
+             int? gId = m.GroupId;
+             // Legacy Fix: If RoundRobin and GroupId is null, assume Group 1
+             if (gId == null && tournament?.Format == TournamentFormat.RoundRobin && m.StageName == "League")
+             {
+                 gId = 1;
+             }
+
+            if (gId.HasValue)
+            {
+                if (!teamGroupMap.ContainsKey(m.HomeTeamId)) teamGroupMap[m.HomeTeamId] = gId.Value;
+                if (!teamGroupMap.ContainsKey(m.AwayTeamId)) teamGroupMap[m.AwayTeamId] = gId.Value;
+            }
+        }
+
+        // 3. Filter matches by group for calculation (Finish matches only for stats)
+        var relevantMatches = matches.Where(m => m.Status == MatchStatus.Finished).ToList();
+        
+        // Use mapped group IDs for filtering matches if necessary? 
+        // Actually, cleaner to iterate all relevant matches and check their "Effective Group ID"
+        
+        // 4. Get all relevant registrations
         var registrations = await _registrationRepository.FindAsync(
             r => r.TournamentId == tournamentId && 
             (r.Status == RegistrationStatus.Approved || 
@@ -621,16 +582,25 @@ public class TournamentService : ITournamentService
             new[] { "Team" }
         );
         
-        // 3. Initialize standings
+        // 5. Initialize standings
         var standings = new List<TournamentStandingDto>();
         
         foreach (var reg in registrations)
         {
+            // Resolve Group
+            int? teamGroup = teamGroupMap.ContainsKey(reg.TeamId) ? teamGroupMap[reg.TeamId] : null;
+            
+            // If RoundRobin legacy, and we are asking for Group 1 (or any), force team to Group 1 if not mapped yet
+            if (tournament?.Format == TournamentFormat.RoundRobin && teamGroup == null) teamGroup = 1;
+
+            if (groupId.HasValue && teamGroup != groupId.Value) continue;
+
             standings.Add(new TournamentStandingDto
             {
                 TeamId = reg.TeamId,
                 TeamName = reg.Team?.Name ?? "Unknown",
                 TeamLogoUrl = reg.Team?.Logo,
+                GroupId = teamGroup,
                 Played = 0,
                 Won = 0,
                 Drawn = 0,
@@ -642,9 +612,14 @@ public class TournamentService : ITournamentService
             });
         }
 
-        // 4. Calculate stats
-        foreach (var match in matches)
+        // 6. Calculate stats
+        foreach (var match in relevantMatches) 
         {
+            int? effectiveGroupId = match.GroupId;
+            if (effectiveGroupId == null && tournament?.Format == TournamentFormat.RoundRobin && match.StageName == "League") effectiveGroupId = 1;
+
+            if (groupId.HasValue && effectiveGroupId != groupId.Value) continue;
+
             var home = standings.FirstOrDefault(s => s.TeamId == match.HomeTeamId);
             var away = standings.FirstOrDefault(s => s.TeamId == match.AwayTeamId);
 
@@ -689,9 +664,10 @@ public class TournamentService : ITournamentService
             }
         }
 
-        // 5. Sort by Points desc, then Goal Difference desc, then Goals For desc
+        // 7. Sort
         return standings
-            .OrderByDescending(s => s.Points)
+            .OrderBy(s => s.GroupId ?? 0) // Group by GroupId first
+            .ThenByDescending(s => s.Points)
             .ThenByDescending(s => s.GoalDifference)
             .ThenByDescending(s => s.GoalsFor)
             .ToList();

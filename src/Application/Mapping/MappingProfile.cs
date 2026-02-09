@@ -32,6 +32,8 @@ public class MappingProfile : Profile
         // Tournament
         CreateMap<Tournament, TournamentDto>()
             .ForMember(d => d.Status, o => o.MapFrom(s => s.Status))
+            .ForMember(d => d.Format, o => o.MapFrom(s => s.Format.ToString()))
+            .ForMember(d => d.MatchType, o => o.MapFrom(s => s.MatchType.ToString()))
             .ForMember(d => d.Registrations, o => o.MapFrom(s => s.Registrations != null 
                 ? s.Registrations.Where(r => r.Status != RegistrationStatus.Rejected) 
                 : new List<TeamRegistration>()))

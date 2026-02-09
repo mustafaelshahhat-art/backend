@@ -23,7 +23,9 @@ public interface ITournamentService
     Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync();
     Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync();
     Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId);
-    Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId);
+    Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId, int? groupId = null);
+    Task<IEnumerable<GroupDto>> GetGroupsAsync(Guid tournamentId);
+    Task<BracketDto> GetBracketAsync(Guid tournamentId);
     Task<TournamentDto> CloseRegistrationAsync(Guid id);
     Task EliminateTeamAsync(Guid tournamentId, Guid teamId);
 }

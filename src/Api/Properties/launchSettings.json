@@ -5,7 +5,7 @@
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": false,
-      "applicationUrl": "http://localhost:5125",
+      "applicationUrl": "http://0.0.0.0:5125",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "GMAIL_USER": "jokermaster159@gmail.com",

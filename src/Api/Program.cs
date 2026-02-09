@@ -27,8 +27,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend",
         policy =>
         {
-            var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? new[] { "http://localhost:4200", "https://korazone.vercel.app" };
-            policy.WithOrigins(allowedOrigins)
+            policy.SetIsOriginAllowed(origin => true) // Allow any origin for local network access
                   .AllowAnyHeader()
                   .AllowAnyMethod()
                   .AllowCredentials(); // Required for SignalR

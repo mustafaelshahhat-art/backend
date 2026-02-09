@@ -29,6 +29,23 @@ public class Tournament : BaseEntity
     public string Rules { get; set; } = string.Empty;
     public string Prizes { get; set; } = string.Empty; // Store as comma-separated or JSON
 
+    // Tournament Format Configurations
+    public TournamentFormat Format { get; set; } = TournamentFormat.RoundRobin;
+    public TournamentLegType MatchType { get; set; } = TournamentLegType.SingleLeg;
+    public int NumberOfGroups { get; set; } = 0;
+    public int QualifiedTeamsPerGroup { get; set; } = 0;
+    
+    // New Configurations
+    public bool IsHomeAwayEnabled { get; set; } = false; 
+    public SeedingMode SeedingMode { get; set; } = SeedingMode.ShuffleOnly;
+    
+    // Payment Config (JSON: [{ "type": "E_WALLET", "label": "Orange Cash", "accountNumber": "012..." }])
+    public string? PaymentMethodsJson { get; set; }
+
+    // Payment Info (Legacy/Specific overrides if needed, keeping for backward compat)
+    public string? WalletNumber { get; set; }
+    public string? InstaPayNumber { get; set; }
+
     public Guid? WinnerTeamId { get; set; }
     public Team? WinnerTeam { get; set; }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Domain.Enums;
 
 namespace Application.DTOs.Tournaments;
 
@@ -18,6 +19,15 @@ public class TournamentDto
     public string Description { get; set; } = string.Empty;
     public string Rules { get; set; } = string.Empty;
     public string Prizes { get; set; } = string.Empty;
+    public string Format { get; set; } = string.Empty;
+    public string MatchType { get; set; } = string.Empty;
+    public int NumberOfGroups { get; set; }
+    public int QualifiedTeamsPerGroup { get; set; }
+    public string? WalletNumber { get; set; }
+    public string? InstaPayNumber { get; set; }
+    public bool IsHomeAwayEnabled { get; set; }
+    public SeedingMode SeedingMode { get; set; }
+    public string? PaymentMethodsJson { get; set; }
     public List<TeamRegistrationDto> Registrations { get; set; } = new();
     public Guid? WinnerTeamId { get; set; }
     public string? WinnerTeamName { get; set; }
@@ -35,6 +45,15 @@ public class CreateTournamentRequest
     public string Location { get; set; } = string.Empty;
     public string Rules { get; set; } = string.Empty;
     public string Prizes { get; set; } = string.Empty;
+    public TournamentFormat Format { get; set; }
+    public TournamentLegType MatchType { get; set; }
+    public int NumberOfGroups { get; set; }
+    public int QualifiedTeamsPerGroup { get; set; }
+    public string? WalletNumber { get; set; }
+    public string? InstaPayNumber { get; set; }
+    public bool IsHomeAwayEnabled { get; set; }
+    public SeedingMode SeedingMode { get; set; }
+    public string? PaymentMethodsJson { get; set; }
 }
 
 public class UpdateTournamentRequest
@@ -50,6 +69,15 @@ public class UpdateTournamentRequest
     public string? Location { get; set; }
     public string? Rules { get; set; }
     public string? Prizes { get; set; }
+    public TournamentFormat? Format { get; set; }
+    public TournamentLegType? MatchType { get; set; }
+    public int? NumberOfGroups { get; set; }
+    public int? QualifiedTeamsPerGroup { get; set; }
+    public string? WalletNumber { get; set; }
+    public string? InstaPayNumber { get; set; }
+    public bool? IsHomeAwayEnabled { get; set; }
+    public SeedingMode? SeedingMode { get; set; }
+    public string? PaymentMethodsJson { get; set; }
 }
 
 public class TeamRegistrationDto
@@ -62,6 +90,7 @@ public class TeamRegistrationDto
     public string? PaymentReceiptUrl { get; set; }
     public string? SenderNumber { get; set; }
     public string? RejectionReason { get; set; }
+    public string? PaymentMethod { get; set; }
     public DateTime RegisteredAt { get; set; }
     public Guid TournamentId { get; set; }
 }
@@ -70,6 +99,7 @@ public class SubmitPaymentRequest
 {
     public string PaymentReceiptUrl { get; set; } = string.Empty;
     public string? SenderNumber { get; set; }
+    public string? PaymentMethod { get; set; }
 }
 
 public class RejectRegistrationRequest
@@ -101,5 +131,24 @@ public class TournamentStandingDto
     public int GoalsAgainst { get; set; }
     public int GoalDifference => GoalsFor - GoalsAgainst;
     public int Points { get; set; }
+    public int? GroupId { get; set; }
     public List<string> Form { get; set; } = new(); // W, D, L
+}
+
+public class GroupDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
+public class BracketDto
+{
+    public List<BracketRoundDto> Rounds { get; set; } = new();
+}
+
+public class BracketRoundDto
+{
+    public int RoundNumber { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public List<Application.DTOs.Matches.MatchDto> Matches { get; set; } = new();
 }

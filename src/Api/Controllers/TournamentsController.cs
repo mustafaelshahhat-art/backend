@@ -91,7 +91,7 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpPost("{id}/registrations/{teamId}/payment")]
-    public async Task<ActionResult<TeamRegistrationDto>> SubmitPayment(Guid id, Guid teamId, [FromForm] IFormFile receipt, [FromForm] string? senderNumber)
+    public async Task<ActionResult<TeamRegistrationDto>> SubmitPayment(Guid id, Guid teamId, [FromForm] IFormFile receipt, [FromForm] string? senderNumber, [FromForm] string? paymentMethod)
     {
         var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userIdString)) return Unauthorized();
@@ -109,7 +109,8 @@ public class TournamentsController : ControllerBase
         var request = new SubmitPaymentRequest 
         { 
             PaymentReceiptUrl = receiptUrl,
-            SenderNumber = senderNumber 
+            SenderNumber = senderNumber,
+            PaymentMethod = paymentMethod
         };
 
         var registration = await _tournamentService.SubmitPaymentAsync(id, teamId, request, userId);
@@ -169,10 +170,26 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("{id}/standings")]
     [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<TournamentStandingDto>>> GetStandings(Guid id)
+    public async Task<ActionResult<IEnumerable<TournamentStandingDto>>> GetStandings(Guid id, [FromQuery] int? groupId)
     {
-        var standings = await _tournamentService.GetStandingsAsync(id);
+        var standings = await _tournamentService.GetStandingsAsync(id, groupId);
         return Ok(standings);
+    }
+
+    [HttpGet("{id}/groups")]
+    [AllowAnonymous]
+    public async Task<ActionResult<IEnumerable<GroupDto>>> GetGroups(Guid id)
+    {
+        var groups = await _tournamentService.GetGroupsAsync(id);
+        return Ok(groups);
+    }
+
+    [HttpGet("{id}/bracket")]
+    [AllowAnonymous]
+    public async Task<ActionResult<BracketDto>> GetBracket(Guid id)
+    {
+        var bracket = await _tournamentService.GetBracketAsync(id);
+        return Ok(bracket);
     }
 
     [HttpPost("{id}/registrations/{teamId}/eliminate")]
