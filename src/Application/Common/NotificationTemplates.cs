@@ -75,9 +75,9 @@ public static class NotificationTemplates
         { ADMIN_NEW_USER_REGISTERED, ("تسجيل جديد", "قام مستخدم جديد بالتسجيل: {name} ({role}).") }
     };
 
-    public static (string Title, string Message) GetTemplate(string key, Dictionary<string, string> placeholders = null)
+    public static (string Title, string Message) GetTemplate(string? key, Dictionary<string, string>? placeholders = null)
     {
-        if (!Templates.ContainsKey(key))
+        if (string.IsNullOrEmpty(key) || !Templates.ContainsKey(key))
             return ("إشعار جديد", "لديك إشعار جديد في النظام.");
 
         var template = Templates[key];

@@ -33,7 +33,7 @@ public class AuthResponse
 {
     public string Token { get; set; } = string.Empty;
     public string RefreshToken { get; set; } = string.Empty;
-    public object User { get; set; } // Using object to avoid circular dep if UserDto is used
+    public object? User { get; set; } // Using object to avoid circular dep if UserDto is used
     // Or better, define UserDto here or reference it. DTOs are in Application, so ok.
     // I need UserDto.
 }

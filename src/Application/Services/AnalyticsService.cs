@@ -98,13 +98,17 @@ public class AnalyticsService : IAnalyticsService
         // Sort DESC
         var sorted = activities.OrderByDescending(a => a.CreatedAt).Take(20);
         
-        return sorted.Select(a => new ActivityDto
+        return sorted.Select(a => 
         {
-            Type = a.Type,
-            Message = a.Message,
-            Timestamp = a.CreatedAt,
-            Time = "", // Deprecated, frontend will use Timestamp with pipe
-            UserName = a.UserName
+            var localized = Common.ActivityConstants.GetLocalized(a.Type, null);
+            return new ActivityDto
+            {
+                Type = localized.Category,
+                Message = a.Message,
+                Timestamp = a.CreatedAt,
+                Time = "", 
+                UserName = a.UserName
+            };
         });
     }
 

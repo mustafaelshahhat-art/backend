@@ -165,7 +165,7 @@ public class MatchService : IMatchService
                 ActivityConstants.MATCH_EVENT_ADDED, 
                 new Dictionary<string, string> { 
                     { "eventType", "هدف" },
-                    { "playerName", request.PlayerId.ToString() }, // Ideally fetch player name
+                    { "playerName", request.PlayerId?.ToString() ?? "لاعب" },
                     { "matchInfo", id.ToString() }
                 }, 
                 request.PlayerId, 

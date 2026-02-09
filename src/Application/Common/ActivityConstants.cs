@@ -83,9 +83,9 @@ public static class ActivityConstants
         { PAYMENT_APPROVED, ("دفع", "قبول دفع", "تم اعتماد دفع الرسوم لفريق {teamName}") }
     };
 
-    public static (string Category, string Title, string Message) GetLocalized(string code, Dictionary<string, string> placeholders)
+    public static (string Category, string Title, string Message) GetLocalized(string? code, Dictionary<string, string>? placeholders)
     {
-        if (!Library.ContainsKey(code))
+        if (string.IsNullOrEmpty(code) || !Library.ContainsKey(code))
              return ("نظام", "إجراء نظام", "تم تنفيذ إجراء غير محدد في النظام");
 
         var template = Library[code];

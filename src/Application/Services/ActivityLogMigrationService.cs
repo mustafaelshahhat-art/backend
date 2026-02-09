@@ -123,7 +123,7 @@ public class ActivityLogMigrationService
             }
             
             // If Type is generic english, map to Arabic Category
-            if (!ActivityConstants.Library.ContainsKey(activity.Type))
+            if (activity.Type == null || !ActivityConstants.Library.ContainsKey(activity.Type))
             {
                 // Fallback Mapping
                 if (originalType.Contains("Match") || originalType.Contains("مباراة")) activity.Type = "مباراة";
@@ -186,7 +186,7 @@ public class ActivityLogMigrationService
             {
                 if (Guid.TryParse(m.Value, out Guid id))
                 {
-                    string replacement = "عنصر";
+                    string replacement = "عنصر في النظام";
                     if (teams.ContainsKey(id)) replacement = teams[id];
                     else if (tournaments.ContainsKey(id)) replacement = tournaments[id];
                     else if (matchesInfo.ContainsKey(id)) replacement = matchesInfo[id];

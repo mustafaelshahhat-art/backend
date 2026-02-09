@@ -1,6 +1,7 @@
 using Application.DTOs.Analytics;
 using Application.DTOs.Notifications;
 using Application.Interfaces;
+using Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -14,11 +15,24 @@ public class AnalyticsController : ControllerBase
 {
     private readonly IAnalyticsService _analyticsService;
     private readonly ITeamService _teamService;
+    private readonly ActivityLogMigrationService _migrationService;
 
-    public AnalyticsController(IAnalyticsService analyticsService, ITeamService teamService)
+    public AnalyticsController(
+        IAnalyticsService analyticsService, 
+        ITeamService teamService,
+        ActivityLogMigrationService migrationService)
     {
         _analyticsService = analyticsService;
         _teamService = teamService;
+        _migrationService = migrationService;
+    }
+
+    [HttpPost("migrate-logs")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> MigrateLogs()
+    {
+        await _migrationService.MigrateLegacyLogsAsync();
+        return Ok(new { message = "تمت عملية تحديث سجلات النشاط بنجاح" });
     }
 
     [HttpGet("overview")]

@@ -43,19 +43,19 @@ public class ObjectionService : IObjectionService
 
     public async Task<IEnumerable<ObjectionDto>> GetAllAsync()
     {
-        var objections = await _objectionRepository.FindAsync(_ => true, new[] { "Team.Captain", "Match.Tournament" });
+        var objections = await _objectionRepository.FindAsync(_ => true, new[] { "Team.Captain", "Match.Tournament", "Match.HomeTeam", "Match.AwayTeam" });
         return _mapper.Map<IEnumerable<ObjectionDto>>(objections);
     }
 
     public async Task<IEnumerable<ObjectionDto>> GetByTeamIdAsync(Guid teamId)
     {
-        var objections = await _objectionRepository.FindAsync(o => o.TeamId == teamId, new[] { "Team.Captain", "Match.Tournament" });
+        var objections = await _objectionRepository.FindAsync(o => o.TeamId == teamId, new[] { "Team.Captain", "Match.Tournament", "Match.HomeTeam", "Match.AwayTeam" });
         return _mapper.Map<IEnumerable<ObjectionDto>>(objections);
     }
 
     public async Task<ObjectionDto?> GetByIdAsync(Guid id)
     {
-        var objections = await _objectionRepository.FindAsync(o => o.Id == id, new[] { "Team.Captain", "Match.Tournament" });
+        var objections = await _objectionRepository.FindAsync(o => o.Id == id, new[] { "Team.Captain", "Match.Tournament", "Match.HomeTeam", "Match.AwayTeam" });
         var objection = objections.FirstOrDefault();
         return objection == null ? null : _mapper.Map<ObjectionDto>(objection);
     }
@@ -129,10 +129,7 @@ public class ObjectionService : IObjectionService
         await _notifier.SendObjectionResolvedAsync(dto);
 
         // Persistent Notification for Captain
-        // We need to find the captain of the team who submitted the objection
-        var teamRepo = (IRepository<Team>)_objectionRepository.GetType().GetField("_teamRepository", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(_objectionRepository);
-        // Wait, I cannot access private fields easily.
-        // Better: Fetch objection with Team.
+        // Fetch objection with Team.
         var fullObjection = await _objectionRepository.FindAsync(o => o.Id == id, new[] { "Team" });
         var targetTeam = fullObjection.FirstOrDefault()?.Team;
         if (targetTeam != null)

@@ -72,6 +72,8 @@ public class MappingProfile : Profile
             .ForMember(d => d.CaptainId, o => o.MapFrom(s => s.Team != null ? s.Team.CaptainId : Guid.Empty))
             .ForMember(d => d.CaptainName, o => o.MapFrom(s => s.Team != null && s.Team.Captain != null ? s.Team.Captain.Name : string.Empty))
             .ForMember(d => d.TournamentName, o => o.MapFrom(s => s.Match != null && s.Match.Tournament != null ? s.Match.Tournament.Name : string.Empty))
+            .ForMember(d => d.HomeTeamName, o => o.MapFrom(s => s.Match != null && s.Match.HomeTeam != null ? s.Match.HomeTeam.Name : string.Empty))
+            .ForMember(d => d.AwayTeamName, o => o.MapFrom(s => s.Match != null && s.Match.AwayTeam != null ? s.Match.AwayTeam.Name : string.Empty))
             .ForMember(d => d.Type, o => o.MapFrom(s => s.Type.ToString()))
             .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()));
 

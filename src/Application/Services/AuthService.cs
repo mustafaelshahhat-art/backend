@@ -95,7 +95,8 @@ public class AuthService : IAuthService
             City = request.City,
             Neighborhood = request.Neighborhood,
             IdFrontUrl = request.IdFrontUrl,
-            IdBackUrl = request.IdBackUrl
+            IdBackUrl = request.IdBackUrl,
+            IsEmailVerified = true // TEMPORARY DISABLE OTP
         };
 
         if (user.Role == UserRole.Player && string.IsNullOrEmpty(user.DisplayId))
@@ -123,30 +124,31 @@ public class AuthService : IAuthService
         // DELAYED: Notification moved to VerifyEmailAsync after actual confirmation
 
         // OTP generation is fast (DB), keep it sync to ensure it exists
-        var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY");
+        // TEMPORARY DISABLE OTP
+        // var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY");
         
-        // FIRE-AND-FORGET Email: Move to background to make registration instant
-        _ = Task.Run(async () => 
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
-            try 
-            {
-                var body = EmailTemplateHelper.CreateOtpTemplate(
-                    "تفعيل حسابك الجديد", 
-                    user.Name, 
-                    "شكراً لانضمامك إلينا! يرجى استخدام الرمز التالي لتفعيل حسابك والبدء في استخدام المنصة.", 
-                    otp, 
-                    "10 دقائق"
-                );
-                await emailSvc.SendEmailAsync(user.Email, "تأكيد بريدك الإلكتروني – RAMADAN GANA", body);
-            }
-            catch (Exception ex)
-            {
-                // Silently log email failure; user can still use "Resend" on verification page
-                _logger.LogError(ex, "Failed to send registration OTP email to {Email}", user.Email);
-            }
-        });
+        // // FIRE-AND-FORGET Email: Move to background to make registration instant
+        // _ = Task.Run(async () => 
+        // {
+        //     using var scope = _scopeFactory.CreateScope();
+        //     var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+        //     try 
+        //     {
+        //         var body = EmailTemplateHelper.CreateOtpTemplate(
+        //             "تفعيل حسابك الجديد", 
+        //             user.Name, 
+        //             "شكراً لانضمامك إلينا! يرجى استخدام الرمز التالي لتفعيل حسابك والبدء في استخدام المنصة.", 
+        //             otp, 
+        //             "10 دقائق"
+        //         );
+        //         await emailSvc.SendEmailAsync(user.Email, "تأكيد بريدك الإلكتروني – RAMADAN GANA", body);
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         // Silently log email failure; user can still use "Resend" on verification page
+        //         _logger.LogError(ex, "Failed to send registration OTP email to {Email}", user.Email);
+        //     }
+        // });
 
         // Persistent Notification for Admins
         await _notificationService.SendNotificationByTemplateAsync(Guid.Empty, NotificationTemplates.ADMIN_NEW_USER_REGISTERED, new Dictionary<string, string> 
@@ -180,36 +182,37 @@ public class AuthService : IAuthService
         }
 
         // 1. SURGICAL FIX: Enforce Email Verification (Skip for Admins)
-        if (!user.IsEmailVerified && user.Role != UserRole.Admin)
-        {
-            // NEW LOGIC: Generate a new OTP and resend email in background
-            try 
-            {
-                var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY");
+        // TEMPORARY DISABLE OTP
+        // if (!user.IsEmailVerified && user.Role != UserRole.Admin)
+        // {
+        //     // NEW LOGIC: Generate a new OTP and resend email in background
+        //     try 
+        //     {
+        //         var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY");
                 
-                _ = Task.Run(async () => 
-                {
-                    using var scope = _scopeFactory.CreateScope();
-                    var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
-                    try {
-                        var body = EmailTemplateHelper.CreateOtpTemplate(
-                            "تفعيل الحساب المطلوب", 
-                            user.Name, 
-                            "لقد حاولت تسجيل الدخول ولكن بريدك لم يتم تأكيده بعد. يرجى استخدام الرمز الجديد لتفعيل حسابك.", 
-                            otp, 
-                            "10 دقائق"
-                        );
-                        await emailSvc.SendEmailAsync(user.Email, "تفعيل حسابك – RAMADAN GANA", body);
-                    } catch { /* Ignored for login flow */ }
-                });
-            }
-            catch (Exception ex)
-            {
-                // OTP Gen failure or Task.Run failure, ignore to let LoginException proceed
-            }
+        //         _ = Task.Run(async () => 
+        //         {
+        //             using var scope = _scopeFactory.CreateScope();
+        //             var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+        //             try {
+        //                 var body = EmailTemplateHelper.CreateOtpTemplate(
+        //                     "تفعيل الحساب المطلوب", 
+        //                     user.Name, 
+        //                     "لقد حاولت تسجيل الدخول ولكن بريدك لم يتم تأكيده بعد. يرجى استخدام الرمز الجديد لتفعيل حسابك.", 
+        //                     otp, 
+        //                     "10 دقائق"
+        //                 );
+        //                 await emailSvc.SendEmailAsync(user.Email, "تفعيل حسابك – RAMADAN GANA", body);
+        //             } catch { /* Ignored for login flow */ }
+        //         });
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         // OTP Gen failure or Task.Run failure, ignore to let LoginException proceed
+        //     }
 
-            throw new EmailNotVerifiedException(user.Email);
-        }
+        //     throw new EmailNotVerifiedException(user.Email);
+        // }
 
         // 2. SURGICAL FIX: Enforce Active Status (Only block Suspended)
         if (user.Status == UserStatus.Suspended)

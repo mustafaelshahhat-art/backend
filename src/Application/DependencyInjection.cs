@@ -28,7 +28,7 @@ public static class DependencyInjection
         services.AddScoped<ITournamentLifecycleService, TournamentLifecycleService>();
         services.AddScoped<ISystemSettingsService, SystemSettingsService>();
         services.AddScoped<ISearchService, SearchService>();
-        // services.AddScoped<ActivityLogMigrationService>();
+        services.AddScoped<ActivityLogMigrationService>();
 
         return services;
     }
