@@ -10,7 +10,7 @@ public interface IAnalyticsService
 {
     Task<AnalyticsOverview> GetOverviewAsync(Guid? creatorId = null);
     Task<TeamAnalyticsDto> GetTeamAnalyticsAsync(Guid teamId);
-    Task<IEnumerable<ActivityDto>> GetRecentActivitiesAsync();
+    Task<IEnumerable<ActivityDto>> GetRecentActivitiesAsync(Guid? creatorId = null);
     Task LogActivityAsync(string type, string message, Guid? userId = null, string? userName = null);
     Task LogActivityByTemplateAsync(string code, Dictionary<string, string> placeholders, Guid? userId = null, string? userName = null);
 }

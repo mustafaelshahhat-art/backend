@@ -86,7 +86,7 @@ public class AuthService : IAuthService
             Name = name,
             PasswordHash = _passwordHasher.HashPassword(request.Password),
             Role = (request.Role == UserRole.Admin) ? UserRole.Player : request.Role,
-            Status = UserStatus.Pending, 
+            Status = (request.Role == UserRole.TournamentCreator) ? UserStatus.Active : UserStatus.Pending, 
             DisplayId = "U-" + new Random().Next(1000, 9999),
             Phone = request.Phone?.Trim(),
             NationalId = request.NationalId?.Trim(),
@@ -215,7 +215,9 @@ public class AuthService : IAuthService
         // }
 
         // 2. SURGICAL FIX: Enforce Active Status (Only block Suspended)
-        if (user.Status == UserStatus.Suspended)
+        // Allow TournamentCreator to login even if Pending, but block others
+        if (user.Status == UserStatus.Suspended || 
+            (user.Status == UserStatus.Pending && user.Role != UserRole.TournamentCreator))
         {
              throw new ForbiddenException("Account is suspended.");
         }

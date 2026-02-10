@@ -127,10 +127,22 @@ public class AnalyticsService : IAnalyticsService
         };
     }
 
-    public async Task<IEnumerable<ActivityDto>> GetRecentActivitiesAsync()
+    public async Task<IEnumerable<ActivityDto>> GetRecentActivitiesAsync(Guid? creatorId = null)
     {
-        var activities = await _activityRepository.GetAllAsync();
-        // Sort DESC
+        IEnumerable<Activity> activities;
+        
+        if (creatorId.HasValue)
+        {
+            // For tournament creators, only show activities they created (their own activities)
+            activities = await _activityRepository.FindAsync(a => a.UserId == creatorId.Value);
+        }
+        else
+        {
+            // For admins, show all activities
+            activities = await _activityRepository.GetAllAsync();
+        }
+        
+        // Sort DESC and take top 20
         var sorted = activities.OrderByDescending(a => a.CreatedAt).Take(20);
         
         return sorted.Select(a => 

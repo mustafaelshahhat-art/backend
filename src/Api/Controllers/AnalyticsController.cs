@@ -72,10 +72,16 @@ public class AnalyticsController : ControllerBase
     }
 
     [HttpGet("activities")]
-    [Authorize(Roles = "Admin")]
+    [Authorize]
     public async Task<ActionResult<IEnumerable<ActivityDto>>> GetRecentActivity()
     {
-        var activity = await _analyticsService.GetRecentActivitiesAsync();
+        var isAdmin = User.IsInRole("Admin");
+        var isCreator = User.IsInRole("TournamentCreator");
+        
+        if (!isAdmin && !isCreator) return Forbid();
+
+        Guid? creatorId = isCreator ? Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!) : null;
+        var activity = await _analyticsService.GetRecentActivitiesAsync(creatorId);
         return Ok(activity);
     }
 }
