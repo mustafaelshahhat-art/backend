@@ -215,8 +215,7 @@ public class TeamService : ITeamService
         var captain = await _userRepository.GetByIdAsync(captainId);
         if (captain == null) throw new NotFoundException(nameof(User), captainId);
 
-        if (captain.TeamId.HasValue) 
-            throw new ConflictException("المستخدم يملك فريقاً بالفعل.");
+        // Allow users to create multiple teams - remove single-team validation
 
         var team = new Team
         {
@@ -240,9 +239,7 @@ public class TeamService : ITeamService
         // Save team (will save players too due to relationship)
         await _teamRepository.AddAsync(team);
 
-        // Link User to Team
-        captain.TeamId = team.Id;
-        await _userRepository.UpdateAsync(captain);
+        // Do not automatically link user to team - users can own multiple teams
 
         await _analyticsService.LogActivityByTemplateAsync(
             ActivityConstants.TEAM_CREATED, 
@@ -727,4 +724,81 @@ public class TeamService : ITeamService
         return _mapper.Map<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>>(registrations);
     }
 
+    public async Task<TeamsOverviewDto> GetTeamsOverviewAsync(Guid userId)
+    {
+        // Get teams owned by user (where user is captain)
+        var ownedTeams = await _teamRepository.FindAsync(t => t.CaptainId == userId, new[] { "Captain", "Players" });
+        
+        // Get teams where user is a member (through Player records)
+        var playerTeams = await _teamRepository.FindAsync(
+            t => t.Players.Any(p => p.UserId == userId), 
+            new[] { "Captain", "Players" }
+        );
+        
+        // Get pending invitations for user
+        var pendingInvitations = await _joinRequestRepository.FindAsync(
+            r => r.UserId == userId && r.Status == "pending",
+            new[] { "Team" }
+        );
+        
+        // Convert to DTOs
+        var ownedTeamsDtos = _mapper.Map<List<TeamDto>>(ownedTeams);
+        var memberTeamsDtos = _mapper.Map<List<TeamDto>>(playerTeams);
+        
+        // Remove duplicates - teams where user is both owner and member should only appear in ownedTeams
+        var ownedTeamIds = ownedTeamsDtos.Select(t => t.Id).ToHashSet();
+        memberTeamsDtos = memberTeamsDtos.Where(t => !ownedTeamIds.Contains(t.Id)).ToList();
+        
+        // Map join requests to DTOs
+        var invitationDtos = pendingInvitations.Select(r => new JoinRequestDto
+        {
+            Id = r.Id,
+            TeamId = r.TeamId,
+            TeamName = r.Team?.Name ?? "",
+            PlayerId = r.UserId,
+            PlayerName = r.User?.Name ?? "",
+            RequestDate = r.CreatedAt,
+            Status = r.Status,
+            InitiatedByPlayer = r.InitiatedByPlayer
+        }).ToList();
+        
+        // Calculate stats for all teams
+        var allTeams = ownedTeamsDtos.Concat(memberTeamsDtos).ToList();
+        if (allTeams.Any())
+        {
+            var finishedMatches = (await _matchRepository.GetFinishedMatchOutcomesAsync()).ToList();
+            
+            if (finishedMatches.Any())
+            {
+                foreach (var dto in allTeams)
+                {
+                    var stats = new TeamStatsDto();
+                    var teamMatches = finishedMatches.Where(m => m.HomeTeamId == dto.Id || m.AwayTeamId == dto.Id);
+                    
+                    foreach (var match in teamMatches)
+                    {
+                        stats.Matches++;
+                        bool isHome = match.HomeTeamId == dto.Id;
+                        int teamScore = isHome ? match.HomeScore : match.AwayScore;
+                        int opponentScore = isHome ? match.AwayScore : match.HomeScore;
+                        
+                        stats.GoalsFor += teamScore;
+                        stats.GoalsAgainst += opponentScore;
+                        
+                        if (teamScore > opponentScore) stats.Wins++;
+                        else if (teamScore == opponentScore) stats.Draws++;
+                        else stats.Losses++;
+                    }
+                    dto.Stats = stats;
+                }
+            }
+        }
+        
+        return new TeamsOverviewDto
+        {
+            OwnedTeams = ownedTeamsDtos,
+            MemberTeams = memberTeamsDtos,
+            PendingInvitations = invitationDtos
+        };
+    }
 }

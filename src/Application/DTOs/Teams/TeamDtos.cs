@@ -45,3 +45,10 @@ public class UpdateTeamRequest
     public string? City { get; set; }
     public bool? IsActive { get; set; }
 }
+
+public class TeamsOverviewDto
+{
+    public List<TeamDto> OwnedTeams { get; set; } = new();
+    public List<TeamDto> MemberTeams { get; set; } = new();
+    public List<JoinRequestDto> PendingInvitations { get; set; } = new();
+}
