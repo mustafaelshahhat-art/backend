@@ -199,4 +199,20 @@ public class TournamentsController : ControllerBase
         await _tournamentService.EliminateTeamAsync(id, teamId);
         return NoContent();
     }
+
+    [HttpPost("{id}/emergency-start")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<TournamentDto>> EmergencyStart(Guid id)
+    {
+        var tournament = await _tournamentService.EmergencyStartAsync(id);
+        return Ok(tournament);
+    }
+
+    [HttpPost("{id}/emergency-end")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<TournamentDto>> EmergencyEnd(Guid id)
+    {
+        var tournament = await _tournamentService.EmergencyEndAsync(id);
+        return Ok(tournament);
+    }
 }

@@ -28,4 +28,6 @@ public interface ITournamentService
     Task<BracketDto> GetBracketAsync(Guid tournamentId);
     Task<TournamentDto> CloseRegistrationAsync(Guid id);
     Task EliminateTeamAsync(Guid tournamentId, Guid teamId);
+    Task<TournamentDto> EmergencyStartAsync(Guid id);
+    Task<TournamentDto> EmergencyEndAsync(Guid id);
 }

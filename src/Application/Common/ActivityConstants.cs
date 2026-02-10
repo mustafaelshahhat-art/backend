@@ -29,6 +29,7 @@ public static class ActivityConstants
     public const string TOURNAMENT_DELETED = "TOURNAMENT_DELETED";
     public const string REGISTRATION_APPROVED = "REGISTRATION_APPROVED";
     public const string TEAM_ELIMINATED = "TEAM_ELIMINATED";
+    public const string ADMIN_OVERRIDE = "ADMIN_OVERRIDE";
 
     public const string ADMIN_CREATED = "ADMIN_CREATED";
     public const string PASSWORD_CHANGED = "PASSWORD_CHANGED";
@@ -80,7 +81,8 @@ public static class ActivityConstants
         { OBJECTION_RESOLVED, ("اعتراض", "حسم اعتراض", "تم حسم الاعتراض في مباراة {matchInfo} بقرار: {resolution}") },
 
         { PAYMENT_SUBMITTED, ("دفع", "إيصال دفع", "تم رفع إيصال دفع من قبل فريق {teamName}") },
-        { PAYMENT_APPROVED, ("دفع", "قبول دفع", "تم اعتماد دفع الرسوم لفريق {teamName}") }
+        { PAYMENT_APPROVED, ("دفع", "قبول دفع", "تم اعتماد دفع الرسوم لفريق {teamName}") },
+        { ADMIN_OVERRIDE, ("إدارة", "تدخل إداري", "تم تنفيذ إجراء طارئ: {action} في {tournamentName}. التفاصيل: {details}") }
     };
 
     public static (string Category, string Title, string Message) GetLocalized(string? code, Dictionary<string, string>? placeholders)

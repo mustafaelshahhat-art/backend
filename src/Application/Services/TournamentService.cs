@@ -48,19 +48,76 @@ public class TournamentService : ITournamentService
     public async Task<IEnumerable<TournamentDto>> GetAllAsync()
     {
         var tournaments = await _tournamentRepository.GetAllAsync(new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
-        return _mapper.Map<IEnumerable<TournamentDto>>(tournaments);
+        var dtos = new List<TournamentDto>();
+        foreach (var t in tournaments)
+        {
+            dtos.Add(await MapToDtoWithInterventionAsync(t));
+        }
+        return dtos;
     }
 
     public async Task<TournamentDto?> GetByIdAsync(Guid id)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
-        return tournament == null ? null : _mapper.Map<TournamentDto>(tournament);
+        return tournament == null ? null : await MapToDtoWithInterventionAsync(tournament);
     }
 
     private async Task<TournamentDto?> GetByIdFreshAsync(Guid id)
     {
         var tournament = await _tournamentRepository.GetByIdNoTrackingAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
-        return tournament == null ? null : _mapper.Map<TournamentDto>(tournament);
+        return tournament == null ? null : await MapToDtoWithInterventionAsync(tournament);
+    }
+
+    private async Task<TournamentDto> MapToDtoWithInterventionAsync(Tournament tournament)
+    {
+        var dto = _mapper.Map<TournamentDto>(tournament);
+        dto.RequiresAdminIntervention = await CheckInterventionRequiredAsync(tournament);
+        return dto;
+    }
+
+    private async Task<bool> CheckInterventionRequiredAsync(Tournament tournament)
+    {
+        var matches = (await _matchRepository.FindAsync(m => m.TournamentId == tournament.Id)).ToList();
+        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournament.Id && r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn);
+        var regCount = registrations.Count();
+        var approvedCount = registrations.Count(r => r.Status == RegistrationStatus.Approved);
+
+        // Case 1: Registration closed but should be active (All approved, capacity reached, but no matches)
+        if (tournament.Status == "registration_closed")
+        {
+            if (regCount == tournament.MaxTeams && approvedCount == regCount && !matches.Any())
+            {
+                 // System should have auto-generated matches but didn't (e.g. error) or some manual intervention left it here
+                 return true;
+            }
+            
+            // Deadline passed but no matches generated
+            if (DateTime.UtcNow > tournament.StartDate && !matches.Any())
+            {
+                return true;
+            }
+        }
+
+        // Case 2: Active but stuck?
+        if (tournament.Status == "active")
+        {
+            // No matches at all but active
+            if (!matches.Any()) return true;
+
+            // All matches finished but status is not completed
+            if (matches.All(m => m.Status == MatchStatus.Finished)) return true;
+
+            // Past end date but not completed
+            if (DateTime.UtcNow > tournament.EndDate.AddDays(2)) return true;
+        }
+
+        // Case 3: Completed but missing winner?
+        if (tournament.Status == "completed" && tournament.WinnerTeamId == null && matches.Any())
+        {
+            return true;
+        }
+
+        return false;
     }
 
     public async Task<TournamentDto> CreateAsync(CreateTournamentRequest request)
@@ -142,6 +199,20 @@ public class TournamentService : ITournamentService
         if (request.SeedingMode.HasValue) tournament.SeedingMode = request.SeedingMode.Value;
         if (request.PaymentMethodsJson != null) tournament.PaymentMethodsJson = request.PaymentMethodsJson;
 
+        // Force auto-closure if capacity reached after manual update
+        if (tournament.CurrentTeams >= tournament.MaxTeams && tournament.Status == "registration_open")
+        {
+            tournament.Status = "registration_closed";
+        }
+        else if (tournament.CurrentTeams < tournament.MaxTeams && tournament.Status == "registration_closed" && !(await _matchRepository.FindAsync(m => m.TournamentId == id)).Any())
+        {
+            // Re-open if capacity was increased and no matches exist
+            if (DateTime.UtcNow <= tournament.RegistrationDeadline)
+            {
+                tournament.Status = "registration_open";
+            }
+        }
+
         await _tournamentRepository.UpdateAsync(tournament);
 
         var dto = await GetByIdFreshAsync(id);
@@ -201,21 +272,34 @@ public class TournamentService : ITournamentService
             Status = RegistrationStatus.PendingPaymentReview 
         };
         
+        // A team is considered "IN the tournament" once they apply (Approved + Pending count towards capacity)
+        tournament.CurrentTeams++;
+
         // If free tournament
         if (tournament.EntryFee <= 0)
         {
             registration.Status = RegistrationStatus.Approved;
-            tournament.CurrentTeams++;
+        }
+
+        // Auto-close registration if capacity reached
+        if (tournament.CurrentTeams >= tournament.MaxTeams)
+        {
+            tournament.Status = "registration_closed";
         }
 
         await _registrationRepository.AddAsync(registration);
+        await _tournamentRepository.UpdateAsync(tournament);
         
-        if (tournament.EntryFee <= 0)
+        var registrationDto = _mapper.Map<TeamRegistrationDto>(registration);
+        
+        // Notify Real-Time
+        var tournamentDto = await GetByIdFreshAsync(tournamentId);
+        if (tournamentDto != null)
         {
-            await _tournamentRepository.UpdateAsync(tournament);
+            await _notifier.SendTournamentUpdatedAsync(tournamentDto);
         }
-        
-        return _mapper.Map<TeamRegistrationDto>(registration);
+
+        return registrationDto;
     }
 
     public async Task<IEnumerable<TeamRegistrationDto>> GetRegistrationsAsync(Guid tournamentId)
@@ -233,6 +317,7 @@ public class TournamentService : ITournamentService
         if (registration == null) throw new NotFoundException("لا يوجد تسجيل لهذا الفريق.");
 
         var team = await _teamRepository.GetByIdAsync(teamId);
+        if (team == null) throw new NotFoundException(nameof(Team), teamId);
         if (team.CaptainId != userId) throw new ForbiddenException("غير مصرح لك.");
 
         registration.PaymentReceiptUrl = request.PaymentReceiptUrl;
@@ -256,15 +341,29 @@ public class TournamentService : ITournamentService
         if (registration.Status == RegistrationStatus.Approved) 
             return _mapper.Map<TeamRegistrationDto>(registration);
 
-        if (tournament.CurrentTeams >= tournament.MaxTeams)
-            throw new ConflictException("البطولة ممتلئة بالفعل.");
-
         registration.Status = RegistrationStatus.Approved;
-        tournament.CurrentTeams++;
         
         await _registrationRepository.UpdateAsync(registration);
-        await _tournamentRepository.UpdateAsync(tournament);
         
+        // Check if all teams are approved and we reached max capacity to auto-generate matches
+        var allRegistrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId);
+        var activeRegistrations = allRegistrations.Where(r => r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn).ToList();
+        
+        if (activeRegistrations.Count == tournament.MaxTeams && activeRegistrations.All(r => r.Status == RegistrationStatus.Approved))
+        {
+            var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+            if (!existingMatches.Any())
+            {
+                try {
+                    await GenerateMatchesAsync(tournamentId);
+                    // GenerateMatchesAsync updates status to "active" and notifies
+                } catch (Exception) {
+                    // Fallback: If auto-generation fails, at least update registration
+                    await _tournamentRepository.UpdateAsync(tournament);
+                }
+            }
+        }
+
         if (registration.Team?.CaptainId != null)
         {
              await _notificationService.SendNotificationByTemplateAsync(
@@ -292,19 +391,33 @@ public class TournamentService : ITournamentService
         
         await _registrationRepository.UpdateAsync(registration);
         
-        if (oldStatus == RegistrationStatus.Approved)
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        if (tournament != null)
         {
-            var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
-            if (tournament != null)
+            tournament.CurrentTeams--;
+            
+            // Re-open registration if it was closed due to capacity but no matches exist yet
+            if (tournament.Status == "registration_closed" && tournament.CurrentTeams < tournament.MaxTeams)
             {
-                tournament.CurrentTeams--;
-                await _tournamentRepository.UpdateAsync(tournament);
+                var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+                if (!matches.Any() && DateTime.UtcNow <= tournament.RegistrationDeadline)
+                {
+                    tournament.Status = "registration_open";
+                }
+            }
+            
+            await _tournamentRepository.UpdateAsync(tournament);
+            
+            // Notify Real-Time
+            var updatedTournament = await GetByIdFreshAsync(tournamentId);
+            if (updatedTournament != null)
+            {
+                await _notifier.SendTournamentUpdatedAsync(updatedTournament);
             }
         }
 
         if (registration.Team?.CaptainId != null)
         {
-             var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
              await _notificationService.SendNotificationByTemplateAsync(
                  registration.Team.CaptainId, 
                  NotificationTemplates.TEAM_REJECTED, 
@@ -736,5 +849,57 @@ public class TournamentService : ITournamentService
         {
             await _notifier.SendTournamentUpdatedAsync(updatedTournament);
         }
+    }
+
+    public async Task<TournamentDto> EmergencyStartAsync(Guid id)
+    {
+        var tournament = await _tournamentRepository.GetByIdAsync(id);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
+
+        var oldStatus = tournament.Status;
+        tournament.Status = "active";
+        await _tournamentRepository.UpdateAsync(tournament);
+
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.ADMIN_OVERRIDE, 
+            new Dictionary<string, string> { 
+                { "action", "بدء يدوي للبطولة" },
+                { "tournamentName", tournament.Name },
+                { "details", $"تغيير الحالة من {oldStatus} إلى active" }
+            }, 
+            null, 
+            "آدمن"
+        );
+
+        // Alert other admins
+        await _notifier.SendSystemEventAsync("ADMIN_OVERRIDE", new { TournamentId = id, Action = "EmergencyStart" }, "role:Admin");
+
+        return await GetByIdFreshAsync(id) ?? _mapper.Map<TournamentDto>(tournament);
+    }
+
+    public async Task<TournamentDto> EmergencyEndAsync(Guid id)
+    {
+        var tournament = await _tournamentRepository.GetByIdAsync(id);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
+
+        var oldStatus = tournament.Status;
+        tournament.Status = "completed";
+        await _tournamentRepository.UpdateAsync(tournament);
+
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.ADMIN_OVERRIDE, 
+            new Dictionary<string, string> { 
+                { "action", "إنهاء يدوي للبطولة" },
+                { "tournamentName", tournament.Name },
+                { "details", $"تغيير الحالة من {oldStatus} إلى completed" }
+            }, 
+            null, 
+            "آدمن"
+        );
+
+        // Alert other admins
+        await _notifier.SendSystemEventAsync("ADMIN_OVERRIDE", new { TournamentId = id, Action = "EmergencyEnd" }, "role:Admin");
+
+        return await GetByIdFreshAsync(id) ?? _mapper.Map<TournamentDto>(tournament);
     }
 }

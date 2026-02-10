@@ -31,6 +31,7 @@ public class TournamentDto
     public List<TeamRegistrationDto> Registrations { get; set; } = new();
     public Guid? WinnerTeamId { get; set; }
     public string? WinnerTeamName { get; set; }
+    public bool RequiresAdminIntervention { get; set; }
 }
 
 public class CreateTournamentRequest

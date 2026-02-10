@@ -46,7 +46,7 @@ public class MatchService : IMatchService
 
     public async Task<IEnumerable<MatchDto>> GetAllAsync()
     {
-        var matches = await _matchRepository.GetAllAsync(new[] { "HomeTeam", "AwayTeam" });
+        var matches = await _matchRepository.GetAllAsync(new[] { "HomeTeam", "AwayTeam", "Events.Player" });
         return _mapper.Map<IEnumerable<MatchDto>>(matches);
     }
 
@@ -461,7 +461,7 @@ public class MatchService : IMatchService
 
     public async Task<IEnumerable<MatchDto>> GetMatchesByRefereeAsync(Guid refereeId)
     {
-        var matches = await _matchRepository.FindAsync(m => m.RefereeId == refereeId, new[] { "HomeTeam", "AwayTeam" });
+        var matches = await _matchRepository.FindAsync(m => m.RefereeId == refereeId, new[] { "HomeTeam", "AwayTeam", "Events.Player" });
         return _mapper.Map<IEnumerable<MatchDto>>(matches);
     }
 }
