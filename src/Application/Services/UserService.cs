@@ -284,6 +284,71 @@ public class UserService : IUserService
     }
 
     /// <summary>
+    /// Creates a new tournament creator user. Role is always forced to TournamentCreator.
+    /// </summary>
+    public async Task<UserDto> CreateTournamentCreatorAsync(CreateAdminRequest request, Guid createdByAdminId)
+    {
+        // SYSTEM SETTING CHECK: Block creation during maintenance
+        if (await _systemSettingsService.IsMaintenanceModeEnabledAsync())
+        {
+            throw new BadRequestException("لا يمكن إنشاء مستخدمين جدد أثناء وضع الصيانة");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Email))
+        {
+            throw new BadRequestException("البريد الإلكتروني مطلوب");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            throw new BadRequestException("الاسم مطلوب");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
+        {
+            throw new BadRequestException("كلمة المرور مطلوبة ويجب أن تكون 6 أحرف على الأقل");
+        }
+
+        var email = request.Email.Trim().ToLower();
+
+        // Check email uniqueness
+        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email);
+        if (existingUser != null && existingUser.Any())
+        {
+            throw new ConflictException("البريد الإلكتروني مستخدم بالفعل");
+        }
+
+        var newCreator = new User
+        {
+            Email = email,
+            Name = request.Name.Trim(),
+            PasswordHash = _passwordHasher.HashPassword(request.Password),
+            Role = UserRole.TournamentCreator, // FORCE TournamentCreator role
+            Status = request.Status,
+            IsEmailVerified = true,
+            DisplayId = "CRT-" + new Random().Next(1000, 9999)
+        };
+
+        await _userRepository.AddAsync(newCreator);
+
+        // Log activity
+        try
+        {
+            await _analyticsService.LogActivityByTemplateAsync(
+                "USER_CREATED", 
+                new Dictionary<string, string> { { "userName", newCreator.Name }, { "role", "منشئ بطولة" } }, 
+                createdByAdminId, 
+                "إدارة"
+            );
+        }
+        catch { }
+
+        var dto = _mapper.Map<UserDto>(newCreator);
+        await _realTimeNotifier.SendUserCreatedAsync(dto);
+        return dto;
+    }
+
+    /// <summary>
     /// Gets the count of active admin users and checks if a specific user is the last admin.
     /// </summary>
     public async Task<AdminCountDto> GetAdminCountAsync(Guid? userId = null)

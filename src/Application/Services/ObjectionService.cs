@@ -41,9 +41,12 @@ public class ObjectionService : IObjectionService
         _matchRepository = matchRepository;
     }
 
-    public async Task<IEnumerable<ObjectionDto>> GetAllAsync()
+    public async Task<IEnumerable<ObjectionDto>> GetAllAsync(Guid? creatorId = null)
     {
-        var objections = await _objectionRepository.FindAsync(_ => true, new[] { "Team.Captain", "Match.Tournament", "Match.HomeTeam", "Match.AwayTeam" });
+        var objections = await _objectionRepository.FindAsync(
+            o => !creatorId.HasValue || o.Match!.Tournament!.CreatorUserId == creatorId.Value, 
+            new[] { "Team.Captain", "Match.Tournament", "Match.HomeTeam", "Match.AwayTeam" }
+        );
         return _mapper.Map<IEnumerable<ObjectionDto>>(objections);
     }
 

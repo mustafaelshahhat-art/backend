@@ -8,7 +8,7 @@ namespace Application.Interfaces;
 
 public interface IAnalyticsService
 {
-    Task<AnalyticsOverview> GetOverviewAsync();
+    Task<AnalyticsOverview> GetOverviewAsync(Guid? creatorId = null);
     Task<TeamAnalyticsDto> GetTeamAnalyticsAsync(Guid teamId);
     Task<IEnumerable<ActivityDto>> GetRecentActivitiesAsync();
     Task LogActivityAsync(string type, string message, Guid? userId = null, string? userName = null);

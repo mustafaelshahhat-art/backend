@@ -121,6 +121,24 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    /// Creates a new tournament creator user. Only accessible by existing admins.
+    /// Role is forced to TournamentCreator on the backend.
+    /// </summary>
+    [HttpPost("create-tournament-creator")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<UserDto>> CreateTournamentCreator(CreateAdminRequest request)
+    {
+        var creatorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(creatorId) || !Guid.TryParse(creatorId, out var adminId))
+        {
+            return Unauthorized();
+        }
+
+        var newCreator = await _userService.CreateTournamentCreatorAsync(request, adminId);
+        return Ok(newCreator);
+    }
+
+    /// <summary>
     /// Gets the count of active admins. Used for safety checks on the frontend.
     /// </summary>
     [HttpGet("admin-count")]

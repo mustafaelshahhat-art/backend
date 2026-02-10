@@ -23,6 +23,7 @@ public interface IUserService
     /// Role is forced to Admin regardless of input.
     /// </summary>
     Task<UserDto> CreateAdminAsync(CreateAdminRequest request, Guid createdByAdminId);
+    Task<UserDto> CreateTournamentCreatorAsync(CreateAdminRequest request, Guid createdByAdminId);
     
     /// <summary>
     /// Gets the total count of active admin users and checks if a specific user is the last admin.

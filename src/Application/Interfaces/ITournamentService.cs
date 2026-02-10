@@ -8,9 +8,9 @@ namespace Application.Interfaces;
 
 public interface ITournamentService
 {
-    Task<IEnumerable<TournamentDto>> GetAllAsync();
+    Task<IEnumerable<TournamentDto>> GetAllAsync(Guid? creatorId = null);
     Task<TournamentDto?> GetByIdAsync(Guid id);
-    Task<TournamentDto> CreateAsync(CreateTournamentRequest request);
+    Task<TournamentDto> CreateAsync(CreateTournamentRequest request, Guid? creatorId = null);
     Task<TournamentDto> UpdateAsync(Guid id, UpdateTournamentRequest request);
     Task DeleteAsync(Guid id);
     
@@ -20,8 +20,8 @@ public interface ITournamentService
     Task<TeamRegistrationDto> ApproveRegistrationAsync(Guid tournamentId, Guid teamId);
     Task<TeamRegistrationDto> RejectRegistrationAsync(Guid tournamentId, Guid teamId, RejectRegistrationRequest request);
     
-    Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync();
-    Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync();
+    Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync(Guid? creatorId = null);
+    Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync(Guid? creatorId = null);
     Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId);
     Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId, int? groupId = null);
     Task<IEnumerable<GroupDto>> GetGroupsAsync(Guid tournamentId);

@@ -4,5 +4,6 @@ public enum UserRole
 {
     Player,
     Referee,
-    Admin
+    Admin,
+    TournamentCreator
 }

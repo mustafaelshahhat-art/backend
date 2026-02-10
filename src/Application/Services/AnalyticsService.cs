@@ -42,20 +42,55 @@ public class AnalyticsService : IAnalyticsService
         _mapper = mapper;
     }
 
-    public async Task<AnalyticsOverview> GetOverviewAsync()
+    public async Task<AnalyticsOverview> GetOverviewAsync(Guid? creatorId = null)
     {
-        var totalUsers = await _userRepository.CountAsync(u => u.IsEmailVerified);
-        var totalReferees = await _userRepository.CountAsync(u => u.IsEmailVerified && u.Role == Domain.Enums.UserRole.Referee);
-        var totalTeams = await _teamRepository.CountAsync(_ => true);
-        var activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == "registration_open" || t.Status == "active");
-        var pendingObjections = await _objectionRepository.CountAsync(o => o.Status == Domain.Enums.ObjectionStatus.Pending);
-
-        var today = DateTime.UtcNow.Date;
-        var matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today);
-        var loginsToday = await _activityRepository.CountAsync(a => a.Type == Common.ActivityConstants.USER_LOGIN && a.CreatedAt.Date == today);
+        // For total users and referees, usually it's global for admins.
+        // But for creators, maybe we only show counts of things related to them.
+        // Total Users: Maybe participants in their tournaments?
+        // Let's implement scoped counts for creators.
         
-        var finishedMatches = await _matchRepository.FindAsync(m => m.Status == Domain.Enums.MatchStatus.Finished);
-        var totalGoals = finishedMatches.Sum(m => m.HomeScore + m.AwayScore);
+        int totalUsers, totalReferees, totalTeams, activeTournaments, pendingObjections, matchesToday, loginsToday, totalGoals;
+
+        if (creatorId.HasValue)
+        {
+            var myTournaments = await _tournamentRepository.FindAsync(t => t.CreatorUserId == creatorId.Value, new[] { "Registrations" });
+            var myTournamentIds = myTournaments.Select(t => t.Id).ToList();
+            
+            activeTournaments = myTournaments.Count(t => t.Status == "registration_open" || t.Status == "active");
+            
+            // Teams in my tournaments
+            totalTeams = myTournaments.SelectMany(t => t.Registrations).Select(r => r.TeamId).Distinct().Count();
+            
+            // Objections in my tournaments
+            pendingObjections = await _objectionRepository.CountAsync(o => o.Status == Domain.Enums.ObjectionStatus.Pending && myTournamentIds.Contains(o.Match!.TournamentId));
+            
+            var today = DateTime.UtcNow.Date;
+            matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today && myTournamentIds.Contains(m.TournamentId));
+            
+            var finishedMatches = await _matchRepository.FindAsync(m => m.Status == Domain.Enums.MatchStatus.Finished && myTournamentIds.Contains(m.TournamentId));
+            totalGoals = finishedMatches.Sum(m => m.HomeScore + m.AwayScore);
+            
+            // For these, we might want to keep them global or hide them.
+            // Requirement says "TournamentCreator dashboard shows stats ONLY for their tournaments"
+            totalUsers = 0; // Or count unique players in those teams
+            totalReferees = await _userRepository.CountAsync(u => u.IsEmailVerified && u.Role == Domain.Enums.UserRole.Referee); // Referees might be shared
+            loginsToday = 0; 
+        }
+        else
+        {
+            totalUsers = await _userRepository.CountAsync(u => u.IsEmailVerified);
+            totalReferees = await _userRepository.CountAsync(u => u.IsEmailVerified && u.Role == Domain.Enums.UserRole.Referee);
+            totalTeams = await _teamRepository.CountAsync(_ => true);
+            activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == "registration_open" || t.Status == "active");
+            pendingObjections = await _objectionRepository.CountAsync(o => o.Status == Domain.Enums.ObjectionStatus.Pending);
+
+            var today = DateTime.UtcNow.Date;
+            matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today);
+            loginsToday = await _activityRepository.CountAsync(a => a.Type == Common.ActivityConstants.USER_LOGIN && a.CreatedAt.Date == today);
+            
+            var finishedMatches = await _matchRepository.FindAsync(m => m.Status == Domain.Enums.MatchStatus.Finished);
+            totalGoals = finishedMatches.Sum(m => m.HomeScore + m.AwayScore);
+        }
 
         return new AnalyticsOverview
         {

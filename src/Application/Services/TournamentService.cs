@@ -45,9 +45,21 @@ public class TournamentService : ITournamentService
         _notifier = notifier;
     }
 
-    public async Task<IEnumerable<TournamentDto>> GetAllAsync()
+    public async Task<IEnumerable<TournamentDto>> GetAllAsync(Guid? creatorId = null)
     {
-        var tournaments = await _tournamentRepository.GetAllAsync(new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
+        IEnumerable<Tournament> tournaments;
+        if (creatorId.HasValue)
+        {
+            tournaments = await _tournamentRepository.FindAsync(
+                t => t.CreatorUserId == creatorId.Value,
+                new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" }
+            );
+        }
+        else
+        {
+            tournaments = await _tournamentRepository.GetAllAsync(new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
+        }
+        
         var dtos = new List<TournamentDto>();
         foreach (var t in tournaments)
         {
@@ -120,12 +132,13 @@ public class TournamentService : ITournamentService
         return false;
     }
 
-    public async Task<TournamentDto> CreateAsync(CreateTournamentRequest request)
+    public async Task<TournamentDto> CreateAsync(CreateTournamentRequest request, Guid? creatorId = null)
     {
         var tournament = new Tournament
         {
             Name = request.Name,
             Description = request.Description,
+            CreatorUserId = creatorId,
             StartDate = request.StartDate,
             EndDate = request.EndDate,
             RegistrationDeadline = request.RegistrationDeadline,
@@ -433,10 +446,11 @@ public class TournamentService : ITournamentService
         return _mapper.Map<TeamRegistrationDto>(registration);
     }
 
-    public async Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync()
+    public async Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync(Guid? creatorId = null)
     {
         var registrations = await _registrationRepository.FindAsync(
-            r => r.Status == RegistrationStatus.PendingPaymentReview,
+            r => r.Status == RegistrationStatus.PendingPaymentReview && 
+                (!creatorId.HasValue || r.Tournament!.CreatorUserId == creatorId.Value),
             new[] { "Team", "Tournament", "Team.Captain" }
         );
         
@@ -447,12 +461,13 @@ public class TournamentService : ITournamentService
         });
     }
 
-    public async Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync()
+    public async Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync(Guid? creatorId = null)
     {
         var registrations = await _registrationRepository.FindAsync(
-            r => r.Status == RegistrationStatus.PendingPaymentReview || 
-                 r.Status == RegistrationStatus.Approved || 
-                 r.Status == RegistrationStatus.Rejected,
+            r => (r.Status == RegistrationStatus.PendingPaymentReview || 
+                  r.Status == RegistrationStatus.Approved || 
+                  r.Status == RegistrationStatus.Rejected) &&
+                 (!creatorId.HasValue || r.Tournament!.CreatorUserId == creatorId.Value),
             new[] { "Team", "Tournament", "Team.Captain" }
         );
         

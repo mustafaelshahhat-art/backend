@@ -63,9 +63,11 @@ public class AnalyticsController : ControllerBase
             return Ok(teamAnalytics);
         }
         
-        if (!isAdmin) return Forbid();
+        var isCreator = User.IsInRole("TournamentCreator");
+        if (!isAdmin && !isCreator) return Forbid();
 
-        var overview = await _analyticsService.GetOverviewAsync();
+        Guid? creatorId = isCreator ? Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!) : null;
+        var overview = await _analyticsService.GetOverviewAsync(creatorId);
         return Ok(overview);
     }
 

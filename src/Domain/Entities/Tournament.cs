@@ -8,6 +8,8 @@ public class Tournament : BaseEntity
 {
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public Guid? CreatorUserId { get; set; }
+    public User? CreatorUser { get; set; }
     // status: "registration_open|active|completed" mapped to logic or Enum?
     // Contract says lower case string, we can use Enum and map.
     // Wait, contract says `status: "registration_open|active|completed"`. 
