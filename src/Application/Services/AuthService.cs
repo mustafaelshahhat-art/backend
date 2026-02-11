@@ -80,13 +80,15 @@ public class AuthService : IAuthService
             throw new ConflictException("Email already exists.");
         }
 
+        // SECURITY: Force Player role for ALL public registrations.
+        // Ignore any role sent in the request body to prevent privilege escalation.
         var user = new User
         {
             Email = email,
             Name = name,
             PasswordHash = _passwordHasher.HashPassword(request.Password),
-            Role = (request.Role == UserRole.Admin) ? UserRole.Player : request.Role,
-            Status = (request.Role == UserRole.TournamentCreator) ? UserStatus.Active : UserStatus.Pending, 
+            Role = UserRole.Player, // FORCED - public registration always creates Player
+            Status = UserStatus.Pending, 
             DisplayId = "U-" + new Random().Next(1000, 9999),
             Phone = request.Phone?.Trim(),
             NationalId = request.NationalId?.Trim(),

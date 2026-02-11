@@ -139,6 +139,24 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    /// Creates a new referee user. Only accessible by existing admins.
+    /// Role is forced to Referee on the backend. No email confirmation required.
+    /// </summary>
+    [HttpPost("create-referee")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<UserDto>> CreateReferee(CreateAdminRequest request)
+    {
+        var creatorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(creatorId) || !Guid.TryParse(creatorId, out var adminId))
+        {
+            return Unauthorized();
+        }
+
+        var newReferee = await _userService.CreateRefereeAsync(request, adminId);
+        return Ok(newReferee);
+    }
+
+    /// <summary>
     /// Gets the count of active admins. Used for safety checks on the frontend.
     /// </summary>
     [HttpGet("admin-count")]
