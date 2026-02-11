@@ -267,14 +267,16 @@ public class TournamentService : ITournamentService
         var team = await _teamRepository.GetByIdAsync(request.TeamId);
         if (team == null) throw new NotFoundException(nameof(Team), request.TeamId);
         
+        // SECURITY CHECK: Verify that the current user is actually the captain of the specific team defined in request
         if (team.CaptainId != userId)
         {
-             throw new ForbiddenException("فقط كابتن الفريق يمكنه تسجيل الفريق.");
+             throw new ForbiddenException("فقط كابتن الفريق يمكنه تسجيل الفريق في البطولات.");
         }
 
+        // Check if ALREADY registered or PENDING
         if (tournament.Registrations.Any(r => r.TeamId == request.TeamId && r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn))
         {
-             throw new ConflictException("الفريق مسجل بالفعل أو قيد المراجعة.");
+             throw new ConflictException("الفريق مسجل بالفعل في هذه البطولة أو قيد المراجعة.");
         }
 
         var registration = new TeamRegistration
