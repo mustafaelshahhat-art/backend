@@ -343,16 +343,25 @@ public class TournamentService : ITournamentService
         return _mapper.Map<TeamRegistrationDto>(registration);
     }
 
-    public async Task<TeamRegistrationDto> ApproveRegistrationAsync(Guid tournamentId, Guid teamId)
+    public async Task<TeamRegistrationDto> ApproveRegistrationAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
 
+        // Authorization: Only Creator can approve
+        if (userRole != "TournamentCreator" || tournament.CreatorUserId != userId)
+        {
+             throw new ForbiddenException("غير مصرح لك بإدارة طلبات هذه البطولة. فقط منظم البطولة يمكنه ذلك.");
+        }
+
         var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, new[] { "Team" })).FirstOrDefault();
         if (registration == null) throw new NotFoundException("التسجيل غير موجود.");
 
-        if (registration.Status == RegistrationStatus.Approved) 
-            return _mapper.Map<TeamRegistrationDto>(registration);
+        // State Validation: Must be Pending
+        if (registration.Status != RegistrationStatus.PendingPaymentReview)
+        {
+             throw new ConflictException($"لا يمكن اعتماد الطلب. الحالة الحالية: {registration.Status}");
+        }
 
         registration.Status = RegistrationStatus.Approved;
         
@@ -393,19 +402,34 @@ public class TournamentService : ITournamentService
         return _mapper.Map<TeamRegistrationDto>(registration);
     }
 
-    public async Task<TeamRegistrationDto> RejectRegistrationAsync(Guid tournamentId, Guid teamId, RejectRegistrationRequest request)
+    public async Task<TeamRegistrationDto> RejectRegistrationAsync(Guid tournamentId, Guid teamId, RejectRegistrationRequest request, Guid userId, string userRole)
     {
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+
+        // Authorization: Only Creator can reject
+        if (userRole != "TournamentCreator" || tournament.CreatorUserId != userId)
+        {
+             throw new ForbiddenException("غير مصرح لك بإدارة طلبات هذه البطولة. فقط منظم البطولة يمكنه ذلك.");
+        }
+
         var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, new[] { "Team" })).FirstOrDefault();
         if (registration == null) throw new NotFoundException("التسجيل غير موجود.");
 
-        var oldStatus = registration.Status;
+        // State Validation: Must be Pending
+        if (registration.Status != RegistrationStatus.PendingPaymentReview)
+        {
+             throw new ConflictException($"لا يمكن رفض الطلب. الحالة الحالية: {registration.Status}");
+        }
+
         registration.Status = RegistrationStatus.Rejected;
         registration.RejectionReason = request.Reason;
         
         await _registrationRepository.UpdateAsync(registration);
         
-        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
-        if (tournament != null)
+        // Logic: Decrement only because we successfully transitioned from Pending -> Rejected
+        // And Pending was counting towards capacity.
+        if (tournament.CurrentTeams > 0)
         {
             tournament.CurrentTeams--;
             

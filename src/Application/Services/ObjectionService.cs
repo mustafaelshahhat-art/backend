@@ -114,10 +114,24 @@ public class ObjectionService : IObjectionService
         return dto;
     }
 
-    public async Task<ObjectionDto> ResolveAsync(Guid id, ResolveObjectionRequest request)
+    public async Task<ObjectionDto> ResolveAsync(Guid id, ResolveObjectionRequest request, Guid userId, string userRole)
     {
-        var objection = await _objectionRepository.GetByIdAsync(id);
+        var objection = (await _objectionRepository.FindAsync(o => o.Id == id, new[] { "Match.Tournament" })).FirstOrDefault();
         if (objection == null) throw new NotFoundException(nameof(Objection), id);
+
+        var tournamentCreatorId = objection.Match?.Tournament?.CreatorUserId;
+
+        // Authorization: Only Tournament Creator can resolve
+        if (userRole != "TournamentCreator" || tournamentCreatorId != userId)
+        {
+             throw new ForbiddenException("غير مصرح لك بإدارة هذا الاعتراض. فقط منظم البطولة يمكنه ذلك.");
+        }
+
+        // State Validation
+        if (objection.Status != ObjectionStatus.Pending)
+        {
+             throw new ConflictException($"لا يمكن تغيير حالة الاعتراض. الحالة الحالية: {objection.Status}");
+        }
 
         objection.Status = request.Approved ? ObjectionStatus.Approved : ObjectionStatus.Rejected;
         if (!string.IsNullOrEmpty(request.Notes))

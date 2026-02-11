@@ -164,7 +164,13 @@ public class TournamentsController : ControllerBase
     [Authorize(Roles = "Admin,TournamentCreator")]
     public async Task<ActionResult<TeamRegistrationDto>> ApproveRegistration(Guid id, Guid teamId)
     {
-        var result = await _tournamentService.ApproveRegistrationAsync(id, teamId);
+        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
+
+        var userId = Guid.Parse(userIdStr);
+        var userRole = User.IsInRole("Admin") ? "Admin" : "TournamentCreator";
+
+        var result = await _tournamentService.ApproveRegistrationAsync(id, teamId, userId, userRole);
         return Ok(result);
     }
 
@@ -172,7 +178,13 @@ public class TournamentsController : ControllerBase
     [Authorize(Roles = "Admin,TournamentCreator")]
     public async Task<ActionResult<TeamRegistrationDto>> RejectRegistration(Guid id, Guid teamId, RejectRegistrationRequest request)
     {
-        var result = await _tournamentService.RejectRegistrationAsync(id, teamId, request);
+        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
+
+        var userId = Guid.Parse(userIdStr);
+        var userRole = User.IsInRole("Admin") ? "Admin" : "TournamentCreator";
+
+        var result = await _tournamentService.RejectRegistrationAsync(id, teamId, request, userId, userRole);
         return Ok(result);
     }
 

@@ -107,16 +107,13 @@ public class ObjectionsController : ControllerBase
     [Authorize(Roles = "Admin,TournamentCreator")]
     public async Task<ActionResult<ObjectionDto>> Resolve(Guid id, ResolveObjectionRequest request)
     {
-        if (User.IsInRole("TournamentCreator"))
-        {
-             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
-             var objection = await _objectionService.GetByIdAsync(id);
-             // Verify ownership
-             // In service we could do this, but for now we do a simple check.
-             // We need to trust the service handles filtering well, but Resolve needs specific Check.
-             // I'll add ownership check to the service or here.
-        }
-        var objectionResult = await _objectionService.ResolveAsync(id, request);
+        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
+
+        var userId = Guid.Parse(userIdStr);
+        var userRole = User.IsInRole("Admin") ? "Admin" : "TournamentCreator";
+
+        var objectionResult = await _objectionService.ResolveAsync(id, request, userId, userRole);
         return Ok(objectionResult);
     }
 }
