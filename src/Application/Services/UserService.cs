@@ -62,11 +62,26 @@ public class UserService : IUserService
         // Fetch Team Name and Ownership if exists
         if (user.TeamId.HasValue)
         {
-            var team = await _teamRepository.GetByIdAsync(user.TeamId.Value);
+            var team = await _teamRepository.GetByIdAsync(user.TeamId.Value, t => t.Players);
             if (team != null)
             {
+                var player = team.Players.FirstOrDefault(p => p.UserId == id);
                 dto.TeamName = team.Name;
-                dto.IsTeamOwner = team.CaptainId == id;
+                dto.TeamRole = player?.TeamRole.ToString();
+            }
+        }
+        else
+        {
+            // Fallback: If user has a team they are captain of but TeamId is null, use it
+            var ownedTeam = (await _teamRepository.FindAsync(
+                t => t.Players.Any(p => p.UserId == id && p.TeamRole == TeamRole.Captain), 
+                new[] { "Players" })).FirstOrDefault();
+            
+            if (ownedTeam != null)
+            {
+                dto.TeamId = ownedTeam.Id;
+                dto.TeamName = ownedTeam.Name;
+                dto.TeamRole = TeamRole.Captain.ToString();
             }
         }
 
@@ -204,11 +219,12 @@ public class UserService : IUserService
         var dto = _mapper.Map<UserPublicDto>(user);
         if (user.TeamId.HasValue)
         {
-            var team = await _teamRepository.GetByIdAsync(user.TeamId.Value);
+            var team = await _teamRepository.GetByIdAsync(user.TeamId.Value, t => t.Players);
             if (team != null)
             {
+                var player = team.Players.FirstOrDefault(p => p.UserId == id);
                 dto.TeamName = team.Name;
-                dto.IsTeamOwner = team.CaptainId == id;
+                dto.TeamRole = player?.TeamRole.ToString();
             }
         }
         return dto;

@@ -23,7 +23,7 @@ public class UserDto
     public string? IdBackUrl { get; set; }
     public Guid? TeamId { get; set; }
     public string? TeamName { get; set; }
-    public bool IsTeamOwner { get; set; }
+    public string? TeamRole { get; set; }
     public bool IsEmailVerified { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<UserActivityDto> Activities { get; set; } = new();
@@ -43,7 +43,7 @@ public class UserPublicDto
     public string? City { get; set; }
     public Guid? TeamId { get; set; }
     public string? TeamName { get; set; }
-    public bool IsTeamOwner { get; set; }
+    public string? TeamRole { get; set; }
     public bool IsEmailVerified { get; set; }
     public string Status { get; set; } = string.Empty;
 }
@@ -101,4 +101,3 @@ public class AdminCountDto
     public int TotalAdmins { get; set; }
     public bool IsLastAdmin { get; set; }
 }
-

@@ -25,6 +25,8 @@ public static class DependencyInjection
         services.AddScoped<IMatchMessageRepository, MatchMessageRepository>();
         services.AddScoped<IMatchRepository, MatchRepository>();
         services.AddScoped<IEmailService, Services.EmailService>();
+        services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorization.TeamCaptainHandler>();
+        services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorization.TournamentOwnerHandler>();
 
         return services;
     }

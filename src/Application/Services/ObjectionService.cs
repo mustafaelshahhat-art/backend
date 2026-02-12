@@ -45,22 +45,33 @@ public class ObjectionService : IObjectionService
     {
         var objections = await _objectionRepository.FindAsync(
             o => !creatorId.HasValue || o.Match!.Tournament!.CreatorUserId == creatorId.Value, 
-            new[] { "Team.Captain", "Match.Tournament", "Match.HomeTeam", "Match.AwayTeam" }
+            new[] { "Team.Players", "Match.Tournament", "Match.HomeTeam", "Match.AwayTeam" }
         );
         return _mapper.Map<IEnumerable<ObjectionDto>>(objections);
     }
 
     public async Task<IEnumerable<ObjectionDto>> GetByTeamIdAsync(Guid teamId)
     {
-        var objections = await _objectionRepository.FindAsync(o => o.TeamId == teamId, new[] { "Team.Captain", "Match.Tournament", "Match.HomeTeam", "Match.AwayTeam" });
+        var objections = await _objectionRepository.FindAsync(o => o.TeamId == teamId, new[] { "Team.Players", "Match.Tournament", "Match.HomeTeam", "Match.AwayTeam" });
         return _mapper.Map<IEnumerable<ObjectionDto>>(objections);
     }
 
-    public async Task<ObjectionDto?> GetByIdAsync(Guid id)
+    public async Task<ObjectionDto?> GetByIdAsync(Guid id, Guid userId, string userRole)
     {
-        var objections = await _objectionRepository.FindAsync(o => o.Id == id, new[] { "Team.Captain", "Match.Tournament", "Match.HomeTeam", "Match.AwayTeam" });
+        var objections = await _objectionRepository.FindAsync(o => o.Id == id, new[] { "Team.Players", "Match.Tournament", "Match.HomeTeam", "Match.AwayTeam" });
         var objection = objections.FirstOrDefault();
-        return objection == null ? null : _mapper.Map<ObjectionDto>(objection);
+        if (objection == null) return null;
+
+        var isAdmin = userRole == UserRole.Admin.ToString();
+        var isCreator = userRole == UserRole.TournamentCreator.ToString() && objection.Match?.Tournament?.CreatorUserId == userId;
+        var isCaptain = objection.TeamId != Guid.Empty && (await _teamRepository.GetByIdAsync(objection.TeamId, t => t.Players))?.Players.Any(p => p.UserId == userId && p.TeamRole == TeamRole.Captain) == true;
+
+        if (!isAdmin && !isCreator && !isCaptain)
+        {
+            throw new ForbiddenException("غير مصرح لك بعرض هذا الاعتراض.");
+        }
+
+        return _mapper.Map<ObjectionDto>(objection);
     }
 
     public async Task<ObjectionDto> SubmitAsync(SubmitObjectionRequest request, Guid teamId)
@@ -121,10 +132,13 @@ public class ObjectionService : IObjectionService
 
         var tournamentCreatorId = objection.Match?.Tournament?.CreatorUserId;
 
-        // Authorization: Only Tournament Creator can resolve
-        if (userRole != "TournamentCreator" || tournamentCreatorId != userId)
+        // Authorization: Admin or the specific Tournament Creator
+        var isAdmin = userRole == UserRole.Admin.ToString();
+        var isOwner = userRole == UserRole.TournamentCreator.ToString() && tournamentCreatorId == userId;
+
+        if (!isAdmin && !isOwner)
         {
-             throw new ForbiddenException("غير مصرح لك بإدارة هذا الاعتراض. فقط منظم البطولة يمكنه ذلك.");
+             throw new ForbiddenException("غير مصرح لك بإدارة هذا الاعتراض. فقط منظم البطولة أو مدير النظام يمكنه ذلك.");
         }
 
         // State Validation
@@ -146,15 +160,19 @@ public class ObjectionService : IObjectionService
         await _notifier.SendObjectionResolvedAsync(dto);
 
         // Persistent Notification for Captain
-        // Fetch objection with Team.
-        var fullObjection = await _objectionRepository.FindAsync(o => o.Id == id, new[] { "Team" });
+        // Fetch objection with Team and Players.
+        var fullObjection = await _objectionRepository.FindAsync(o => o.Id == id, new[] { "Team.Players" });
         var targetTeam = fullObjection.FirstOrDefault()?.Team;
         if (targetTeam != null)
         {
-            await _notificationService.SendNotificationByTemplateAsync(targetTeam.CaptainId, 
-                request.Approved ? NotificationTemplates.OBJECTION_APPROVED : NotificationTemplates.OBJECTION_REJECTED,
-                new Dictionary<string, string> { { "matchId", objection.MatchId.ToString() } }, 
-                "objection");
+            var captain = targetTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, 
+                    request.Approved ? NotificationTemplates.OBJECTION_APPROVED : NotificationTemplates.OBJECTION_REJECTED,
+                    new Dictionary<string, string> { { "matchId", objection.MatchId.ToString() } }, 
+                    "objection");
+            }
         }
 
         // Log Activity

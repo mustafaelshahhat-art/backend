@@ -102,8 +102,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// Authorization policies if needed, or stick to Roles.
-builder.Services.AddAuthorization();
+// Authorization policies
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("RequireAdmin", policy => policy.RequireRole(UserRole.Admin.ToString()));
+    options.AddPolicy("RequireCreator", policy => policy.RequireRole(UserRole.Admin.ToString(), UserRole.TournamentCreator.ToString()));
+    options.AddPolicy("RequirePlayer", policy => policy.RequireRole(UserRole.Admin.ToString(), UserRole.TournamentCreator.ToString(), UserRole.Player.ToString()));
+    options.AddPolicy("RequireTeamCaptain", policy => 
+    {
+        policy.RequireAuthenticatedUser();
+        policy.AddRequirements(new Infrastructure.Authorization.TeamCaptainRequirement());
+    });
+    options.AddPolicy("RequireTournamentOwner", policy => 
+    {
+        policy.RequireAuthenticatedUser();
+        policy.AddRequirements(new Infrastructure.Authorization.TournamentOwnerRequirement());
+    });
+});
 
 var app = builder.Build();
 

@@ -48,12 +48,7 @@ public class AppDbContext : DbContext
             }
         }
 
-        // User - Team (Captain relationship)
-        modelBuilder.Entity<Team>()
-            .HasOne(t => t.Captain)
-            .WithMany()
-            .HasForeignKey(t => t.CaptainId)
-            .OnDelete(DeleteBehavior.Restrict);
+        // Note: Team ownership is now managed via Player entities with TeamRole.Captain
 
         // Player - Team
         modelBuilder.Entity<Player>()
@@ -131,8 +126,7 @@ public class AppDbContext : DbContext
         // 2. Team (Principal: User/Captain)
         modelBuilder.Entity<Team>().Property<bool>("IsDeleted");
         modelBuilder.Entity<Team>().HasQueryFilter(t => 
-            !EF.Property<bool>(t, "IsDeleted") && 
-            !EF.Property<bool>(t.Captain!, "IsDeleted"));
+            !EF.Property<bool>(t, "IsDeleted"));
 
         // 3. Player (Principal: Team)
         modelBuilder.Entity<Player>().Property<bool>("IsDeleted");

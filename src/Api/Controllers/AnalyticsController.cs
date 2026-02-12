@@ -28,7 +28,7 @@ public class AnalyticsController : ControllerBase
     }
 
     [HttpPost("migrate-logs")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult> MigrateLogs()
     {
         await _migrationService.MigrateLegacyLogsAsync();
@@ -39,20 +39,18 @@ public class AnalyticsController : ControllerBase
     [Authorize]
     public async Task<ActionResult> GetOverview([FromQuery] Guid? teamId = null)
     {
-        var isAdmin = User.IsInRole("Admin");
+        var (userId, userRole) = GetUserContext();
+        var isAdmin = userRole == "Admin";
 
         if (teamId.HasValue)
         {
-            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
-            var userId = Guid.Parse(userIdStr);
-
             // Security Check: If not admin, must own the team
             if (!isAdmin)
             {
                 var team = await _teamService.GetByIdAsync(teamId.Value);
                 if (team == null) return NotFound();
-
+                
+                // Note: TeamDto has CaptainId
                 if (team.CaptainId != userId)
                 {
                     return Forbid();
@@ -63,10 +61,10 @@ public class AnalyticsController : ControllerBase
             return Ok(teamAnalytics);
         }
         
-        var isCreator = User.IsInRole("TournamentCreator");
+        var isCreator = userRole == "TournamentCreator";
         if (!isAdmin && !isCreator) return Forbid();
 
-        Guid? creatorId = isCreator ? Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!) : null;
+        Guid? creatorId = isCreator ? userId : null;
         var overview = await _analyticsService.GetOverviewAsync(creatorId);
         return Ok(overview);
     }
@@ -75,14 +73,23 @@ public class AnalyticsController : ControllerBase
     [Authorize]
     public async Task<ActionResult<IEnumerable<ActivityDto>>> GetRecentActivity()
     {
-        var isAdmin = User.IsInRole("Admin");
-        var isCreator = User.IsInRole("TournamentCreator");
+        var (userId, userRole) = GetUserContext();
+        var isAdmin = userRole == "Admin";
+        var isCreator = userRole == "TournamentCreator";
         
         if (!isAdmin && !isCreator) return Forbid();
 
-        Guid? creatorId = isCreator ? Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!) : null;
+        Guid? creatorId = isCreator ? userId : null;
         var activity = await _analyticsService.GetRecentActivitiesAsync(creatorId);
         return Ok(activity);
+    }
+
+    private (Guid userId, string userRole) GetUserContext()
+    {
+        var idStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var role = User.IsInRole("Admin") ? "Admin" : 
+                   User.IsInRole("TournamentCreator") ? "TournamentCreator" : "Player";
+        return (Guid.Parse(idStr!), role);
     }
 }
 

@@ -30,6 +30,7 @@ public class AuthService : IAuthService
     private readonly IEmailService _emailService;
     private readonly ILogger<AuthService> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IRepository<Player> _playerRepository;
 
     public AuthService(
         IRepository<User> userRepository, 
@@ -43,7 +44,8 @@ public class AuthService : IAuthService
         IOtpService otpService,
         IEmailService emailService,
         ILogger<AuthService> logger,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        IRepository<Player> playerRepository)
     {
         _userRepository = userRepository;
         _teamRepository = teamRepository;
@@ -57,6 +59,7 @@ public class AuthService : IAuthService
         _emailService = emailService;
         _logger = logger;
         _scopeFactory = scopeFactory;
+        _playerRepository = playerRepository;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
@@ -389,7 +392,8 @@ public class AuthService : IAuthService
             if (team != null)
             {
                 dto.TeamName = team.Name;
-                dto.IsTeamOwner = team.CaptainId == user.Id;
+                var player = (await _playerRepository.FindAsync(p => p.TeamId == user.TeamId.Value && p.UserId == user.Id)).FirstOrDefault();
+                dto.TeamRole = player?.TeamRole.ToString();
             }
         }
         return dto;

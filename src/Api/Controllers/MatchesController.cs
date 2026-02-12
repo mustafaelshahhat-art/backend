@@ -39,57 +39,71 @@ public class MatchesController : ControllerBase
     }
 
     [HttpPost("{id}/start")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<MatchDto>> StartMatch(Guid id)
     {
         if (!await IsUserActiveAsync() && !User.IsInRole("Admin"))
         {
             return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من إدارة المباريات.");
         }
-        var match = await _matchService.StartMatchAsync(id);
+        var (userId, userRole) = GetUserContext();
+        var match = await _matchService.StartMatchAsync(id, userId, userRole);
         return Ok(match);
     }
 
     [HttpPost("{id}/end")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<MatchDto>> EndMatch(Guid id)
     {
         if (!await IsUserActiveAsync() && !User.IsInRole("Admin"))
         {
             return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من إدارة المباريات.");
         }
-        var match = await _matchService.EndMatchAsync(id);
+        var (userId, userRole) = GetUserContext();
+        var match = await _matchService.EndMatchAsync(id, userId, userRole);
         return Ok(match);
     }
 
     [HttpPost("{id}/events")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<MatchDto>> AddEvent(Guid id, AddMatchEventRequest request)
     {
         if (!await IsUserActiveAsync() && !User.IsInRole("Admin"))
         {
             return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من إضافة أحداث للمباراة.");
         }
-        var match = await _matchService.AddEventAsync(id, request);
+        var (userId, userRole) = GetUserContext();
+        var match = await _matchService.AddEventAsync(id, request, userId, userRole);
         return Ok(match);
     }
 
     [HttpDelete("{id}/events/{eventId}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<MatchDto>> RemoveEvent(Guid id, Guid eventId)
     {
-        var match = await _matchService.RemoveEventAsync(id, eventId);
+        var (userId, userRole) = GetUserContext();
+        var match = await _matchService.RemoveEventAsync(id, eventId, userId, userRole);
         return Ok(match);
     }
 
 
 
     [HttpPatch("{id}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<MatchDto>> UpdateMatch(Guid id, UpdateMatchRequest request)
     {
-        var match = await _matchService.UpdateAsync(id, request);
+        var (userId, userRole) = GetUserContext();
+        var match = await _matchService.UpdateAsync(id, request, userId, userRole);
         return Ok(match);
+    }
+
+    private (Guid userId, string userRole) GetUserContext()
+    {
+        var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value 
+                  ?? User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
+        
+        var role = User.IsInRole("Admin") ? "Admin" : "TournamentCreator";
+        return (Guid.Parse(idStr!), role);
     }
 
     private async Task<bool> IsUserActiveAsync()

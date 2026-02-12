@@ -10,12 +10,12 @@ public interface ITeamService
     Task<IEnumerable<TeamDto>> GetAllAsync(Guid? captainId = null, Guid? playerId = null);
     Task<TeamDto?> GetByIdAsync(Guid id);
     Task<TeamDto> CreateAsync(CreateTeamRequest request, Guid captainId);
-    Task<TeamDto> UpdateAsync(Guid id, UpdateTeamRequest request);
-    Task DeleteAsync(Guid id);
+    Task<TeamDto> UpdateAsync(Guid id, UpdateTeamRequest request, Guid userId, string userRole);
+    Task DeleteAsync(Guid id, Guid userId, string userRole);
     
     Task<JoinRequestDto> RequestJoinAsync(Guid teamId, Guid playerId);
     Task<IEnumerable<JoinRequestDto>> GetJoinRequestsAsync(Guid teamId);
-    Task<JoinRequestDto> RespondJoinRequestAsync(Guid teamId, Guid requestId, bool approve);
+    Task<JoinRequestDto> RespondJoinRequestAsync(Guid teamId, Guid requestId, bool approve, Guid userId, string userRole);
     
     // Invitation flow
     Task<JoinRequestDto> InvitePlayerAsync(Guid teamId, Guid captainId, AddPlayerRequest request);
@@ -24,7 +24,7 @@ public interface ITeamService
     Task<IEnumerable<JoinRequestDto>> GetUserInvitationsAsync(Guid userId);
     Task<IEnumerable<JoinRequestDto>> GetRequestsForCaptainAsync(Guid captainId);
     
-    Task RemovePlayerAsync(Guid teamId, Guid playerId);
+    Task RemovePlayerAsync(Guid teamId, Guid playerId, Guid userId, string userRole);
 
     Task<IEnumerable<PlayerDto>> GetTeamPlayersAsync(Guid teamId);
     Task<IEnumerable<Application.DTOs.Matches.MatchDto>> GetTeamMatchesAsync(Guid teamId);

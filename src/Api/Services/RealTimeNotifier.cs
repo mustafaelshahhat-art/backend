@@ -171,7 +171,7 @@ public class RealTimeNotifier : IRealTimeNotifier
                 user.City,
                 user.TeamId,
                 user.TeamName,
-                user.IsTeamOwner,
+                user.TeamRole,
                 user.Status
             };
             await _hubContext.Clients.All.SendAsync("UserUpdated", publicView);
@@ -196,7 +196,7 @@ public class RealTimeNotifier : IRealTimeNotifier
                 user.City,
                 user.TeamId,
                 user.TeamName,
-                user.IsTeamOwner,
+                user.TeamRole,
                 user.Status
             };
             await _hubContext.Clients.All.SendAsync("UserCreated", publicView);

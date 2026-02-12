@@ -66,15 +66,15 @@ public class TeamService : ITeamService
 
         if (captainId.HasValue)
         {
-            teams = await _teamRepository.FindAsync(t => t.CaptainId == captainId.Value, new[] { "Captain", "Players" });
+            teams = await _teamRepository.FindAsync(t => t.Players.Any(p => p.TeamRole == TeamRole.Captain && p.UserId == captainId.Value), new[] { "Players" });
         }
         else if (playerId.HasValue)
         {
-            teams = await _teamRepository.FindAsync(t => t.Players.Any(p => p.UserId == playerId.Value), new[] { "Captain", "Players" });
+            teams = await _teamRepository.FindAsync(t => t.Players.Any(p => p.UserId == playerId.Value), new[] { "Players" });
         }
         else
         {
-            teams = await _teamRepository.GetAllAsync(t => t.Captain!, t => t.Players);
+            teams = await _teamRepository.GetAllAsync(t => t.Players);
         }
 
         var teamDtos = _mapper.Map<IEnumerable<TeamDto>>(teams).ToList();
@@ -170,12 +170,16 @@ public class TeamService : ITeamService
         }
 
         // 5. Notify Captain
-        await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.ACCOUNT_SUSPENDED, null, "team_disabled");
+        var captain = team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+        if (captain != null && captain.UserId.HasValue)
+        {
+            await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.ACCOUNT_SUSPENDED, null, "team_disabled");
+        }
     }
 
     public async Task<TeamDto?> GetByIdAsync(Guid id)
     {
-        var team = await _teamRepository.GetByIdAsync(id, t => t.Captain!, t => t.Players);
+        var team = await _teamRepository.GetByIdAsync(id, t => t.Players);
         if (team == null) return null;
 
         var teamDto = _mapper.Map<TeamDto>(team);
@@ -204,6 +208,20 @@ public class TeamService : ITeamService
         return teamDto;
     }
 
+    private async Task ValidateManagementRights(Guid teamId, Guid userId, string userRole)
+    {
+        if (userRole == UserRole.Admin.ToString()) return;
+
+        var team = await _teamRepository.GetByIdAsync(teamId, t => t.Players);
+        if (team == null) throw new NotFoundException(nameof(Team), teamId);
+
+        var isCaptain = team.Players.Any(p => p.UserId == userId && p.TeamRole == TeamRole.Captain);
+        if (!isCaptain)
+        {
+            throw new ForbiddenException("غير مصرح لك بإدارة هذا الفريق. فقط قائد الفريق أو مدير النظام يمكنه ذلك.");
+        }
+    }
+
     public async Task<TeamDto> CreateAsync(CreateTeamRequest request, Guid captainId)
     {
         // SYSTEM SETTING CHECK: Block team creation if disabled
@@ -220,7 +238,6 @@ public class TeamService : ITeamService
         var team = new Team
         {
             Name = request.Name,
-            CaptainId = captainId,
             Founded = request.Founded,
             City = request.City,
             Logo = request.Logo,
@@ -232,14 +249,20 @@ public class TeamService : ITeamService
         {
             Name = captain.Name,
             DisplayId = "P-" + captain.DisplayId.Replace("U-", ""),
-            UserId = captainId
+            UserId = captainId,
+            TeamRole = TeamRole.Captain
         };
         team.Players.Add(player);
 
         // Save team (will save players too due to relationship)
         await _teamRepository.AddAsync(team);
 
-        // Do not automatically link user to team - users can own multiple teams
+        // link user to team if they don't have one yet
+        if (!captain.TeamId.HasValue)
+        {
+            captain.TeamId = team.Id;
+            await _userRepository.UpdateAsync(captain);
+        }
 
         await _analyticsService.LogActivityByTemplateAsync(
             ActivityConstants.TEAM_CREATED, 
@@ -256,8 +279,9 @@ public class TeamService : ITeamService
         return dto;
     }
 
-    public async Task<TeamDto> UpdateAsync(Guid id, UpdateTeamRequest request)
+    public async Task<TeamDto> UpdateAsync(Guid id, UpdateTeamRequest request, Guid userId, string userRole)
     {
+        await ValidateManagementRights(id, userId, userRole);
         var team = await _teamRepository.GetByIdAsync(id);
         if (team == null) throw new NotFoundException(nameof(Team), id);
 
@@ -280,8 +304,9 @@ public class TeamService : ITeamService
         return dto;
     }
 
-    public async Task DeleteAsync(Guid id)
+    public async Task DeleteAsync(Guid id, Guid userId, string userRole)
     {
+        await ValidateManagementRights(id, userId, userRole);
         // 1. Validation: Removed check for matches to allow Soft Delete
         // The team and players will be soft-deleted, preserving match history references.
 
@@ -378,10 +403,14 @@ public class TeamService : ITeamService
 
         await _joinRequestRepository.AddAsync(request);
 
-        var team = await _teamRepository.GetByIdAsync(teamId);
+        var team = await _teamRepository.GetByIdAsync(teamId, t => t.Players);
         if (team != null)
         {
-            await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.JOIN_REQUEST_RECEIVED, new Dictionary<string, string> { { "playerName", user.Name } }, "join_request");
+            var captain = team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.JOIN_REQUEST_RECEIVED, new Dictionary<string, string> { { "playerName", user.Name } }, "join_request");
+            }
         }
 
         var result = new JoinRequestDto
@@ -429,8 +458,9 @@ public class TeamService : ITeamService
         return dtos;
     }
 
-    public async Task<JoinRequestDto> RespondJoinRequestAsync(Guid teamId, Guid requestId, bool approve)
+    public async Task<JoinRequestDto> RespondJoinRequestAsync(Guid teamId, Guid requestId, bool approve, Guid userId, string userRole)
     {
+        await ValidateManagementRights(teamId, userId, userRole);
         var request = await _joinRequestRepository.GetByIdAsync(requestId);
         if (request == null) throw new NotFoundException(nameof(TeamJoinRequest), requestId);
 
@@ -451,7 +481,8 @@ public class TeamService : ITeamService
                      Name = user.Name,
                      DisplayId = "P-" + user.DisplayId,
                      UserId = user.Id,
-                     TeamId = teamId
+                     TeamId = teamId,
+                     TeamRole = TeamRole.Member
                  };
                  await _playerRepository.AddAsync(player);
              }
@@ -467,7 +498,7 @@ public class TeamService : ITeamService
             await BroadcastTeamSnapshotAsync(teamId);
         }
 
-        var team = await _teamRepository.GetByIdAsync(teamId);
+        var team = await _teamRepository.GetByIdAsync(teamId, t => t.Players);
         user = await _userRepository.GetByIdAsync(request.UserId);
 
         // Notify player
@@ -493,9 +524,11 @@ public class TeamService : ITeamService
     public async Task<JoinRequestDto> InvitePlayerAsync(Guid teamId, Guid captainId, AddPlayerRequest request)
     {
         // 1. Verify Captain Ownership
-        var team = await _teamRepository.GetByIdAsync(teamId);
+        var team = await _teamRepository.GetByIdAsync(teamId, t => t.Players);
         if (team == null) throw new NotFoundException(nameof(Team), teamId);
-        if (team.CaptainId != captainId) throw new ForbiddenException("فقط قائد الفريق يمكنه إرسال دعوات.");
+        
+        var captain = team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+        if (captain == null || captain.UserId != captainId) throw new ForbiddenException("فقط قائد الفريق يمكنه إرسال دعوات.");
 
         // 2. Find User by DisplayId
         var users = await _userRepository.FindAsync(u => u.DisplayId == request.DisplayId);
@@ -539,7 +572,7 @@ public class TeamService : ITeamService
 
     public async Task<JoinRequestDto> AcceptInviteAsync(Guid requestId, Guid userId)
     {
-        var request = await _joinRequestRepository.GetByIdAsync(requestId, r => r.Team!);
+        var request = await _joinRequestRepository.GetByIdAsync(requestId, r => r.Team!, r => r.Team.Players);
         if (request == null) throw new NotFoundException(nameof(TeamJoinRequest), requestId);
         if (request.UserId != userId) throw new ForbiddenException("لا تملك صلاحية قبول هذه الدعوة.");
         if (request.Status != "pending") throw new ConflictException("هذه الدعوة لم تعد صالحة.");
@@ -563,7 +596,8 @@ public class TeamService : ITeamService
             Name = user.Name,
             DisplayId = "P-" + user.DisplayId,
             UserId = user.Id,
-            TeamId = request.TeamId
+            TeamId = request.TeamId,
+            TeamRole = TeamRole.Member
         };
         await _playerRepository.AddAsync(player);
         await BroadcastTeamSnapshotAsync(request.TeamId);
@@ -571,7 +605,11 @@ public class TeamService : ITeamService
         // 3. Notify Captain
         if (request.Team != null)
         {
-            await _notificationService.SendNotificationByTemplateAsync(request.Team.CaptainId, NotificationTemplates.INVITE_ACCEPTED, new Dictionary<string, string> { { "playerName", user.Name } }, "invite_accepted");
+            var captain = request.Team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.INVITE_ACCEPTED, new Dictionary<string, string> { { "playerName", user.Name } }, "invite_accepted");
+            }
         }
 
         return new JoinRequestDto
@@ -588,7 +626,7 @@ public class TeamService : ITeamService
 
     public async Task<JoinRequestDto> RejectInviteAsync(Guid requestId, Guid userId)
     {
-        var request = await _joinRequestRepository.GetByIdAsync(requestId, r => r.Team!);
+        var request = await _joinRequestRepository.GetByIdAsync(requestId, r => r.Team!, r => r.Team.Players);
         if (request == null) throw new NotFoundException(nameof(TeamJoinRequest), requestId);
         if (request.UserId != userId) throw new ForbiddenException("لا تملك صلاحية رفض هذه الدعوة.");
         if (request.Status != "pending") throw new ConflictException("هذه الدعوة لم تعد صالحة.");
@@ -599,8 +637,12 @@ public class TeamService : ITeamService
         // Notify Captain
         if (request.Team != null)
         {
-            var user = await _userRepository.GetByIdAsync(userId);
-            await _notificationService.SendNotificationByTemplateAsync(request.Team.CaptainId, NotificationTemplates.INVITE_REJECTED, new Dictionary<string, string> { { "playerName", user?.Name ?? "اللاعب" } }, "invite_rejected");
+            var captain = request.Team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                var user = await _userRepository.GetByIdAsync(userId);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.INVITE_REJECTED, new Dictionary<string, string> { { "playerName", user?.Name ?? "اللاعب" } }, "invite_rejected");
+            }
         }
 
         return new JoinRequestDto
@@ -635,7 +677,7 @@ public class TeamService : ITeamService
 
     public async Task<IEnumerable<JoinRequestDto>> GetRequestsForCaptainAsync(Guid captainId)
     {
-        var teams = await _teamRepository.FindAsync(t => t.CaptainId == captainId);
+        var teams = await _teamRepository.FindAsync(t => t.Players.Any(p => p.TeamRole == TeamRole.Captain && p.UserId == captainId), new[] { "Players" });
         var teamIds = teams.Select(t => t.Id).ToList();
 
         var requests = await _joinRequestRepository.FindAsync(r => teamIds.Contains(r.TeamId) && r.Status == "pending");
@@ -659,16 +701,18 @@ public class TeamService : ITeamService
         return dtos;
     }
 
-    public async Task RemovePlayerAsync(Guid teamId, Guid playerId)
+    public async Task RemovePlayerAsync(Guid teamId, Guid playerId, Guid userId, string userRole)
     {
+        await ValidateManagementRights(teamId, userId, userRole);
         // playerId here is Player Entity Id? Yes from route {playerId} in team.
         var player = await _playerRepository.GetByIdAsync(playerId);
         // Safety check teamId
         if (player != null && player.TeamId == teamId)
         {
             // Rule: Captain cannot remove himself
-            var team = await _teamRepository.GetByIdAsync(teamId);
-            if (team != null && player.UserId.HasValue && player.UserId.Value == team.CaptainId)
+            var team = await _teamRepository.GetByIdAsync(teamId, t => t.Players);
+            var captain = team?.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (team != null && player.UserId.HasValue && captain != null && player.UserId.Value == captain.UserId)
             {
                 throw new ForbiddenException("لا يمكن للكابتن حذف نفسه من الفريق. استخدم خيار حذف الفريق بدلاً من ذلك.");
             }
@@ -676,8 +720,8 @@ public class TeamService : ITeamService
             // Unlink User
             if (player.UserId.HasValue)
             {
-                var userId = player.UserId.Value;
-                var user = await _userRepository.GetByIdAsync(userId);
+                var targetUserId = player.UserId.Value;
+                var user = await _userRepository.GetByIdAsync(targetUserId);
                 if (user != null)
                 {
                     user.TeamId = null;
@@ -685,10 +729,10 @@ public class TeamService : ITeamService
                     await _realTimeNotifier.SendUserUpdatedAsync(_mapper.Map<UserDto>(user));
 
                     // Send real-time notification to the removed player
-                    await _realTimeNotifier.SendRemovedFromTeamAsync(userId, teamId, playerId);
+                    await _realTimeNotifier.SendRemovedFromTeamAsync(targetUserId, teamId, playerId);
                     
                     // Persistent Notification
-                    await _notificationService.SendNotificationByTemplateAsync(userId, NotificationTemplates.PLAYER_REMOVED, new Dictionary<string, string> { { "teamName", team?.Name ?? "الفريق" } }, "team_removal");
+                    await _notificationService.SendNotificationByTemplateAsync(targetUserId, NotificationTemplates.PLAYER_REMOVED, new Dictionary<string, string> { { "teamName", team?.Name ?? "الفريق" } }, "team_removal");
                 }
             }
 
@@ -720,19 +764,19 @@ public class TeamService : ITeamService
 
     public async Task<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>> GetTeamFinancialsAsync(Guid teamId)
     {
-        var registrations = await _registrationRepository.FindAsync(r => r.TeamId == teamId, new[] { "Tournament", "Team.Captain" });
+        var registrations = await _registrationRepository.FindAsync(r => r.TeamId == teamId, new[] { "Tournament", "Team.Players" });
         return _mapper.Map<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>>(registrations);
     }
 
     public async Task<TeamsOverviewDto> GetTeamsOverviewAsync(Guid userId)
     {
         // Get teams owned by user (where user is captain)
-        var ownedTeams = await _teamRepository.FindAsync(t => t.CaptainId == userId, new[] { "Captain", "Players" });
+        var ownedTeams = await _teamRepository.FindAsync(t => t.Players.Any(p => p.TeamRole == TeamRole.Captain && p.UserId == userId), new[] { "Players" });
         
         // Get teams where user is a member (through Player records)
         var playerTeams = await _teamRepository.FindAsync(
             t => t.Players.Any(p => p.UserId == userId), 
-            new[] { "Captain", "Players" }
+            new[] { "Players" } 
         );
         
         // Get pending invitations for user

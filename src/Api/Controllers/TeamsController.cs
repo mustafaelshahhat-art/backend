@@ -45,21 +45,11 @@ public class TeamsController : ControllerBase
     }
 
     [HttpPatch("{id}")]
+    [Authorize(Policy = "RequireTeamCaptain")]
     public async Task<ActionResult<TeamDto>> Update(Guid id, UpdateTeamRequest request)
     {
-        // Owner Check (Captain)
-        // Need to check if user is captain of this team. Service check or here?
-        // Ideally service handles permission or we fetch team here.
-        var team = await _teamService.GetByIdAsync(id);
-        if (team == null) return NotFound();
-
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (team.CaptainId.ToString() != userId && !User.IsInRole("Admin"))
-        {
-            return Forbid();
-        }
-
-        var updatedTeam = await _teamService.UpdateAsync(id, request);
+        var (userId, userRole) = GetUserContext();
+        var updatedTeam = await _teamService.UpdateAsync(id, request, userId, userRole);
         return Ok(updatedTeam);
     }
 
@@ -76,34 +66,24 @@ public class TeamsController : ControllerBase
     }
 
     [HttpGet("{id}/join-requests")]
+    [Authorize(Policy = "RequireTeamCaptain")]
     public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetJoinRequests(Guid id)
     {
-        // Check captain
-        var team = await _teamService.GetByIdAsync(id);
-        if (team == null) return NotFound();
-
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (team.CaptainId.ToString() != userId && !User.IsInRole("Admin")) return Forbid();
-
         var requests = await _teamService.GetJoinRequestsAsync(id);
         return Ok(requests);
     }
 
     [HttpPost("{id}/join-requests/{requestId}/respond")]
+    [Authorize(Policy = "RequireTeamCaptain")]
     public async Task<ActionResult<JoinRequestDto>> RespondJoinRequest(Guid id, Guid requestId, [FromBody] RespondJoinRequest request)
     {
-        // Check captain
-        var team = await _teamService.GetByIdAsync(id);
-        if (team == null) return NotFound();
-
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (team.CaptainId.ToString() != userId && !User.IsInRole("Admin")) return Forbid();
-
-        var response = await _teamService.RespondJoinRequestAsync(id, requestId, request.Approve);
+        var (userId, userRole) = GetUserContext();
+        var response = await _teamService.RespondJoinRequestAsync(id, requestId, request.Approve, userId, userRole);
         return Ok(response);
     }
 
     [HttpPost("{id}/invite")]
+    [Authorize(Policy = "RequireTeamCaptain")]
     public async Task<ActionResult<JoinRequestDto>> Invite(Guid id, AddPlayerRequest request)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -114,51 +94,41 @@ public class TeamsController : ControllerBase
     }
 
     [HttpGet("{id}/requests")]
+    [Authorize(Policy = "RequireTeamCaptain")]
     public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetRequests(Guid id)
     {
-        // Check captain or admin
-        var team = await _teamService.GetByIdAsync(id);
-        if (team == null) return NotFound();
-
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (team.CaptainId.ToString() != userId && !User.IsInRole("Admin")) return Forbid();
-
         var requests = await _teamService.GetJoinRequestsAsync(id);
         return Ok(requests);
     }
 
     [HttpDelete("{id}/players/{playerId}")]
+    [Authorize(Policy = "RequireTeamCaptain")]
     public async Task<ActionResult<object>> RemovePlayer(Guid id, Guid playerId)
     {
-        // Check captain
-        var team = await _teamService.GetByIdAsync(id);
-        if (team == null) return NotFound();
-
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (team.CaptainId.ToString() != userId && !User.IsInRole("Admin")) return Forbid();
-
-        await _teamService.RemovePlayerAsync(id, playerId);
+        var (userId, userRole) = GetUserContext();
+        await _teamService.RemovePlayerAsync(id, playerId, userId, userRole);
         return Ok(new { teamRemoved = true, playerId = playerId, teamId = id });
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Policy = "RequireTeamCaptain")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var team = await _teamService.GetByIdAsync(id);
-        if (team == null) return NotFound();
-
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (team.CaptainId.ToString() != userId && !User.IsInRole("Admin"))
-        {
-            return Forbid();
-        }
-
-        await _teamService.DeleteAsync(id);
+        var (userId, userRole) = GetUserContext();
+        await _teamService.DeleteAsync(id, userId, userRole);
         return NoContent();
     }
 
+    private (Guid userId, string userRole) GetUserContext()
+    {
+        var idStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var role = User.IsInRole("Admin") ? "Admin" : 
+                   User.IsInRole("TournamentCreator") ? "TournamentCreator" : "User";
+        return (Guid.Parse(idStr!), role);
+    }
+
     [HttpPost("{id}/disable")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Disable(Guid id)
     {
         await _teamService.DisableTeamAsync(id);
@@ -180,15 +150,9 @@ public class TeamsController : ControllerBase
     }
 
     [HttpGet("{id}/financials")]
+    [Authorize(Policy = "RequireTeamCaptain")]
     public async Task<ActionResult<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>>> GetTeamFinancials(Guid id)
     {
-        // Check permission (Captain or Admin)
-        var team = await _teamService.GetByIdAsync(id);
-        if (team == null) return NotFound();
-
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (team.CaptainId.ToString() != userId && !User.IsInRole("Admin")) return Forbid();
-
         var financials = await _teamService.GetTeamFinancialsAsync(id);
         return Ok(financials);
     }

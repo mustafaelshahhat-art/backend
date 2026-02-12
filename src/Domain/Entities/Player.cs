@@ -9,6 +9,7 @@ public class Player : BaseEntity
     public int Number { get; set; }
     public string Position { get; set; } = "Player";
     public string Status { get; set; } = "active";
+    public Domain.Enums.TeamRole TeamRole { get; set; } = Domain.Enums.TeamRole.Member;
     
     // Stats
     public int Goals { get; set; }

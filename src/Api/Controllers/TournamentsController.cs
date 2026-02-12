@@ -48,7 +48,7 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<TournamentDto>> Create(CreateTournamentRequest request)
     {
         Guid? creatorId = null;
@@ -66,37 +66,29 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpPatch("{id}")]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireTournamentOwner")]
     public async Task<ActionResult<TournamentDto>> Update(Guid id, UpdateTournamentRequest request)
     {
-        if (User.IsInRole("TournamentCreator"))
-        {
-            var currentUserId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value!);
-            var tournament = await _tournamentService.GetByIdAsync(id);
-            if (tournament == null) return NotFound();
-            // In the real system, TournamentDto should probably have CreatorUserId too or we check in service.
-            // For now, let's assume we implement the check in service or here.
-            // I'll add ownership check to the service later or do it here.
-            // Better do it in service.
-        }
-
-        var result = await _tournamentService.UpdateAsync(id, request);
+        var (userId, userRole) = GetUserContext();
+        var result = await _tournamentService.UpdateAsync(id, request, userId, userRole);
         return Ok(result);
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireTournamentOwner")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        await _tournamentService.DeleteAsync(id);
+        var (userId, userRole) = GetUserContext();
+        await _tournamentService.DeleteAsync(id, userId, userRole);
         return NoContent();
     }
 
     [HttpPost("{id}/close-registration")]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireTournamentOwner")]
     public async Task<ActionResult<TournamentDto>> CloseRegistration(Guid id)
     {
-        var result = await _tournamentService.CloseRegistrationAsync(id);
+        var (userId, userRole) = GetUserContext();
+        var result = await _tournamentService.CloseRegistrationAsync(id, userId, userRole);
         return Ok(result);
     }
 
@@ -115,7 +107,7 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpGet("{id}/registrations")]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireTournamentOwner")]
     public async Task<ActionResult<IEnumerable<TeamRegistrationDto>>> GetRegistrations(Guid id)
     {
         var registrations = await _tournamentService.GetRegistrationsAsync(id);
@@ -161,7 +153,7 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpPost("{id}/registrations/{teamId}/approve")]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireTournamentOwner")]
     public async Task<ActionResult<TeamRegistrationDto>> ApproveRegistration(Guid id, Guid teamId)
     {
         var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -175,7 +167,7 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpPost("{id}/registrations/{teamId}/reject")]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireTournamentOwner")]
     public async Task<ActionResult<TeamRegistrationDto>> RejectRegistration(Guid id, Guid teamId, RejectRegistrationRequest request)
     {
         var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -189,7 +181,7 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpGet("payments/pending")]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<IEnumerable<PendingPaymentResponse>>> GetPendingPayments()
     {
         Guid? creatorId = null;
@@ -207,7 +199,7 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpGet("payments/all")]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<IEnumerable<PendingPaymentResponse>>> GetAllPaymentRequests()
     {
         Guid? creatorId = null;
@@ -225,10 +217,11 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpPost("{id}/matches/generate")]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireTournamentOwner")]
     public async Task<ActionResult<IEnumerable<MatchDto>>> GenerateMatches(Guid id)
     {
-        var matches = await _tournamentService.GenerateMatchesAsync(id);
+        var (userId, userRole) = GetUserContext();
+        var matches = await _tournamentService.GenerateMatchesAsync(id, userId, userRole);
         return Ok(matches);
     }
 
@@ -257,26 +250,36 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpPost("{id}/eliminate/{teamId}")]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireTournamentOwner")]
     public async Task<IActionResult> EliminateTeam(Guid id, Guid teamId)
     {
-        await _tournamentService.EliminateTeamAsync(id, teamId);
+        var (userId, userRole) = GetUserContext();
+        await _tournamentService.EliminateTeamAsync(id, teamId, userId, userRole);
         return NoContent();
     }
 
     [HttpPost("{id}/emergency/start")]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireTournamentOwner")]
     public async Task<ActionResult<TournamentDto>> EmergencyStart(Guid id)
     {
-        var result = await _tournamentService.EmergencyStartAsync(id);
+        var (userId, userRole) = GetUserContext();
+        var result = await _tournamentService.EmergencyStartAsync(id, userId, userRole);
         return Ok(result);
     }
 
     [HttpPost("{id}/emergency/end")]
-    [Authorize(Roles = "Admin,TournamentCreator")]
+    [Authorize(Policy = "RequireTournamentOwner")]
     public async Task<ActionResult<TournamentDto>> EmergencyEnd(Guid id)
     {
-        var result = await _tournamentService.EmergencyEndAsync(id);
+        var (userId, userRole) = GetUserContext();
+        var result = await _tournamentService.EmergencyEndAsync(id, userId, userRole);
         return Ok(result);
+    }
+
+    private (Guid userId, string userRole) GetUserContext()
+    {
+        var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var role = User.IsInRole("Admin") ? "Admin" : "TournamentCreator";
+        return (Guid.Parse(idStr!), role);
     }
 }

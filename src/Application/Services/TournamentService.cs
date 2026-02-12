@@ -52,12 +52,12 @@ public class TournamentService : ITournamentService
         {
             tournaments = await _tournamentRepository.FindAsync(
                 t => t.CreatorUserId == creatorId.Value,
-                new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" }
+                new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" }
             );
         }
         else
         {
-            tournaments = await _tournamentRepository.GetAllAsync(new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
+            tournaments = await _tournamentRepository.GetAllAsync(new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" });
         }
         
         var dtos = new List<TournamentDto>();
@@ -70,13 +70,13 @@ public class TournamentService : ITournamentService
 
     public async Task<TournamentDto?> GetByIdAsync(Guid id)
     {
-        var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
+        var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" });
         return tournament == null ? null : await MapToDtoWithInterventionAsync(tournament);
     }
 
     private async Task<TournamentDto?> GetByIdFreshAsync(Guid id)
     {
-        var tournament = await _tournamentRepository.GetByIdNoTrackingAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
+        var tournament = await _tournamentRepository.GetByIdNoTrackingAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" });
         return tournament == null ? null : await MapToDtoWithInterventionAsync(tournament);
     }
 
@@ -173,10 +173,11 @@ public class TournamentService : ITournamentService
         return _mapper.Map<TournamentDto>(tournament);
     }
 
-    public async Task<TournamentDto> UpdateAsync(Guid id, UpdateTournamentRequest request)
+    public async Task<TournamentDto> UpdateAsync(Guid id, UpdateTournamentRequest request, Guid userId, string userRole)
     {
-        var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Captain", "WinnerTeam" });
+        var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" });
         if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
+        ValidateOwnership(tournament, userId, userRole);
 
         // Safety Check: Format Change
         if (request.Format.HasValue && request.Format.Value != tournament.Format)
@@ -239,10 +240,12 @@ public class TournamentService : ITournamentService
         return dto ?? _mapper.Map<TournamentDto>(tournament);
     }
 
-    public async Task DeleteAsync(Guid id)
+    public async Task DeleteAsync(Guid id, Guid userId, string userRole)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(id);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
+
+        ValidateOwnership(tournament, userId, userRole);
 
         // Delete associated matches and registrations logic normally handled by DB constraints or repository
         // For now, assuming direct delete is safe or handled
@@ -264,11 +267,11 @@ public class TournamentService : ITournamentService
             throw new ConflictException("اكتمل عدد الفرق في البطولة.");
         }
 
-        var team = await _teamRepository.GetByIdAsync(request.TeamId);
+        var team = await _teamRepository.GetByIdAsync(request.TeamId, new[] { "Players" });
         if (team == null) throw new NotFoundException(nameof(Team), request.TeamId);
         
-        // SECURITY CHECK: Verify that the current user is actually the captain of the specific team defined in request
-        if (team.CaptainId != userId)
+        // SECURITY CHECK: Verify that the current user is actually the captain
+        if (!team.Players.Any(p => p.UserId == userId && p.TeamRole == TeamRole.Captain))
         {
              throw new ForbiddenException("فقط كابتن الفريق يمكنه تسجيل الفريق في البطولات.");
         }
@@ -321,7 +324,7 @@ public class TournamentService : ITournamentService
     {
         var registrations = await _registrationRepository.FindAsync(
             r => r.TournamentId == tournamentId,
-            new[] { "Team", "Team.Captain" }
+            new[] { "Team", "Team.Players" }
         );
         return _mapper.Map<IEnumerable<TeamRegistrationDto>>(registrations);
     }
@@ -331,9 +334,9 @@ public class TournamentService : ITournamentService
         var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId)).FirstOrDefault();
         if (registration == null) throw new NotFoundException("لا يوجد تسجيل لهذا الفريق.");
 
-        var team = await _teamRepository.GetByIdAsync(teamId);
+        var team = await _teamRepository.GetByIdAsync(teamId, new[] { "Players" });
         if (team == null) throw new NotFoundException(nameof(Team), teamId);
-        if (team.CaptainId != userId) throw new ForbiddenException("غير مصرح لك.");
+        if (!team.Players.Any(p => p.UserId == userId && p.TeamRole == TeamRole.Captain)) throw new ForbiddenException("غير مصرح لك.");
 
         registration.PaymentReceiptUrl = request.PaymentReceiptUrl;
         registration.SenderNumber = request.SenderNumber;
@@ -350,13 +353,15 @@ public class TournamentService : ITournamentService
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
 
-        // Authorization: Only Creator can approve
-        if (userRole != "TournamentCreator" || tournament.CreatorUserId != userId)
+        // Authorization: Only the specific Tournament Creator (even if Admin, only for their own)
+        var isOwner = tournament.CreatorUserId == userId;
+
+        if (!isOwner)
         {
              throw new ForbiddenException("غير مصرح لك بإدارة طلبات هذه البطولة. فقط منظم البطولة يمكنه ذلك.");
         }
 
-        var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, new[] { "Team" })).FirstOrDefault();
+        var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, new[] { "Team", "Team.Players" })).FirstOrDefault();
         if (registration == null) throw new NotFoundException("التسجيل غير موجود.");
 
         // State Validation: Must be Pending
@@ -379,7 +384,7 @@ public class TournamentService : ITournamentService
             if (!existingMatches.Any())
             {
                 try {
-                    await GenerateMatchesAsync(tournamentId);
+                    await GenerateMatchesAsync(tournamentId, userId, userRole);
                     // GenerateMatchesAsync updates status to "active" and notifies
                 } catch (Exception) {
                     // Fallback: If auto-generation fails, at least update registration
@@ -388,13 +393,14 @@ public class TournamentService : ITournamentService
             }
         }
 
-        if (registration.Team?.CaptainId != null)
+        var captainId = registration.Team?.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain)?.UserId;
+        if (captainId != null)
         {
              await _notificationService.SendNotificationByTemplateAsync(
-                 registration.Team.CaptainId, 
+                 captainId.Value, 
                  NotificationTemplates.TEAM_APPROVED, 
                  new Dictionary<string, string> { 
-                     { "teamName", registration.Team.Name },
+                     { "teamName", registration.Team?.Name ?? "فريق" },
                      { "tournamentName", tournament.Name }
                  }, 
                  "registration_approved"
@@ -409,13 +415,15 @@ public class TournamentService : ITournamentService
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
 
-        // Authorization: Only Creator can reject
-        if (userRole != "TournamentCreator" || tournament.CreatorUserId != userId)
+        // Authorization: Only the specific Tournament Creator
+        var isOwner = tournament.CreatorUserId == userId;
+
+        if (!isOwner)
         {
              throw new ForbiddenException("غير مصرح لك بإدارة طلبات هذه البطولة. فقط منظم البطولة يمكنه ذلك.");
         }
 
-        var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, new[] { "Team" })).FirstOrDefault();
+        var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, new[] { "Team", "Team.Players" })).FirstOrDefault();
         if (registration == null) throw new NotFoundException("التسجيل غير موجود.");
 
         // State Validation: Must be Pending
@@ -455,13 +463,14 @@ public class TournamentService : ITournamentService
             }
         }
 
-        if (registration.Team?.CaptainId != null)
+        var captainId = registration.Team?.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain)?.UserId;
+        if (captainId != null)
         {
              await _notificationService.SendNotificationByTemplateAsync(
-                 registration.Team.CaptainId, 
+                 captainId.Value, 
                  NotificationTemplates.TEAM_REJECTED, 
                  new Dictionary<string, string> { 
-                     { "teamName", registration.Team.Name },
+                     { "teamName", registration.Team?.Name ?? "فريق" },
                      { "tournamentName", tournament?.Name ?? "Unknown" },
                      { "reason", request.Reason }
                  }, 
@@ -477,7 +486,7 @@ public class TournamentService : ITournamentService
         var registrations = await _registrationRepository.FindAsync(
             r => r.Status == RegistrationStatus.PendingPaymentReview && 
                 (!creatorId.HasValue || r.Tournament!.CreatorUserId == creatorId.Value),
-            new[] { "Team", "Tournament", "Team.Captain" }
+            new[] { "Team", "Tournament", "Team.Players" }
         );
         
         return registrations.Select(r => new PendingPaymentResponse
@@ -494,7 +503,7 @@ public class TournamentService : ITournamentService
                   r.Status == RegistrationStatus.Approved || 
                   r.Status == RegistrationStatus.Rejected) &&
                  (!creatorId.HasValue || r.Tournament!.CreatorUserId == creatorId.Value),
-            new[] { "Team", "Tournament", "Team.Captain" }
+            new[] { "Team", "Tournament", "Team.Players" }
         );
         
          return registrations.Select(r => new PendingPaymentResponse
@@ -504,10 +513,12 @@ public class TournamentService : ITournamentService
         });
     }
 
-    public async Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId)
+    public async Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId, Guid userId, string userRole)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+
+        ValidateOwnership(tournament, userId, userRole);
         
         var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.Status == RegistrationStatus.Approved);
         // Remove strictly check for < 2 if for testing, but technically correct.
@@ -525,10 +536,12 @@ public class TournamentService : ITournamentService
         return _mapper.Map<IEnumerable<MatchDto>>(matches);
     }
 
-    public async Task<TournamentDto> CloseRegistrationAsync(Guid id)
+    public async Task<TournamentDto> CloseRegistrationAsync(Guid id, Guid userId, string userRole)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(id);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
+
+        ValidateOwnership(tournament, userId, userRole);
         
         tournament.Status = "registration_closed";
         await _tournamentRepository.UpdateAsync(tournament);
@@ -827,10 +840,12 @@ public class TournamentService : ITournamentService
             .ToList();
     }
 
-    public async Task EliminateTeamAsync(Guid tournamentId, Guid teamId)
+    public async Task EliminateTeamAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+
+        ValidateOwnership(tournament, userId, userRole);
 
         var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId);
         var reg = registrations.FirstOrDefault();
@@ -867,7 +882,7 @@ public class TournamentService : ITournamentService
             await _matchRepository.UpdateAsync(match);
         }
 
-        var team = await _teamRepository.GetByIdAsync(teamId);
+        var team = await _teamRepository.GetByIdAsync(teamId, t => t.Players);
         await _analyticsService.LogActivityByTemplateAsync(
             ActivityConstants.TEAM_ELIMINATED, 
             new Dictionary<string, string> { 
@@ -881,7 +896,11 @@ public class TournamentService : ITournamentService
         // Notify Captain
         if (team != null)
         {
-            await _notificationService.SendNotificationByTemplateAsync(team.CaptainId, NotificationTemplates.TOURNAMENT_ELIMINATED, new Dictionary<string, string> { { "teamName", team.Name }, { "tournamentName", tournament.Name } }, "tournament_elimination");
+            var captain = team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.TOURNAMENT_ELIMINATED, new Dictionary<string, string> { { "teamName", team.Name }, { "tournamentName", tournament.Name } }, "tournament_elimination");
+            }
         }
 
         // Real-time update
@@ -892,10 +911,12 @@ public class TournamentService : ITournamentService
         }
     }
 
-    public async Task<TournamentDto> EmergencyStartAsync(Guid id)
+    public async Task<TournamentDto> EmergencyStartAsync(Guid id, Guid userId, string userRole)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(id);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
+
+        ValidateOwnership(tournament, userId, userRole);
 
         var oldStatus = tournament.Status;
         tournament.Status = "active";
@@ -918,10 +939,12 @@ public class TournamentService : ITournamentService
         return await GetByIdFreshAsync(id) ?? _mapper.Map<TournamentDto>(tournament);
     }
 
-    public async Task<TournamentDto> EmergencyEndAsync(Guid id)
+    public async Task<TournamentDto> EmergencyEndAsync(Guid id, Guid userId, string userRole)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(id);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
+
+        ValidateOwnership(tournament, userId, userRole);
 
         var oldStatus = tournament.Status;
         tournament.Status = "completed";
@@ -942,5 +965,16 @@ public class TournamentService : ITournamentService
         await _notifier.SendSystemEventAsync("ADMIN_OVERRIDE", new { TournamentId = id, Action = "EmergencyEnd" }, "role:Admin");
 
         return await GetByIdFreshAsync(id) ?? _mapper.Map<TournamentDto>(tournament);
+    }
+
+    private void ValidateOwnership(Tournament tournament, Guid userId, string userRole)
+    {
+        var isAdmin = userRole == UserRole.Admin.ToString();
+        var isOwner = userRole == UserRole.TournamentCreator.ToString() && tournament.CreatorUserId == userId;
+
+        if (!isAdmin && !isOwner)
+        {
+             throw new ForbiddenException("غير مصرح لك بإدارة هذه البطولة. فقط منظم البطولة أو مدير النظام يمكنه ذلك.");
+        }
     }
 }

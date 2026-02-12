@@ -11,8 +11,8 @@ public interface ITournamentService
     Task<IEnumerable<TournamentDto>> GetAllAsync(Guid? creatorId = null);
     Task<TournamentDto?> GetByIdAsync(Guid id);
     Task<TournamentDto> CreateAsync(CreateTournamentRequest request, Guid? creatorId = null);
-    Task<TournamentDto> UpdateAsync(Guid id, UpdateTournamentRequest request);
-    Task DeleteAsync(Guid id);
+    Task<TournamentDto> UpdateAsync(Guid id, UpdateTournamentRequest request, Guid userId, string userRole);
+    Task DeleteAsync(Guid id, Guid userId, string userRole);
     
     Task<TeamRegistrationDto> RegisterTeamAsync(Guid tournamentId, RegisterTeamRequest request, Guid userId);
     Task<IEnumerable<TeamRegistrationDto>> GetRegistrationsAsync(Guid tournamentId);
@@ -22,12 +22,12 @@ public interface ITournamentService
     
     Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync(Guid? creatorId = null);
     Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync(Guid? creatorId = null);
-    Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId);
+    Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId, Guid userId, string userRole);
     Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId, int? groupId = null);
     Task<IEnumerable<GroupDto>> GetGroupsAsync(Guid tournamentId);
     Task<BracketDto> GetBracketAsync(Guid tournamentId);
-    Task<TournamentDto> CloseRegistrationAsync(Guid id);
-    Task EliminateTeamAsync(Guid tournamentId, Guid teamId);
-    Task<TournamentDto> EmergencyStartAsync(Guid id);
-    Task<TournamentDto> EmergencyEndAsync(Guid id);
+    Task<TournamentDto> CloseRegistrationAsync(Guid id, Guid userId, string userRole);
+    Task EliminateTeamAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole);
+    Task<TournamentDto> EmergencyStartAsync(Guid id, Guid userId, string userRole);
+    Task<TournamentDto> EmergencyEndAsync(Guid id, Guid userId, string userRole);
 }

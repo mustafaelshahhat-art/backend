@@ -19,7 +19,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<IEnumerable<UserDto>>> GetAll()
     {
         var users = await _userService.GetAllAsync();
@@ -30,7 +30,7 @@ public class UsersController : ControllerBase
     [Authorize]
     public async Task<ActionResult> GetByRole(string role)
     {
-        var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+        var (userId, userRole) = GetUserContext();
         
         if (userRole == "Admin")
         {
@@ -46,10 +46,9 @@ public class UsersController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult> GetById(Guid id)
     {
-        var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var currentUserRole = User.FindFirst(ClaimTypes.Role)?.Value;
+        var (userId, userRole) = GetUserContext();
 
-        if (currentUserId == id.ToString() || currentUserRole == "Admin")
+        if (userId == id || userRole == "Admin")
         {
             var user = await _userService.GetByIdAsync(id);
             if (user == null) return NotFound();
@@ -65,11 +64,9 @@ public class UsersController : ControllerBase
     [HttpPatch("{id}")]
     public async Task<ActionResult<UserDto>> Update(Guid id, UpdateUserRequest request)
     {
-        // Owner Check
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+        var (userId, userRole) = GetUserContext();
 
-        if (userId != id.ToString() && userRole != "Admin")
+        if (userId != id && userRole != "Admin")
         {
             return Forbid();
         }
@@ -79,7 +76,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Delete(Guid id)
     {
         await _userService.DeleteAsync(id);
@@ -87,7 +84,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpPost("{id}/suspend")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Suspend(Guid id)
     {
         await _userService.SuspendAsync(id);
@@ -95,7 +92,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpPost("{id}/activate")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Activate(Guid id)
     {
         await _userService.ActivateAsync(id);
@@ -107,7 +104,7 @@ public class UsersController : ControllerBase
     /// Role is forced to Admin on the backend.
     /// </summary>
     [HttpPost("create-admin")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<UserDto>> CreateAdmin(CreateAdminRequest request)
     {
         var creatorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -125,7 +122,7 @@ public class UsersController : ControllerBase
     /// Role is forced to TournamentCreator on the backend.
     /// </summary>
     [HttpPost("create-tournament-creator")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<UserDto>> CreateTournamentCreator(CreateAdminRequest request)
     {
         var creatorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -144,7 +141,7 @@ public class UsersController : ControllerBase
     /// Gets the count of active admins. Used for safety checks on the frontend.
     /// </summary>
     [HttpGet("admin-count")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<AdminCountDto>> GetAdminCount([FromQuery] Guid? userId = null)
     {
         var result = await _userService.GetAdminCountAsync(userId);
@@ -222,6 +219,14 @@ public class UsersController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    private (Guid userId, string userRole) GetUserContext()
+    {
+        var idStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var role = User.IsInRole("Admin") ? "Admin" : 
+                   User.IsInRole("TournamentCreator") ? "TournamentCreator" : "Player";
+        return (Guid.Parse(idStr!), role);
     }
 }
 

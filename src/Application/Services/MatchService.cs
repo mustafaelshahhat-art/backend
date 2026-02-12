@@ -64,8 +64,9 @@ public class MatchService : IMatchService
         return _mapper.Map<MatchDto>(match);
     }
 
-    public async Task<MatchDto> StartMatchAsync(Guid id)
+    public async Task<MatchDto> StartMatchAsync(Guid id, Guid userId, string userRole)
     {
+        await ValidateManagementRights(id, userId, userRole);
         var match = await _matchRepository.GetByIdAsync(id);
         if (match == null) throw new NotFoundException(nameof(Match), id);
 
@@ -86,19 +87,35 @@ public class MatchService : IMatchService
         // Optimization: Fetch match with Teams included or fetch Teams separately.
         // Assuming match has HomeTeamId/AwayTeamId but usually not loaded.
         // Let's fetch teams.
-        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
-        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
+        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId, t => t.Players);
+        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId, t => t.Players);
 
-        if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_STARTED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" } }, "match");
-        if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_STARTED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" } }, "match");
+        if (homeTeam != null)
+        {
+            var captain = homeTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_STARTED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" } }, "match");
+            }
+        }
+        
+        if (awayTeam != null)
+        {
+            var captain = awayTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_STARTED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" } }, "match");
+            }
+        }
 
         var matchDto = _mapper.Map<MatchDto>(match);
         await _notifier.SendMatchUpdatedAsync(matchDto);
         return matchDto;
     }
 
-    public async Task<MatchDto> EndMatchAsync(Guid id)
+    public async Task<MatchDto> EndMatchAsync(Guid id, Guid userId, string userRole)
     {
+        await ValidateManagementRights(id, userId, userRole);
         var match = await _matchRepository.GetByIdAsync(id);
         if (match == null) throw new NotFoundException(nameof(Match), id);
 
@@ -118,11 +135,26 @@ public class MatchService : IMatchService
         await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Finished.ToString() }, $"match:{id}");
         await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Finished.ToString() }, "role:Admin");
 
-        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
-        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
+        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId, t => t.Players);
+        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId, t => t.Players);
 
-        if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_ENDED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "score", $"{match.HomeScore}-{match.AwayScore}" } }, "match");
-        if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_ENDED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "score", $"{match.HomeScore}-{match.AwayScore}" } }, "match");
+        if (homeTeam != null)
+        {
+            var captain = homeTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_ENDED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "score", $"{match.HomeScore}-{match.AwayScore}" } }, "match");
+            }
+        }
+
+        if (awayTeam != null)
+        {
+            var captain = awayTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_ENDED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "score", $"{match.HomeScore}-{match.AwayScore}" } }, "match");
+            }
+        }
 
         // Trigger Lifecycle check
         await _lifecycleService.CheckAndFinalizeTournamentAsync(match.TournamentId);
@@ -132,8 +164,9 @@ public class MatchService : IMatchService
         return matchDto;
     }
 
-    public async Task<MatchDto> AddEventAsync(Guid id, AddMatchEventRequest request)
+    public async Task<MatchDto> AddEventAsync(Guid id, AddMatchEventRequest request, Guid userId, string userRole)
     {
+        await ValidateManagementRights(id, userId, userRole);
         var match = await _matchRepository.GetByIdAsync(id);
         if (match == null) throw new NotFoundException(nameof(Match), id);
 
@@ -180,14 +213,29 @@ public class MatchService : IMatchService
         match.Events = events.ToList();
 
         // Notify
-        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
-        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
+        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId, t => t.Players);
+        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId, t => t.Players);
         string eventLabel = eventType == MatchEventType.Goal ? "هدف" : eventType == MatchEventType.YellowCard ? "بطاقة صفراء" : "بطاقة حمراء";
         
         var placeholders = new Dictionary<string, string> { { "eventType", eventLabel } };
         
-        if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
-        if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
+        if (homeTeam != null)
+        {
+            var captain = homeTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
+            }
+        }
+
+        if (awayTeam != null)
+        {
+            var captain = awayTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
+            }
+        }
 
 
         var matchDto = _mapper.Map<MatchDto>(match);
@@ -195,8 +243,9 @@ public class MatchService : IMatchService
         return matchDto;
     }
 
-    public async Task<MatchDto> RemoveEventAsync(Guid matchId, Guid eventId)
+    public async Task<MatchDto> RemoveEventAsync(Guid matchId, Guid eventId, Guid userId, string userRole)
     {
+        await ValidateManagementRights(matchId, userId, userRole);
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null) throw new NotFoundException(nameof(Match), matchId);
 
@@ -225,11 +274,26 @@ public class MatchService : IMatchService
         );
 
         // Notify
-        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
-        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
+        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId, t => t.Players);
+        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId, t => t.Players);
         var placeholders = new Dictionary<string, string> { { "eventType", "تعديل في الأحداث" } };
-        if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
-        if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
+        if (homeTeam != null)
+        {
+            var captain = homeTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
+            }
+        }
+
+        if (awayTeam != null)
+        {
+            var captain = awayTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+            if (captain != null && captain.UserId.HasValue)
+            {
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
+            }
+        }
 
 
         // Refresh events
@@ -243,8 +307,9 @@ public class MatchService : IMatchService
 
 
 
-    public async Task<MatchDto> UpdateAsync(Guid id, UpdateMatchRequest request)
+    public async Task<MatchDto> UpdateAsync(Guid id, UpdateMatchRequest request, Guid userId, string userRole)
     {
+        await ValidateManagementRights(id, userId, userRole);
         var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam" });
         if (match == null) throw new NotFoundException(nameof(Match), id);
 
@@ -271,8 +336,8 @@ public class MatchService : IMatchService
         await _matchRepository.UpdateAsync(match);
 
         // Handle Notifications & Logging
-        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId);
-        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId);
+        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId, t => t.Players);
+        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId, t => t.Players);
 
         // 1. Score Update
         if (scoreChanged)
@@ -288,8 +353,23 @@ public class MatchService : IMatchService
             );
             var scoreStr = $"{match.HomeScore}-{match.AwayScore}";
             
-            if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, "match");
-            if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, "match");
+            if (homeTeam != null)
+            {
+                var captain = homeTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+                if (captain != null && captain.UserId.HasValue)
+                {
+                    await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, "match");
+                }
+            }
+
+            if (awayTeam != null)
+            {
+                var captain = awayTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+                if (captain != null && captain.UserId.HasValue)
+                {
+                    await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, "match");
+                }
+            }
 
         }
 
@@ -320,13 +400,21 @@ public class MatchService : IMatchService
             if (!string.IsNullOrEmpty(templateKey))
             {
                 if (homeTeam != null) {
+                var captain = homeTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+                if (captain != null && captain.UserId.HasValue)
+                {
                     placeholders["opponent"] = awayTeam?.Name ?? "الخصم";
-                    await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, templateKey, placeholders, "match");
+                    await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, templateKey, placeholders, "match");
                 }
+            }
                 if (awayTeam != null) {
+                 var captain = awayTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+                 if (captain != null && captain.UserId.HasValue)
+                 {
                      placeholders["opponent"] = homeTeam?.Name ?? "الخصم";
-                     await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, templateKey, placeholders, "match");
-                }
+                     await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, templateKey, placeholders, "match");
+                 }
+            }
 
             }
       // Lightweight System Events
@@ -436,5 +524,17 @@ public class MatchService : IMatchService
         return matchDtos;
     }
 
+    private async Task ValidateManagementRights(Guid matchId, Guid userId, string userRole)
+    {
+        var isAdmin = userRole == UserRole.Admin.ToString();
+        if (isAdmin) return;
 
+        var match = await _matchRepository.GetByIdAsync(matchId, new[] { "Tournament" });
+        if (match == null) throw new NotFoundException(nameof(Match), matchId);
+
+        if (userRole != UserRole.TournamentCreator.ToString() || match.Tournament?.CreatorUserId != userId)
+        {
+             throw new ForbiddenException("غير مصرح لك بإدارة هذا اللقاء. فقط منظم البطولة يمكنه ذلك.");
+        }
+    }
 }

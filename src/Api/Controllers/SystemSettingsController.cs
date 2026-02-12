@@ -8,7 +8,7 @@ namespace Api.Controllers;
 
 [ApiController]
 [Route("api/v1/admin/[controller]")]
-[Authorize(Roles = "Admin")]
+[Authorize(Policy = "RequireAdmin")]
 public class SystemSettingsController : ControllerBase
 {
     private readonly ISystemSettingsService _settingsService;
