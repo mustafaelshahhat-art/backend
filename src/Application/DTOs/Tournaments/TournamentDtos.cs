@@ -33,6 +33,8 @@ public class TournamentDto
     public Guid? WinnerTeamId { get; set; }
     public string? WinnerTeamName { get; set; }
     public bool RequiresAdminIntervention { get; set; }
+    public TournamentMode Mode { get; set; }
+    public Guid? OpeningMatchId { get; set; }
 }
 
 public class CreateTournamentRequest
@@ -56,6 +58,7 @@ public class CreateTournamentRequest
     public bool IsHomeAwayEnabled { get; set; }
     public SeedingMode SeedingMode { get; set; }
     public string? PaymentMethodsJson { get; set; }
+    public TournamentMode? Mode { get; set; }
 }
 
 public class UpdateTournamentRequest
@@ -80,6 +83,8 @@ public class UpdateTournamentRequest
     public bool? IsHomeAwayEnabled { get; set; }
     public SeedingMode? SeedingMode { get; set; }
     public string? PaymentMethodsJson { get; set; }
+    public TournamentMode? Mode { get; set; }
+    public Guid? OpeningMatchId { get; set; }
 }
 
 public class TeamRegistrationDto
@@ -153,4 +158,30 @@ public class BracketRoundDto
     public int RoundNumber { get; set; }
     public string Name { get; set; } = string.Empty;
     public List<Application.DTOs.Matches.MatchDto> Matches { get; set; } = new();
+}
+
+public class ManualDrawRequest
+{
+    public List<GroupAssignmentDto>? GroupAssignments { get; set; }
+    public List<KnockoutPairingDto>? KnockoutPairings { get; set; }
+}
+
+public class GroupAssignmentDto
+{
+    public int GroupId { get; set; }
+    public List<Guid> TeamIds { get; set; } = new();
+}
+
+public class KnockoutPairingDto
+{
+    public Guid HomeTeamId { get; set; }
+    public Guid AwayTeamId { get; set; }
+    public int RoundNumber { get; set; } = 1;
+    public string StageName { get; set; } = "Round 1";
+}
+
+public class OpeningMatchRequest
+{
+    public Guid HomeTeamId { get; set; }
+    public Guid AwayTeamId { get; set; }
 }

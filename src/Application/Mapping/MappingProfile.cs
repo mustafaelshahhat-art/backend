@@ -36,7 +36,8 @@ public class MappingProfile : Profile
             .ForMember(d => d.Registrations, o => o.MapFrom(s => s.Registrations != null 
                 ? s.Registrations.Where(r => r.Status != RegistrationStatus.Rejected) 
                 : new List<TeamRegistration>()))
-            .ForMember(d => d.WinnerTeamName, o => o.MapFrom(s => s.WinnerTeam != null ? s.WinnerTeam.Name : null));
+            .ForMember(d => d.WinnerTeamName, o => o.MapFrom(s => s.WinnerTeam != null ? s.WinnerTeam.Name : null))
+            .ForMember(d => d.Mode, o => o.MapFrom(s => s.GetEffectiveMode()));
 
         CreateMap<Team, TeamDto>()
             .ForMember(d => d.CaptainName, o => o.MapFrom(s => s.Players != null 

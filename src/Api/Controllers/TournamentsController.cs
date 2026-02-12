@@ -259,6 +259,24 @@ public class TournamentsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("{id}/opening-match")]
+    [Authorize(Policy = "RequireTournamentOwner")]
+    public async Task<ActionResult<IEnumerable<MatchDto>>> SetOpeningMatch(Guid id, [FromBody] OpeningMatchRequest request)
+    {
+        var (userId, userRole) = GetUserContext();
+        var matches = await _tournamentService.SetOpeningMatchAsync(id, request.HomeTeamId, request.AwayTeamId, userId, userRole);
+        return Ok(matches);
+    }
+
+    [HttpPost("{id}/manual-draw")]
+    [Authorize(Policy = "RequireTournamentOwner")]
+    public async Task<ActionResult<IEnumerable<MatchDto>>> ManualDraw(Guid id, ManualDrawRequest request)
+    {
+        var (userId, userRole) = GetUserContext();
+        var matches = await _tournamentService.GenerateManualMatchesAsync(id, request, userId, userRole);
+        return Ok(matches);
+    }
+
     private (Guid userId, string userRole) GetUserContext()
     {
         var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;

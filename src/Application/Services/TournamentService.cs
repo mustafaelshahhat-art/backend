@@ -172,8 +172,14 @@ public class TournamentService : ITournamentService
             InstaPayNumber = request.InstaPayNumber,
             IsHomeAwayEnabled = request.IsHomeAwayEnabled,
             SeedingMode = request.SeedingMode,
-            PaymentMethodsJson = request.PaymentMethodsJson
+            PaymentMethodsJson = request.PaymentMethodsJson,
+            Mode = request.Mode
         };
+
+        if (request.Mode.HasValue)
+        {
+            (tournament.Format, tournament.MatchType) = MapModeToLegacy(request.Mode.Value);
+        }
 
         await _tournamentRepository.AddAsync(tournament);
         await _analyticsService.LogActivityByTemplateAsync(
@@ -228,6 +234,12 @@ public class TournamentService : ITournamentService
         if (request.IsHomeAwayEnabled.HasValue) tournament.IsHomeAwayEnabled = request.IsHomeAwayEnabled.Value;
         if (request.SeedingMode.HasValue) tournament.SeedingMode = request.SeedingMode.Value;
         if (request.PaymentMethodsJson != null) tournament.PaymentMethodsJson = request.PaymentMethodsJson;
+        if (request.Mode.HasValue) 
+        {
+            tournament.Mode = request.Mode.Value;
+            (tournament.Format, tournament.MatchType) = MapModeToLegacy(request.Mode.Value);
+        }
+        if (request.OpeningMatchId.HasValue) tournament.OpeningMatchId = request.OpeningMatchId.Value;
 
         // Force auto-closure if capacity reached after manual update
         if (tournament.CurrentTeams >= tournament.MaxTeams && tournament.Status == "registration_open")
@@ -655,8 +667,9 @@ public class TournamentService : ITournamentService
         var random = new Random();
         var shuffledTeams = teamIds.OrderBy(x => random.Next()).ToList();
         var matchDate = DateTime.UtcNow.AddDays(2);
+        var effectiveMode = tournament.GetEffectiveMode();
         
-        if (tournament.Format == TournamentFormat.GroupsThenKnockout || tournament.Format == TournamentFormat.GroupsWithHomeAwayKnockout)
+        if (effectiveMode == TournamentMode.GroupsKnockoutSingle || effectiveMode == TournamentMode.GroupsKnockoutHomeAway)
         {
             if (tournament.NumberOfGroups < 1) tournament.NumberOfGroups = 1;
             
@@ -669,6 +682,8 @@ public class TournamentService : ITournamentService
             }
             
             int dayOffset = 0;
+            bool isHomeAway = effectiveMode == TournamentMode.GroupsKnockoutHomeAway;
+
             for (int g = 0; g < groups.Count; g++)
             {
                 var groupTeams = groups[g];
@@ -679,7 +694,7 @@ public class TournamentService : ITournamentService
                          matches.Add(CreateMatch(tournament, groupTeams[i], groupTeams[j], matchDate.AddDays(dayOffset), g + 1, 1, "Group Stage"));
                          dayOffset++;
                          
-                         if (tournament.IsHomeAwayEnabled || tournament.MatchType == TournamentLegType.HomeAndAway)
+                         if (isHomeAway)
                          {
                              matches.Add(CreateMatch(tournament, groupTeams[j], groupTeams[i], matchDate.AddDays(dayOffset + 2), g + 1, 1, "Group Stage"));
                              dayOffset++;
@@ -688,25 +703,25 @@ public class TournamentService : ITournamentService
                 }
             }
         }
-        else if (tournament.Format == TournamentFormat.KnockoutOnly)
+        else if (effectiveMode == TournamentMode.KnockoutSingle || effectiveMode == TournamentMode.KnockoutHomeAway)
         {
-            // Initial Round Only
+            bool isHomeAway = effectiveMode == TournamentMode.KnockoutHomeAway;
             for (int i = 0; i < shuffledTeams.Count; i += 2)
             {
                  if (i + 1 < shuffledTeams.Count)
                  {
                      matches.Add(CreateMatch(tournament, shuffledTeams[i], shuffledTeams[i+1], matchDate.AddDays(i), null, 1, "Round 1"));
                      
-                     if (tournament.IsHomeAwayEnabled || tournament.MatchType == TournamentLegType.HomeAndAway)
+                     if (isHomeAway)
                      {
                           matches.Add(CreateMatch(tournament, shuffledTeams[i+1], shuffledTeams[i], matchDate.AddDays(i + 3), null, 1, "Round 1"));
                      }
                  }
             }
         }
-        else // RoundRobin
+        else // League modes
         {
-             // Unified: Treat Round Robin as "Group 1"
+             bool isHomeAway = effectiveMode == TournamentMode.LeagueHomeAway;
              int matchCount = 0;
              for (int i = 0; i < shuffledTeams.Count; i++)
              {
@@ -715,7 +730,7 @@ public class TournamentService : ITournamentService
                     matches.Add(CreateMatch(tournament, shuffledTeams[i], shuffledTeams[j], matchDate.AddDays(matchCount * 2), 1, 1, "League"));
                     matchCount++;
                     
-                    if (tournament.IsHomeAwayEnabled || tournament.MatchType == TournamentLegType.HomeAndAway)
+                    if (isHomeAway)
                     {
                         matches.Add(CreateMatch(tournament, shuffledTeams[j], shuffledTeams[i], matchDate.AddDays(matchCount * 2 + 1), 1, 1, "League"));
                         matchCount++;
@@ -1013,5 +1028,107 @@ public class TournamentService : ITournamentService
         {
              throw new ForbiddenException("غير مصرح لك بإدارة هذه البطولة. فقط منظم البطولة أو مدير النظام يمكنه ذلك.");
         }
+    }
+
+    public async Task<IEnumerable<MatchDto>> SetOpeningMatchAsync(Guid tournamentId, Guid homeTeamId, Guid awayTeamId, Guid userId, string userRole)
+    {
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+        ValidateOwnership(tournament, userId, userRole);
+
+        var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+        var matchDate = matches.Any() ? matches.Min(m => m.Date) : DateTime.UtcNow.AddDays(2);
+
+        // Find existing match between these teams
+        var openingMatch = matches.FirstOrDefault(m => 
+            (m.HomeTeamId == homeTeamId && m.AwayTeamId == awayTeamId) || 
+            (m.HomeTeamId == awayTeamId && m.AwayTeamId == homeTeamId));
+
+        if (openingMatch == null)
+        {
+            // If they aren't matched, and it's a knockout or league, we might need to Swap.
+            // For now, if they aren't matched, throw error or implement "Manual Swap"
+            throw new ConflictException("الفريقان المختاران غير متواجهين في الجدول الحالي. برجاء استخدام القرعة اليدوية أولاً.");
+        }
+
+        // Move to opening slot
+        openingMatch.Date = matchDate;
+        tournament.OpeningMatchId = openingMatch.Id;
+        
+        await _matchRepository.UpdateAsync(openingMatch);
+        await _tournamentRepository.UpdateAsync(tournament);
+
+        return _mapper.Map<IEnumerable<MatchDto>>(matches);
+    }
+
+    public async Task<IEnumerable<MatchDto>> GenerateManualMatchesAsync(Guid tournamentId, ManualDrawRequest request, Guid userId, string userRole)
+    {
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+        ValidateOwnership(tournament, userId, userRole);
+
+        var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+        if (existingMatches.Any()) throw new ConflictException("المباريات مولدة بالفعل. قم بحذفها أولاً لإعادة التوليد.");
+
+        var matches = new List<Match>();
+        var matchDate = DateTime.UtcNow.AddDays(2);
+        var effectiveMode = tournament.GetEffectiveMode();
+
+        if (request.GroupAssignments != null && request.GroupAssignments.Any())
+        {
+            foreach (var group in request.GroupAssignments)
+            {
+                var teams = group.TeamIds;
+                bool isHomeAway = effectiveMode == TournamentMode.GroupsKnockoutHomeAway || effectiveMode == TournamentMode.LeagueHomeAway;
+
+                for (int i = 0; i < teams.Count; i++)
+                {
+                    for (int j = i + 1; j < teams.Count; j++)
+                    {
+                        matches.Add(CreateMatch(tournament, teams[i], teams[j], matchDate, group.GroupId, 1, "Group Stage"));
+                        matchDate = matchDate.AddHours(2);
+                        if (isHomeAway)
+                        {
+                            matches.Add(CreateMatch(tournament, teams[j], teams[i], matchDate, group.GroupId, 1, "Group Stage"));
+                            matchDate = matchDate.AddHours(2);
+                        }
+                    }
+                }
+            }
+        }
+        else if (request.KnockoutPairings != null && request.KnockoutPairings.Any())
+        {
+            bool isHomeAway = effectiveMode == TournamentMode.KnockoutHomeAway;
+            foreach (var pairing in request.KnockoutPairings)
+            {
+                matches.Add(CreateMatch(tournament, pairing.HomeTeamId, pairing.AwayTeamId, matchDate, null, pairing.RoundNumber, pairing.StageName));
+                matchDate = matchDate.AddHours(2);
+                if (isHomeAway)
+                {
+                    matches.Add(CreateMatch(tournament, pairing.AwayTeamId, pairing.HomeTeamId, matchDate, null, pairing.RoundNumber, pairing.StageName));
+                    matchDate = matchDate.AddHours(2);
+                }
+            }
+        }
+
+        await _matchRepository.AddRangeAsync(matches);
+        tournament.Status = "active";
+        await _tournamentRepository.UpdateAsync(tournament);
+
+        return _mapper.Map<IEnumerable<MatchDto>>(matches);
+    }
+
+    private (TournamentFormat Format, TournamentLegType MatchType) MapModeToLegacy(TournamentMode mode)
+    {
+        return mode switch
+        {
+            TournamentMode.LeagueSingle => (TournamentFormat.RoundRobin, TournamentLegType.SingleLeg),
+            TournamentMode.LeagueHomeAway => (TournamentFormat.RoundRobin, TournamentLegType.HomeAndAway),
+            TournamentMode.GroupsKnockoutSingle => (TournamentFormat.GroupsThenKnockout, TournamentLegType.SingleLeg),
+            TournamentMode.GroupsKnockoutHomeAway => (TournamentFormat.GroupsThenKnockout, TournamentLegType.HomeAndAway),
+            TournamentMode.KnockoutSingle => (TournamentFormat.KnockoutOnly, TournamentLegType.SingleLeg),
+            TournamentMode.KnockoutHomeAway => (TournamentFormat.KnockoutOnly, TournamentLegType.HomeAndAway),
+            _ => (TournamentFormat.RoundRobin, TournamentLegType.SingleLeg)
+        };
     }
 }

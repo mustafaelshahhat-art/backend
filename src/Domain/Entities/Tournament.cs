@@ -37,6 +37,10 @@ public class Tournament : BaseEntity
     public int NumberOfGroups { get; set; } = 0;
     public int QualifiedTeamsPerGroup { get; set; } = 0;
     
+    // Unified Mode (Consolidated Format + MatchType)
+    public TournamentMode? Mode { get; set; }
+    public Guid? OpeningMatchId { get; set; }
+
     // New Configurations
     public bool IsHomeAwayEnabled { get; set; } = false; 
     public SeedingMode SeedingMode { get; set; } = SeedingMode.ShuffleOnly;
@@ -53,4 +57,24 @@ public class Tournament : BaseEntity
 
     public ICollection<TeamRegistration> Registrations { get; set; } = new List<TeamRegistration>();
     public ICollection<Match> Matches { get; set; } = new List<Match>();
+
+    public TournamentMode GetEffectiveMode()
+    {
+        if (Mode.HasValue) return Mode.Value;
+
+        // Backward compatibility mapping
+        if (Format == TournamentFormat.RoundRobin)
+            return IsHomeAwayEnabled || MatchType == TournamentLegType.HomeAndAway ? TournamentMode.LeagueHomeAway : TournamentMode.LeagueSingle;
+
+        if (Format == TournamentFormat.GroupsThenKnockout)
+            return TournamentMode.GroupsKnockoutSingle;
+
+        if (Format == TournamentFormat.GroupsWithHomeAwayKnockout)
+            return TournamentMode.GroupsKnockoutHomeAway;
+
+        if (Format == TournamentFormat.KnockoutOnly)
+            return IsHomeAwayEnabled || MatchType == TournamentLegType.HomeAndAway ? TournamentMode.KnockoutHomeAway : TournamentMode.KnockoutSingle;
+
+        return TournamentMode.LeagueSingle; // Fallback
+    }
 }

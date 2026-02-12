@@ -30,4 +30,7 @@ public interface ITournamentService
     Task EliminateTeamAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole);
     Task<TournamentDto> EmergencyStartAsync(Guid id, Guid userId, string userRole);
     Task<TournamentDto> EmergencyEndAsync(Guid id, Guid userId, string userRole);
+    
+    Task<IEnumerable<MatchDto>> SetOpeningMatchAsync(Guid tournamentId, Guid homeTeamId, Guid awayTeamId, Guid userId, string userRole);
+    Task<IEnumerable<MatchDto>> GenerateManualMatchesAsync(Guid tournamentId, ManualDrawRequest request, Guid userId, string userRole);
 }
