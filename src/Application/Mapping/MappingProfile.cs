@@ -61,7 +61,7 @@ public class MappingProfile : Profile
             .ForMember(d => d.AwayTeamName, o => o.MapFrom(s => s.AwayTeam != null ? s.AwayTeam.Name : string.Empty))
             .ForMember(d => d.AwayTeamLogoUrl, o => o.MapFrom(s => s.AwayTeam != null ? s.AwayTeam.Logo : null))
             .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()))
-            .ForMember(d => d.RefereeName, o => o.MapFrom(s => s.Referee != null ? s.Referee.Name : string.Empty))
+
             .ForMember(d => d.Events, o => o.MapFrom(s => s.Events));
 
         CreateMap<MatchEvent, MatchEventDto>()

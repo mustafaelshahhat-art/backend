@@ -96,12 +96,7 @@ public class AppDbContext : DbContext
             .HasForeignKey(m => m.AwayTeamId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Match - Referee
-        modelBuilder.Entity<Match>()
-            .HasOne(m => m.Referee)
-            .WithMany()
-            .HasForeignKey(m => m.RefereeId)
-            .OnDelete(DeleteBehavior.Restrict);
+
 
         // MatchEvent
         modelBuilder.Entity<MatchEvent>()

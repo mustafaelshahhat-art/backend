@@ -25,12 +25,7 @@ public interface IUserService
     Task<UserDto> CreateAdminAsync(CreateAdminRequest request, Guid createdByAdminId);
     Task<UserDto> CreateTournamentCreatorAsync(CreateAdminRequest request, Guid createdByAdminId);
 
-    /// <summary>
-    /// Creates a new referee user. Only callable by admins.
-    /// Role is forced to Referee regardless of input.
-    /// Email is auto-verified and account is immediately active.
-    /// </summary>
-    Task<UserDto> CreateRefereeAsync(CreateAdminRequest request, Guid createdByAdminId);
+
     
     /// <summary>
     /// Gets the total count of active admin users and checks if a specific user is the last admin.
@@ -42,7 +37,7 @@ public interface IUserService
     Task<IEnumerable<string>> GetGovernoratesAsync();
     Task<IEnumerable<string>> GetCitiesAsync(string governorate);
     Task<IEnumerable<string>> GetDistrictsAsync(string city);
-    Task<IEnumerable<UserDto>> GetRefereesByLocationAsync(string? district = null, string? city = null, string? governorate = null);
+
     
     // Profile Management
     Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword);

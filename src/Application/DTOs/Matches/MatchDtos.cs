@@ -20,8 +20,7 @@ public class MatchDto
     public string? StageName { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime? Date { get; set; }
-    public Guid? RefereeId { get; set; }
-    public string RefereeName { get; set; } = string.Empty;
+
     public List<MatchEventDto> Events { get; set; } = new();
 }
 
@@ -49,10 +48,7 @@ public class UpdateMatchRequest
     public int? AwayScore { get; set; }
     public string? Status { get; set; }
     public DateTime? Date { get; set; }
-    public Guid? RefereeId { get; set; }
+
 }
 
-public class SubmitReportRequest
-{
-    public string Notes { get; set; } = string.Empty;
-}
+

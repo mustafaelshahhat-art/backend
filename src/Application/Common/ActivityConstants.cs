@@ -15,7 +15,7 @@ public static class ActivityConstants
     public const string MATCH_POSTPONED = "MATCH_POSTPONED";
     public const string MATCH_RESCHEDULED = "MATCH_RESCHEDULED";
     public const string MATCH_CANCELLED = "MATCH_CANCELLED";
-    public const string MATCH_REFEREE_ASSIGNED = "MATCH_REFEREE_ASSIGNED";
+
     public const string TOURNAMENT_CREATED = "TOURNAMENT_CREATED";
     public const string TOURNAMENT_GENERATED = "TOURNAMENT_GENERATED";
     public const string TEAM_CREATED = "TEAM_CREATED";
@@ -59,7 +59,7 @@ public static class ActivityConstants
         { MATCH_POSTPONED, ("مباراة", "تأجيل مباراة", "تم تأجيل مباراة {matchInfo}") },
         { MATCH_RESCHEDULED, ("مباراة", "إعادة جدولة", "تم تحديد موعد جديد للمباراة {matchInfo} بتاريخ {newDate}") },
         { MATCH_CANCELLED, ("مباراة", "إلغاء مباراة", "تم إلغاء المباراة {matchInfo}") },
-        { MATCH_REFEREE_ASSIGNED, ("مباراة", "تعيين حكم", "تم تعيين الحكم {refereeName} لمباراة {matchInfo}") },
+
 
         { TOURNAMENT_CREATED, ("بطولة", "إنشاء بطولة", "تم إنشاء بطولة جديدة: {tournamentName}") },
         { TOURNAMENT_GENERATED, ("بطولة", "توليد مباريات", "تم توليد جدول المباريات لبطولة {tournamentName}") },

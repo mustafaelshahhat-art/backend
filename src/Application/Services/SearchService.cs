@@ -121,10 +121,7 @@ public class SearchService : ISearchService
             return matches;
         }
 
-        if (role == "Referee" && Guid.TryParse(userId, out var refereeId))
-        {
-            return matches.Where(m => m.RefereeId == refereeId);
-        }
+
 
         // Player: return all matches they might be interested in
         return matches;
@@ -135,7 +132,6 @@ public class SearchService : ISearchService
         return role switch
         {
             "Admin" => "/admin",
-            "Referee" => "/referee",
             _ => "/captain"
         };
     }

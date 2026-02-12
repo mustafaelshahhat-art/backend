@@ -71,11 +71,7 @@ public class ActivityLogMigrationService
                 activity.UserName = "لاعب";
                 updated = true;
             }
-            else if (activity.UserName == "Referee")
-            {
-                activity.UserName = "حكم";
-                updated = true;
-            }
+
 
             // 2. Type/Category Normalization
             string originalType = activity.Type ?? "";

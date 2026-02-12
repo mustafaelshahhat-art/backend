@@ -27,18 +27,7 @@ public class MatchesController : ControllerBase
         return Ok(matches);
     }
 
-    [HttpGet("my-matches")]
-    [Authorize(Roles = "Referee")]
-    public async Task<ActionResult<IEnumerable<MatchDto>>> GetMyMatches()
-    {
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value 
-                  ?? User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
-        
-        if (userId == null) return Unauthorized();
 
-        var matches = await _matchService.GetMatchesByRefereeAsync(Guid.Parse(userId));
-        return Ok(matches);
-    }
 
     [HttpGet("{id}")]
     [AllowAnonymous]
@@ -50,7 +39,7 @@ public class MatchesController : ControllerBase
     }
 
     [HttpPost("{id}/start")]
-    [Authorize(Roles = "Referee,Admin")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<MatchDto>> StartMatch(Guid id)
     {
         if (!await IsUserActiveAsync() && !User.IsInRole("Admin"))
@@ -62,7 +51,7 @@ public class MatchesController : ControllerBase
     }
 
     [HttpPost("{id}/end")]
-    [Authorize(Roles = "Referee,Admin")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<MatchDto>> EndMatch(Guid id)
     {
         if (!await IsUserActiveAsync() && !User.IsInRole("Admin"))
@@ -74,7 +63,7 @@ public class MatchesController : ControllerBase
     }
 
     [HttpPost("{id}/events")]
-    [Authorize(Roles = "Referee,Admin")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<MatchDto>> AddEvent(Guid id, AddMatchEventRequest request)
     {
         if (!await IsUserActiveAsync() && !User.IsInRole("Admin"))
@@ -93,20 +82,10 @@ public class MatchesController : ControllerBase
         return Ok(match);
     }
 
-    [HttpPost("{id}/report")]
-    [Authorize(Roles = "Referee")]
-    public async Task<ActionResult<MatchDto>> SubmitReport(Guid id, SubmitReportRequest request)
-    {
-        if (!await IsUserActiveAsync() && !User.IsInRole("Admin"))
-        {
-            return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من تقديم تقرير المباراة.");
-        }
-        var match = await _matchService.SubmitReportAsync(id, request);
-        return Ok(match);
-    }
+
 
     [HttpPatch("{id}")]
-    [Authorize(Roles = "Admin,Referee")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<MatchDto>> UpdateMatch(Guid id, UpdateMatchRequest request)
     {
         var match = await _matchService.UpdateAsync(id, request);

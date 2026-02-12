@@ -348,71 +348,7 @@ public class UserService : IUserService
         return dto;
     }
 
-    /// <summary>
-    /// Creates a new referee user. Role is always forced to Referee.
-    /// Account is immediately active with email auto-verified. No email confirmation required.
-    /// </summary>
-    public async Task<UserDto> CreateRefereeAsync(CreateAdminRequest request, Guid createdByAdminId)
-    {
-        // SYSTEM SETTING CHECK: Block creation during maintenance
-        if (await _systemSettingsService.IsMaintenanceModeEnabledAsync())
-        {
-            throw new BadRequestException("لا يمكن إنشاء مستخدمين جدد أثناء وضع الصيانة");
-        }
 
-        if (string.IsNullOrWhiteSpace(request.Email))
-        {
-            throw new BadRequestException("البريد الإلكتروني مطلوب");
-        }
-
-        if (string.IsNullOrWhiteSpace(request.Name))
-        {
-            throw new BadRequestException("الاسم مطلوب");
-        }
-
-        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
-        {
-            throw new BadRequestException("كلمة المرور مطلوبة ويجب أن تكون 6 أحرف على الأقل");
-        }
-
-        var email = request.Email.Trim().ToLower();
-
-        // Check email uniqueness
-        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email);
-        if (existingUser != null && existingUser.Any())
-        {
-            throw new ConflictException("البريد الإلكتروني مستخدم بالفعل");
-        }
-
-        var newReferee = new User
-        {
-            Email = email,
-            Name = request.Name.Trim(),
-            PasswordHash = _passwordHasher.HashPassword(request.Password),
-            Role = UserRole.Referee, // FORCE Referee role - cannot be overridden
-            Status = UserStatus.Active, // Immediately active - no approval needed
-            IsEmailVerified = true, // No email confirmation required for admin-created referees
-            DisplayId = "REF-" + new Random().Next(1000, 9999)
-        };
-
-        await _userRepository.AddAsync(newReferee);
-
-        // Log activity
-        try
-        {
-            await _analyticsService.LogActivityByTemplateAsync(
-                "USER_CREATED", 
-                new Dictionary<string, string> { { "userName", newReferee.Name }, { "role", "حكم" } }, 
-                createdByAdminId, 
-                "إدارة"
-            );
-        }
-        catch { }
-
-        var dto = _mapper.Map<UserDto>(newReferee);
-        await _realTimeNotifier.SendUserCreatedAsync(dto);
-        return dto;
-    }
 
     /// <summary>
     /// Gets the count of active admin users and checks if a specific user is the last admin.
@@ -458,17 +394,7 @@ public class UserService : IUserService
         return users.Select(u => u.Neighborhood).Where(d => !string.IsNullOrEmpty(d)).Distinct()!;
     }
 
-    public async Task<IEnumerable<UserDto>> GetRefereesByLocationAsync(string? district = null, string? city = null, string? governorate = null)
-    {
-        var referees = await _userRepository.FindAsync(u => u.Role == UserRole.Referee && u.Status == UserStatus.Active);
-        
-        var query = referees.AsQueryable();
-        if (!string.IsNullOrEmpty(governorate)) query = query.Where(u => u.Governorate == governorate);
-        if (!string.IsNullOrEmpty(city)) query = query.Where(u => u.City == city);
-        if (!string.IsNullOrEmpty(district)) query = query.Where(u => u.Neighborhood == district);
 
-        return _mapper.Map<IEnumerable<UserDto>>(query.ToList());
-    }
 
     public async Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword)
     {

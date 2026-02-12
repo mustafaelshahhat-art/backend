@@ -44,12 +44,12 @@ public class AnalyticsService : IAnalyticsService
 
     public async Task<AnalyticsOverview> GetOverviewAsync(Guid? creatorId = null)
     {
-        // For total users and referees, usually it's global for admins.
+        // For total users, usually it's global for admins.
         // But for creators, maybe we only show counts of things related to them.
         // Total Users: Maybe participants in their tournaments?
         // Let's implement scoped counts for creators.
         
-        int totalUsers, totalReferees, totalTeams, activeTournaments, pendingObjections, matchesToday, loginsToday, totalGoals;
+        int totalUsers, totalTeams, activeTournaments, pendingObjections, matchesToday, loginsToday, totalGoals;
 
         if (creatorId.HasValue)
         {
@@ -73,13 +73,13 @@ public class AnalyticsService : IAnalyticsService
             // For these, we might want to keep them global or hide them.
             // Requirement says "TournamentCreator dashboard shows stats ONLY for their tournaments"
             totalUsers = 0; // Or count unique players in those teams
-            totalReferees = await _userRepository.CountAsync(u => u.IsEmailVerified && u.Role == Domain.Enums.UserRole.Referee); // Referees might be shared
+
             loginsToday = 0; 
         }
         else
         {
             totalUsers = await _userRepository.CountAsync(u => u.IsEmailVerified);
-            totalReferees = await _userRepository.CountAsync(u => u.IsEmailVerified && u.Role == Domain.Enums.UserRole.Referee);
+
             totalTeams = await _teamRepository.CountAsync(_ => true);
             activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == "registration_open" || t.Status == "active");
             pendingObjections = await _objectionRepository.CountAsync(o => o.Status == Domain.Enums.ObjectionStatus.Pending);
@@ -96,7 +96,7 @@ public class AnalyticsService : IAnalyticsService
         {
             TotalUsers = totalUsers,
             TotalTeams = totalTeams,
-            TotalReferees = totalReferees,
+
             ActiveTournaments = activeTournaments,
             PendingObjections = pendingObjections,
             MatchesToday = matchesToday,

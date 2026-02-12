@@ -27,10 +27,9 @@ public class Match : BaseEntity
     public bool Forfeit { get; set; } = false;
     
     // Referee
-    public Guid? RefereeId { get; set; }
-    public User? Referee { get; set; }
 
-    public string? RefereeNotes { get; set; }
+
+
 
     public ICollection<MatchEvent> Events { get; set; } = new List<MatchEvent>();
     public ICollection<Objection> Objections { get; set; } = new List<Objection>();

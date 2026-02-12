@@ -52,7 +52,7 @@ public class MatchService : IMatchService
 
     public async Task<MatchDto?> GetByIdAsync(Guid id)
     {
-        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Referee", "Events.Player" });
+        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Events.Player" });
         if (match == null) return null;
 
         if (match.Events == null || !match.Events.Any())
@@ -188,7 +188,7 @@ public class MatchService : IMatchService
         
         if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
         if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
-        if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationByTemplateAsync(match.RefereeId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
+
 
         var matchDto = _mapper.Map<MatchDto>(match);
         await _notifier.SendMatchUpdatedAsync(matchDto);
@@ -230,7 +230,7 @@ public class MatchService : IMatchService
         var placeholders = new Dictionary<string, string> { { "eventType", "تعديل في الأحداث" } };
         if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
         if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
-        if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationByTemplateAsync(match.RefereeId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match");
+
 
         // Refresh events
         var events = await _eventRepository.FindAsync(e => e.MatchId == matchId, new[] { "Player" });
@@ -241,22 +241,14 @@ public class MatchService : IMatchService
         return matchDto;
     }
 
-    public async Task<MatchDto> SubmitReportAsync(Guid id, SubmitReportRequest request)
-    {
-        var match = await _matchRepository.GetByIdAsync(id);
-        if (match == null) throw new NotFoundException(nameof(Match), id);
 
-        match.RefereeNotes = request.Notes;
-        await _matchRepository.UpdateAsync(match);
-        return _mapper.Map<MatchDto>(match);
-    }
 
     public async Task<MatchDto> UpdateAsync(Guid id, UpdateMatchRequest request)
     {
-        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Referee" });
+        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam" });
         if (match == null) throw new NotFoundException(nameof(Match), id);
 
-        var oldRefereeId = match.RefereeId;
+
         var oldStatus = match.Status;
         var oldScore = $"{match.HomeScore}-{match.AwayScore}";
         var oldDate = match.Date;
@@ -267,7 +259,7 @@ public class MatchService : IMatchService
         if (request.HomeScore.HasValue) match.HomeScore = request.HomeScore.Value;
         if (request.AwayScore.HasValue) match.AwayScore = request.AwayScore.Value;
         if (request.Date.HasValue) match.Date = request.Date.Value;
-        if (request.RefereeId.HasValue) match.RefereeId = request.RefereeId.Value;
+
         
         MatchStatus? newStatus = null;
         if (!string.IsNullOrEmpty(request.Status) && Enum.TryParse<MatchStatus>(request.Status, true, out var status))
@@ -298,22 +290,10 @@ public class MatchService : IMatchService
             
             if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, "match");
             if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, "match");
-            if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) await _notificationService.SendNotificationByTemplateAsync(match.RefereeId.Value, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", "الفريقين" }, { "score", scoreStr } }, "match");
+
         }
 
-        // 2. Referee Change
-        if (request.RefereeId.HasValue && request.RefereeId.Value != oldRefereeId)
-        {
-            var placeholders = new Dictionary<string, string> { { "homeTeam", homeTeam?.Name ?? "فريق 1" }, { "awayTeam", awayTeam?.Name ?? "فريق 2" } };
-            
-            if (oldRefereeId.HasValue && oldRefereeId.Value != Guid.Empty)
-                await _notificationService.SendNotificationByTemplateAsync(oldRefereeId.Value, NotificationTemplates.MATCH_REFEREE_UNASSIGNED, placeholders, "match");
-            
-            await _notificationService.SendNotificationByTemplateAsync(request.RefereeId.Value, NotificationTemplates.MATCH_REFEREE_ASSIGNED, placeholders, "match");
-            
-            if (homeTeam != null) await _notificationService.SendNotificationByTemplateAsync(homeTeam.CaptainId, NotificationTemplates.MATCH_TIME_CHANGED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "date", "تم تغيير الحكم" } }, "match");
-            if (awayTeam != null) await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, NotificationTemplates.MATCH_TIME_CHANGED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "date", "تم تغيير الحكم" } }, "match");
-        }
+
 
         // 3. Status Changes (Postpone, Cancel, Reschedule)
         if (newStatus.HasValue && newStatus.Value != oldStatus)
@@ -347,10 +327,7 @@ public class MatchService : IMatchService
                      placeholders["opponent"] = homeTeam?.Name ?? "الخصم";
                      await _notificationService.SendNotificationByTemplateAsync(awayTeam.CaptainId, templateKey, placeholders, "match");
                 }
-                if (match.RefereeId.HasValue && match.RefereeId.Value != Guid.Empty) {
-                     placeholders["opponent"] = "الفريقين";
-                     await _notificationService.SendNotificationByTemplateAsync(match.RefereeId.Value, templateKey, placeholders, "match");
-                }
+
             }
       // Lightweight System Events
             if (newStatus == MatchStatus.Postponed)
@@ -364,8 +341,8 @@ public class MatchService : IMatchService
         // 4. Trigger Tournament Lifecycle check just in case
         await _lifecycleService.CheckAndFinalizeTournamentAsync(match.TournamentId);
 
-        // Reload to get fresh data incl. new referee name
-        match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Referee" });
+        // Reload to get fresh data
+        match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam" });
         var matchDto = _mapper.Map<MatchDto>(match);
         await _notifier.SendMatchUpdatedAsync(matchDto);
         return matchDto;
@@ -459,9 +436,5 @@ public class MatchService : IMatchService
         return matchDtos;
     }
 
-    public async Task<IEnumerable<MatchDto>> GetMatchesByRefereeAsync(Guid refereeId)
-    {
-        var matches = await _matchRepository.FindAsync(m => m.RefereeId == refereeId, new[] { "HomeTeam", "AwayTeam", "Events.Player" });
-        return _mapper.Map<IEnumerable<MatchDto>>(matches);
-    }
+
 }

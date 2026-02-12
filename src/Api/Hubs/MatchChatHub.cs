@@ -48,7 +48,7 @@ public class MatchChatHub : Hub
         var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value ?? "Player";
 
         // Security Check: Verify user belongs to the match
-        if (role != "Admin" && role != "Referee")
+        if (role != "Admin")
         {
             // PERFORMANCE FIX: Cache match participant checks for 5 minutes.
             // This prevents a DB query on every single chat message.

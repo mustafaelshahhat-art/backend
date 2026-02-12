@@ -15,8 +15,7 @@ public static class NotificationTemplates
     public const string MATCH_STARTED = "MATCH_STARTED";
     public const string MATCH_ENDED = "MATCH_ENDED";
     public const string MATCH_EVENT_ADDED = "MATCH_EVENT_ADDED";
-    public const string MATCH_REFEREE_ASSIGNED = "MATCH_REFEREE_ASSIGNED";
-    public const string MATCH_REFEREE_UNASSIGNED = "MATCH_REFEREE_UNASSIGNED";
+
     public const string MATCH_SCORE_CHANGED = "MATCH_SCORE_CHANGED";
     
     public const string PLAYER_JOINED_TEAM = "PLAYER_JOINED_TEAM";
@@ -51,8 +50,7 @@ public static class NotificationTemplates
         { MATCH_STARTED, ("بدء المباراة", "بدأت الآن مباراتكم ضد {opponent}. بالتوفيق!") },
         { MATCH_ENDED, ("انتهاء المباراة", "انتهت مباراتكم ضد {opponent}. النتيجة النهائية: {score}.") },
         { MATCH_EVENT_ADDED, ("حدث في المباراة", "تم تسجيل {eventType} في مباراتكم.") },
-        { MATCH_REFEREE_ASSIGNED, ("تعيين حكم", "تم تعيينك حكماً للمباراة بين {homeTeam} و {awayTeam}.") },
-        { MATCH_REFEREE_UNASSIGNED, ("إلغاء تعيين", "تم إلغاء تعيينك من تحكيم المباراة بين {homeTeam} و {awayTeam}.") },
+
         { MATCH_SCORE_CHANGED, ("تعديل نتيجة", "تم تعديل نتيجة مباراتكم ضد {opponent} لتصبح {score} بواسطة الإدارة.") },
         
         { PLAYER_JOINED_TEAM, ("انضمام لفريق", "تم قبول طلب انضمامك إلى فريق {teamName}.") },

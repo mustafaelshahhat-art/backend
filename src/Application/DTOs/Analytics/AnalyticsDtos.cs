@@ -8,7 +8,7 @@ public class AnalyticsOverview
     public int TotalTeams { get; set; }
     public int ActiveTournaments { get; set; }
     public int PendingObjections { get; set; }
-    public int TotalReferees { get; set; }
+
     public int MatchesToday { get; set; }
     public int LoginsToday { get; set; }
     public int TotalGoals { get; set; }
