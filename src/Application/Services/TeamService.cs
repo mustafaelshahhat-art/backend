@@ -138,41 +138,40 @@ public class TeamService : ITeamService
         // 3. Handle Active Tournaments (Withdrawal)
         var activeRegistrations = await _registrationRepository.FindAsync(r => r.TeamId == teamId && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.PendingPaymentReview));
         
-        foreach (var reg in activeRegistrations)
+        if (activeRegistrations.Any())
         {
-             // Use injected repository
-             var tournament = await _tournamentRepository.GetByIdAsync(reg.TournamentId); 
-             // Logic check? Assuming valid.
-             
-             // Mark as Withdrawn
-             reg.Status = RegistrationStatus.Withdrawn;
-             await _registrationRepository.UpdateAsync(reg);
+            foreach (var reg in activeRegistrations)
+            {
+                reg.Status = RegistrationStatus.Withdrawn;
+            }
+            await _registrationRepository.UpdateRangeAsync(activeRegistrations);
 
-             // 4. Forfeit Upcoming Matches
-             var matches = await _matchRepository.FindAsync(m => m.TournamentId == reg.TournamentId && (m.HomeTeamId == teamId || m.AwayTeamId == teamId) && m.Status == Domain.Enums.MatchStatus.Scheduled);
-             
-             foreach (var match in matches)
-             {
-                 match.Status = Domain.Enums.MatchStatus.Finished;
-                 match.Forfeit = true;
-                 
-                 // Assign 3-0 loss
-                 if (match.HomeTeamId == teamId)
-                 {
-                     match.HomeScore = 0;
-                     match.AwayScore = 3; 
-                 }
-                 else
-                 {
-                     match.HomeScore = 3;
-                     match.AwayScore = 0;
-                 }
-                 
-                 await _matchRepository.UpdateAsync(match);
-             }
+            foreach (var reg in activeRegistrations)
+            {
+                // Forfeit Upcoming Matches
+                var matches = await _matchRepository.FindAsync(m => m.TournamentId == reg.TournamentId && (m.HomeTeamId == teamId || m.AwayTeamId == teamId) && m.Status == Domain.Enums.MatchStatus.Scheduled);
+                
+                foreach (var match in matches)
+                {
+                    match.Status = Domain.Enums.MatchStatus.Finished;
+                    match.Forfeit = true;
+                    
+                    if (match.HomeTeamId == teamId)
+                    {
+                        match.HomeScore = 0;
+                        match.AwayScore = 3; 
+                    }
+                    else
+                    {
+                        match.HomeScore = 3;
+                        match.AwayScore = 0;
+                    }
+                }
+                await _matchRepository.UpdateRangeAsync(matches);
 
-             // 4.5 Check if this tournament should now be finalized
-             await _lifecycleService.CheckAndFinalizeTournamentAsync(reg.TournamentId);
+                // Check if this tournament should now be finalized
+                await _lifecycleService.CheckAndFinalizeTournamentAsync(reg.TournamentId);
+            }
         }
 
         // 5. Notify Captain
@@ -180,6 +179,29 @@ public class TeamService : ITeamService
         if (captain != null && captain.UserId.HasValue)
         {
             await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.ACCOUNT_SUSPENDED, null, "team_disabled");
+        }
+    }
+
+    public async Task ActivateTeamAsync(Guid teamId)
+    {
+        var team = await _teamRepository.GetByIdAsync(teamId);
+        if (team == null) throw new NotFoundException(nameof(Team), teamId);
+
+        team.IsActive = true;
+        await _teamRepository.UpdateAsync(team);
+
+        await _analyticsService.LogActivityByTemplateAsync(
+            "TEAM_ACTIVATED",
+            new Dictionary<string, string> { { "teamName", team.Name } },
+            null,
+            "إدارة"
+        );
+
+        // Notify Captain
+        var captain = team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+        if (captain != null && captain.UserId.HasValue)
+        {
+            await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.TEAM_ACTIVATED, null, "team_activated");
         }
     }
 
@@ -297,71 +319,80 @@ public class TeamService : ITeamService
     public async Task DeleteAsync(Guid id, Guid userId, string userRole)
     {
         await ValidateManagementRights(id, userId, userRole);
-        // 1. Validation: Removed check for matches to allow Soft Delete
-        // The team and players will be soft-deleted, preserving match history references.
-
-
-        // 2. Unlink Users (Set TeamId = null)
-        var users = await _userRepository.FindAsync(u => u.TeamId == id);
-        var memberUserIds = users.Select(u => u.Id).ToList();
-
-        foreach (var user in users)
+        await _teamRepository.BeginTransactionAsync();
+        try
         {
-            user.TeamId = null;
-            await _userRepository.UpdateAsync(user);
-            await _realTimeNotifier.SendUserUpdatedAsync(_mapper.Map<UserDto>(user));
-        }
+            // 2. Unlink Users (Set TeamId = null)
+            var users = await _userRepository.FindAsync(u => u.TeamId == id);
+            var memberUserIds = users.Select(u => u.Id).ToList();
 
-        // 3. Delete Players (Dependent Entity)
-        // Teams always have at least one player (the captain) created on initialization
-        var players = await _playerRepository.FindAsync(p => p.TeamId == id);
-        foreach (var p in players)
-        {
-            await _playerRepository.DeleteAsync(p);
-        }
-
-        // 4. Delete Join Requests (Dependent Entity)
-        var requests = await _joinRequestRepository.FindAsync(r => r.TeamId == id);
-        foreach (var r in requests)
-        {
-            await _joinRequestRepository.DeleteAsync(r);
-        }
-
-        // 5. Delete TeamRegistrations and collect affected tournaments
-        var registrations = await _registrationRepository.FindAsync(r => r.TeamId == id);
-        var affectedTournamentIds = registrations.Select(r => r.TournamentId).Distinct().ToList();
-        
-        foreach (var reg in registrations)
-        {
-            // If the deleted registration was counted in CurrentTeams, decrement it
-            if (reg.Status == RegistrationStatus.Approved || reg.Status == RegistrationStatus.PendingPaymentReview)
+            if (users.Any())
             {
-                var tournament = await _tournamentRepository.GetByIdAsync(reg.TournamentId);
-                if (tournament != null)
+                foreach (var user in users)
                 {
-                    tournament.CurrentTeams = Math.Max(0, tournament.CurrentTeams - 1);
-                    await _tournamentRepository.UpdateAsync(tournament);
+                    user.TeamId = null;
+                }
+                await _userRepository.UpdateRangeAsync(users);
+                
+                foreach (var user in users)
+                {
+                    await _realTimeNotifier.SendUserUpdatedAsync(_mapper.Map<UserDto>(user));
                 }
             }
-            await _registrationRepository.DeleteAsync(reg);
-        }
 
-        // 6. Delete Team
-        await _teamRepository.DeleteAsync(id);
+            // 3. Delete Players (Dependent Entity)
+            var players = await _playerRepository.FindAsync(p => p.TeamId == id);
+            await _playerRepository.DeleteRangeAsync(players);
 
-        // 7. Notify all members (Specific) AND Global List (General)
-        await _realTimeNotifier.SendTeamDeletedAsync(id, memberUserIds);
-        await _realTimeNotifier.SendTeamDeletedAsync(id);
+            // 4. Delete Join Requests (Dependent Entity)
+            var requests = await _joinRequestRepository.FindAsync(r => r.TeamId == id);
+            await _joinRequestRepository.DeleteRangeAsync(requests);
 
-        // 8. Emit TournamentUpdated for each affected tournament (with updated registrations)
-        foreach (var tournamentId in affectedTournamentIds)
-        {
-            var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
-            if (tournament != null)
+            // 5. Delete TeamRegistrations and collect affected tournaments
+            var registrations = await _registrationRepository.FindAsync(r => r.TeamId == id);
+            var affectedTournamentIds = registrations.Select(r => r.TournamentId).Distinct().ToList();
+
+            if (registrations.Any())
             {
-                var dto = _mapper.Map<Application.DTOs.Tournaments.TournamentDto>(tournament);
-                await _realTimeNotifier.SendTournamentUpdatedAsync(dto);
+                var approvedOrPending = registrations.Where(r => r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.PendingPaymentReview).ToList();
+                if (approvedOrPending.Any())
+                {
+                    var tournamentIds = approvedOrPending.Select(r => r.TournamentId).Distinct().ToList();
+                    var tournaments = await _tournamentRepository.FindAsync(t => tournamentIds.Contains(t.Id));
+                    foreach (var tournament in tournaments)
+                    {
+                        var affectedCount = approvedOrPending.Count(r => r.TournamentId == tournament.Id);
+                        tournament.CurrentTeams = Math.Max(0, tournament.CurrentTeams - affectedCount);
+                    }
+                    await _tournamentRepository.UpdateRangeAsync(tournaments);
+                }
+                await _registrationRepository.DeleteRangeAsync(registrations);
             }
+
+            // 6. Delete Team
+            await _teamRepository.DeleteAsync(id);
+
+            await _teamRepository.CommitTransactionAsync();
+
+            // 7. Notify all members (Specific) AND Global List (General)
+            await _realTimeNotifier.SendTeamDeletedAsync(id, memberUserIds);
+            await _realTimeNotifier.SendTeamDeletedAsync(id);
+
+            // 8. Emit TournamentUpdated for each affected tournament
+            foreach (var tournamentId in affectedTournamentIds)
+            {
+                var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+                if (tournament != null)
+                {
+                    var dto = _mapper.Map<Application.DTOs.Tournaments.TournamentDto>(tournament);
+                    await _realTimeNotifier.SendTournamentUpdatedAsync(dto);
+                }
+            }
+        }
+        catch (Exception)
+        {
+            await _teamRepository.RollbackTransactionAsync();
+            throw;
         }
     }
 
@@ -562,7 +593,7 @@ public class TeamService : ITeamService
 
     public async Task<JoinRequestDto> AcceptInviteAsync(Guid requestId, Guid userId)
     {
-        var request = await _joinRequestRepository.GetByIdAsync(requestId, r => r.Team!, r => r.Team.Players);
+        var request = await _joinRequestRepository.GetByIdAsync(requestId, new[] { "Team.Players" });
         if (request == null) throw new NotFoundException(nameof(TeamJoinRequest), requestId);
         if (request.UserId != userId) throw new ForbiddenException("لا تملك صلاحية قبول هذه الدعوة.");
         if (request.Status != "pending") throw new ConflictException("هذه الدعوة لم تعد صالحة.");
@@ -616,7 +647,7 @@ public class TeamService : ITeamService
 
     public async Task<JoinRequestDto> RejectInviteAsync(Guid requestId, Guid userId)
     {
-        var request = await _joinRequestRepository.GetByIdAsync(requestId, r => r.Team!, r => r.Team.Players);
+        var request = await _joinRequestRepository.GetByIdAsync(requestId, new[] { "Team.Players" });
         if (request == null) throw new NotFoundException(nameof(TeamJoinRequest), requestId);
         if (request.UserId != userId) throw new ForbiddenException("لا تملك صلاحية رفض هذه الدعوة.");
         if (request.Status != "pending") throw new ConflictException("هذه الدعوة لم تعد صالحة.");
@@ -646,23 +677,17 @@ public class TeamService : ITeamService
 
     public async Task<IEnumerable<JoinRequestDto>> GetUserInvitationsAsync(Guid userId)
     {
-        var requests = await _joinRequestRepository.FindAsync(r => r.UserId == userId && r.Status == "pending");
-        var dtos = new List<JoinRequestDto>();
-        foreach (var r in requests)
+        var requests = await _joinRequestRepository.FindAsync(r => r.UserId == userId && r.Status == "pending", new[] { "Team" });
+        return requests.Select(r => new JoinRequestDto
         {
-            var team = await _teamRepository.GetByIdAsync(r.TeamId);
-            dtos.Add(new JoinRequestDto
-            {
-                Id = r.Id,
-                TeamId = r.TeamId,
-                TeamName = team?.Name ?? "Unknown",
-                PlayerId = userId,
-                Status = r.Status,
-                RequestDate = r.CreatedAt,
-                InitiatedByPlayer = r.InitiatedByPlayer
-            });
-        }
-        return dtos;
+            Id = r.Id,
+            TeamId = r.TeamId,
+            TeamName = r.Team?.Name ?? "Unknown",
+            PlayerId = userId,
+            Status = r.Status,
+            RequestDate = r.CreatedAt,
+            InitiatedByPlayer = r.InitiatedByPlayer
+        });
     }
 
     public async Task<IEnumerable<JoinRequestDto>> GetRequestsForCaptainAsync(Guid captainId)
@@ -670,25 +695,19 @@ public class TeamService : ITeamService
         var teams = await _teamRepository.FindAsync(t => t.Players.Any(p => p.TeamRole == TeamRole.Captain && p.UserId == captainId), new[] { "Players" });
         var teamIds = teams.Select(t => t.Id).ToList();
 
-        var requests = await _joinRequestRepository.FindAsync(r => teamIds.Contains(r.TeamId) && r.Status == "pending");
-        var dtos = new List<JoinRequestDto>();
-        foreach (var r in requests)
+        var requests = await _joinRequestRepository.FindAsync(r => teamIds.Contains(r.TeamId) && r.Status == "pending", new[] { "User" });
+        
+        return requests.Select(r => new JoinRequestDto
         {
-            var user = await _userRepository.GetByIdAsync(r.UserId);
-            var team = teams.FirstOrDefault(t => t.Id == r.TeamId);
-            dtos.Add(new JoinRequestDto
-            {
-                Id = r.Id,
-                TeamId = r.TeamId,
-                TeamName = team?.Name ?? "Unknown",
-                PlayerId = r.UserId,
-                PlayerName = user?.Name ?? "Unknown",
-                Status = r.Status,
-                RequestDate = r.CreatedAt,
-                InitiatedByPlayer = r.InitiatedByPlayer
-            });
-        }
-        return dtos;
+            Id = r.Id,
+            TeamId = r.TeamId,
+            TeamName = teams.FirstOrDefault(t => t.Id == r.TeamId)?.Name ?? "Unknown",
+            PlayerId = r.UserId,
+            PlayerName = r.User?.Name ?? "Unknown",
+            Status = r.Status,
+            RequestDate = r.CreatedAt,
+            InitiatedByPlayer = r.InitiatedByPlayer
+        });
     }
 
     public async Task RemovePlayerAsync(Guid teamId, Guid playerId, Guid userId, string userRole)

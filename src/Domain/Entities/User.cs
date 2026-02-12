@@ -28,6 +28,7 @@ public class User : BaseEntity
     // Auth
     public string? RefreshToken { get; set; }
     public DateTime? RefreshTokenExpiryTime { get; set; }
+    public int TokenVersion { get; set; } = 1;
 
     // Navigation properties
     // If user is a captain context

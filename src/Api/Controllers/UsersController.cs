@@ -225,8 +225,7 @@ public class UsersController : ControllerBase
     private (Guid userId, string userRole) GetUserContext()
     {
         var idStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var role = User.IsInRole(UserRole.Admin.ToString()) ? UserRole.Admin.ToString() : 
-                   User.IsInRole(UserRole.TournamentCreator.ToString()) ? UserRole.TournamentCreator.ToString() : UserRole.Player.ToString();
+        var role = User.FindFirst(ClaimTypes.Role)?.Value ?? UserRole.Player.ToString();
         return (Guid.Parse(idStr!), role);
     }
 }

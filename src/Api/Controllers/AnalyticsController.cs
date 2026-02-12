@@ -62,7 +62,7 @@ public class AnalyticsController : ControllerBase
             return Ok(teamAnalytics);
         }
         
-        var isCreator = userRole == "TournamentCreator";
+        var isCreator = userRole == UserRole.TournamentCreator.ToString();
         if (!isAdmin && !isCreator) return Forbid();
 
         Guid? creatorId = isCreator ? userId : null;
@@ -88,8 +88,7 @@ public class AnalyticsController : ControllerBase
     private (Guid userId, string userRole) GetUserContext()
     {
         var idStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var role = User.IsInRole(UserRole.Admin.ToString()) ? UserRole.Admin.ToString() : 
-                   User.IsInRole(UserRole.TournamentCreator.ToString()) ? UserRole.TournamentCreator.ToString() : UserRole.Player.ToString();
+        var role = User.FindFirst(ClaimTypes.Role)?.Value ?? UserRole.Player.ToString();
         return (Guid.Parse(idStr!), role);
     }
 }

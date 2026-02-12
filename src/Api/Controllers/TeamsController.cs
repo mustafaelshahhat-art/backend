@@ -123,8 +123,7 @@ public class TeamsController : ControllerBase
     private (Guid userId, string userRole) GetUserContext()
     {
         var idStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var role = User.IsInRole(UserRole.Admin.ToString()) ? UserRole.Admin.ToString() : 
-                   User.IsInRole(UserRole.TournamentCreator.ToString()) ? UserRole.TournamentCreator.ToString() : UserRole.Player.ToString();
+        var role = User.FindFirst(ClaimTypes.Role)?.Value ?? UserRole.Player.ToString();
         return (Guid.Parse(idStr!), role);
     }
 
@@ -134,6 +133,14 @@ public class TeamsController : ControllerBase
     {
         await _teamService.DisableTeamAsync(id);
         return Ok(new { message = "Team disabled and withdrawn from all active tournaments." });
+    }
+
+    [HttpPost("{id}/activate")]
+    [Authorize(Policy = "RequireAdmin")]
+    public async Task<IActionResult> Activate(Guid id)
+    {
+        await _teamService.ActivateTeamAsync(id);
+        return Ok(new { message = "Team activated successfully." });
     }
 
     [HttpGet("{id}/players")]

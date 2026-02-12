@@ -9,6 +9,10 @@ using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
+using System.Security.Claims;
+using Domain.Interfaces;
+using Domain.Entities;
+using Shared.Exceptions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +27,14 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, Api.Infrastructure.CustomUserIdProvider>();
 builder.Services.AddScoped<Application.Interfaces.IRealTimeNotifier, Api.Services.RealTimeNotifier>();
 
+builder.Services.Configure<CookiePolicyOptions>(options =>
+{
+    options.CheckConsentNeeded = context => false;
+    options.MinimumSameSitePolicy = SameSiteMode.Strict;
+    options.HttpOnly = Microsoft.AspNetCore.CookiePolicy.HttpOnlyPolicy.Always;
+    options.Secure = CookieSecurePolicy.Always;
+});
+
 // CORS
 builder.Services.AddCors(options =>
 {
@@ -30,9 +42,9 @@ builder.Services.AddCors(options =>
         policy =>
         {
             policy.WithOrigins("http://localhost:4200") // Restrict to trusted development origin
-                  .AllowAnyHeader()
-                  .AllowAnyMethod()
-                  .AllowCredentials(); // Required for SignalR
+                   .AllowAnyHeader()
+                   .AllowAnyMethod()
+                   .AllowCredentials(); // Required for SignalR
         });
 });
 
@@ -100,9 +112,28 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:Secret"]!))
         };
         
-        // SignalR Token Config
         options.Events = new JwtBearerEvents
         {
+            OnTokenValidated = async context =>
+            {
+                var userService = context.HttpContext.RequestServices.GetRequiredService<IRepository<User>>();
+                var userIdStr = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var tokenVersionStr = context.Principal?.FindFirst("token_version")?.Value;
+
+                if (Guid.TryParse(userIdStr, out var userId) && int.TryParse(tokenVersionStr, out var tokenVersion))
+                {
+                    var user = await userService.GetByIdNoTrackingAsync(userId, Array.Empty<string>());
+                    if (user == null || user.TokenVersion != tokenVersion || user.Status == UserStatus.Suspended)
+                    {
+                        context.Fail("Token is no longer valid.");
+                    }
+                }
+                else
+                {
+                    context.Fail("Invalid token claims.");
+                }
+            },
+            // SignalR Token Config
             OnMessageReceived = context =>
             {
                 var accessToken = context.Request.Query["access_token"];
@@ -138,14 +169,22 @@ builder.Services.AddAuthorization(options =>
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment()) { 
+if (app.Environment.IsDevelopment())
+{
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+else
+{
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
 
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 
-// app.UseHttpsRedirection(); 
+app.UseCookiePolicy();
+
 app.UseStaticFiles();
 
 app.UseCors("AllowFrontend");
@@ -222,9 +261,6 @@ using (var scope = app.Services.CreateScope())
                 adminUser.PasswordHash = hasher.HashPassword(adminPassword);
             }
             
-            // Explicitly reset IsDeleted shadow property
-            dbContext.Entry(adminUser).Property("IsDeleted").CurrentValue = false;
-            
             dbContext.SaveChanges();
         }
         // Initialize Activity Log Migration (Run once or on demand)
@@ -243,4 +279,4 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
-// Trigger rebuild
+// Trigger rebuild for user hard-delete cleanup

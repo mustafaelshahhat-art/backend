@@ -32,6 +32,7 @@ public interface ITeamService
 
     // Admin Action
     Task DisableTeamAsync(Guid teamId);
+    Task ActivateTeamAsync(Guid teamId);
     
     // Multi-team support
     Task<TeamsOverviewDto> GetTeamsOverviewAsync(Guid userId);

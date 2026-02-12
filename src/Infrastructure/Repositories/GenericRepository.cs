@@ -101,9 +101,28 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
         return await query.ToListAsync();
     }
 
+    public async Task<bool> AnyAsync(Expression<Func<T, bool>> predicate)
+    {
+        return await _dbSet.AnyAsync(predicate);
+    }
+
+    public async Task<bool> AnyAsync(Expression<Func<T, bool>> predicate, bool ignoreFilters)
+    {
+        IQueryable<T> query = _dbSet;
+        if (ignoreFilters) query = query.IgnoreQueryFilters();
+        return await query.AnyAsync(predicate);
+    }
+
     public async Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate)
     {
         return await _dbSet.Where(predicate).ToListAsync();
+    }
+
+    public async Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate, bool ignoreFilters)
+    {
+        IQueryable<T> query = _dbSet;
+        if (ignoreFilters) query = query.IgnoreQueryFilters();
+        return await query.Where(predicate).ToListAsync();
     }
 
     public async Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate, string[] includePaths)
@@ -137,15 +156,33 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
         await _context.SaveChangesAsync();
     }
 
+    public async Task AddRangeAsync(IEnumerable<T> entities)
+    {
+        await _dbSet.AddRangeAsync(entities);
+        await _context.SaveChangesAsync();
+    }
+
     public async Task UpdateAsync(T entity)
     {
         _dbSet.Update(entity);
         await _context.SaveChangesAsync();
     }
 
+    public async Task UpdateRangeAsync(IEnumerable<T> entities)
+    {
+        _dbSet.UpdateRange(entities);
+        await _context.SaveChangesAsync();
+    }
+
     public async Task DeleteAsync(T entity)
     {
         _dbSet.Remove(entity);
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task DeleteRangeAsync(IEnumerable<T> entities)
+    {
+        _dbSet.RemoveRange(entities);
         await _context.SaveChangesAsync();
     }
 
@@ -167,5 +204,36 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
     public async Task<int> CountAsync(Expression<Func<T, bool>> predicate)
     {
         return await _dbSet.CountAsync(predicate);
+    }
+
+    public async Task<long> SumAsync(Expression<Func<T, bool>> predicate, Expression<Func<T, int>> selector)
+    {
+        return await _dbSet.Where(predicate).SumAsync(selector);
+    }
+
+    public async Task<IEnumerable<string>> GetDistinctAsync(Expression<Func<T, bool>> predicate, Expression<Func<T, string?>> selector)
+    {
+        return await _dbSet.Where(predicate).Select(selector).Where(s => !string.IsNullOrEmpty(s)).Select(s => s!).Distinct().ToListAsync();
+    }
+
+    public async Task BeginTransactionAsync()
+    {
+        await _context.Database.BeginTransactionAsync();
+    }
+
+    public async Task CommitTransactionAsync()
+    {
+        if (_context.Database.CurrentTransaction != null)
+        {
+            await _context.Database.CommitTransactionAsync();
+        }
+    }
+
+    public async Task RollbackTransactionAsync()
+    {
+        if (_context.Database.CurrentTransaction != null)
+        {
+            await _context.Database.RollbackTransactionAsync();
+        }
     }
 }

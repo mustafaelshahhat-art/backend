@@ -29,6 +29,7 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             new Claim(ClaimTypes.Role, user.Role.ToString()),
             new Claim("name", user.Name), // Custom claim
             new Claim("status", user.Status.ToString()), // Custom claim
+            new Claim("token_version", user.TokenVersion.ToString()), // For revocation
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 

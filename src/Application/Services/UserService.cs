@@ -157,6 +157,7 @@ public class UserService : IUserService
         }
 
         user.Status = UserStatus.Suspended;
+        user.TokenVersion++; // Invalidate all existing tokens
         await _userRepository.UpdateAsync(user);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Suspended.ToString());
         
@@ -189,6 +190,36 @@ public class UserService : IUserService
 
         // Lightweight System Event
         await _realTimeNotifier.SendSystemEventAsync("USER_APPROVED", new { UserId = id }, $"user:{id}");
+    }
+
+    public async Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword)
+    {
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null)
+        {
+            throw new NotFoundException(nameof(User), userId);
+        }
+
+        // Verify current password
+        if (!_passwordHasher.VerifyPassword(currentPassword, user.PasswordHash))
+        {
+            throw new BadRequestException("كلمة المرور الحالية غير صحيحة");
+        }
+
+        // Validate new password
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6)
+        {
+            throw new BadRequestException("كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل");
+        }
+
+        // Update password
+        user.PasswordHash = _passwordHasher.HashPassword(newPassword);
+        user.TokenVersion++; // Invalidate all existing tokens on password change
+        await _userRepository.UpdateAsync(user);
+        
+        // Send notification or real-time update if needed
+        await _realTimeNotifier.SendAccountStatusChangedAsync(userId, "PasswordChanged");
+        await _notificationService.SendNotificationByTemplateAsync(userId, NotificationTemplates.PASSWORD_CHANGED);
     }
 
     public async Task<IEnumerable<UserDto>> GetByRoleAsync(string role)
@@ -259,8 +290,8 @@ public class UserService : IUserService
 
         var email = request.Email.Trim().ToLower();
 
-        // Check email uniqueness
-        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email);
+        // Check email uniqueness (including soft-deleted)
+        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email, true);
         if (existingUser != null && existingUser.Any())
         {
             throw new ConflictException("البريد الإلكتروني مستخدم بالفعل");
@@ -327,8 +358,8 @@ public class UserService : IUserService
 
         var email = request.Email.Trim().ToLower();
 
-        // Check email uniqueness
-        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email);
+        // Check email uniqueness (including soft-deleted)
+        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email, true);
         if (existingUser != null && existingUser.Any())
         {
             throw new ConflictException("البريد الإلكتروني مستخدم بالفعل");
@@ -394,62 +425,17 @@ public class UserService : IUserService
 
     public async Task<IEnumerable<string>> GetGovernoratesAsync()
     {
-        var users = await _userRepository.GetAllAsync();
-        return users.Select(u => u.Governorate).Where(g => !string.IsNullOrEmpty(g)).Distinct()!;
+        return await _userRepository.GetDistinctAsync(_ => true, u => u.Governorate);
     }
 
     public async Task<IEnumerable<string>> GetCitiesAsync(string governorate)
     {
-        var users = await _userRepository.FindAsync(u => u.Governorate == governorate);
-        return users.Select(u => u.City).Where(c => !string.IsNullOrEmpty(c)).Distinct()!;
+        return await _userRepository.GetDistinctAsync(u => u.Governorate == governorate, u => u.City);
     }
 
     public async Task<IEnumerable<string>> GetDistrictsAsync(string city)
     {
-        var users = await _userRepository.FindAsync(u => u.City == city);
-        return users.Select(u => u.Neighborhood).Where(d => !string.IsNullOrEmpty(d)).Distinct()!;
-    }
-
-
-
-    public async Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword)
-    {
-        var user = await _userRepository.GetByIdAsync(userId);
-        if (user == null)
-        {
-            throw new NotFoundException(nameof(User), userId);
-        }
-
-        // Verify current password
-        if (!_passwordHasher.VerifyPassword(currentPassword, user.PasswordHash))
-        {
-            throw new BadRequestException("كلمة المرور الحالية غير صحيحة");
-        }
-
-        // Validate new password
-        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6)
-        {
-            throw new BadRequestException("كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل");
-        }
-
-        // Update password
-        user.PasswordHash = _passwordHasher.HashPassword(newPassword);
-        await _userRepository.UpdateAsync(user);
-
-        // Log activity
-        try
-        {
-            await _analyticsService.LogActivityByTemplateAsync(
-                "PASSWORD_CHANGED", 
-                new Dictionary<string, string>(), 
-                userId, 
-                "مستخدم"
-            );
-        }
-        catch
-        {
-            // Don't fail if analytics logging fails
-        }
+        return await _userRepository.GetDistinctAsync(u => u.City == city, u => u.Neighborhood);
     }
 
     public async Task<string> UploadAvatarAsync(Guid userId, UploadAvatarRequest request)

@@ -108,14 +108,33 @@ public class AppDbContext : DbContext
             .HasForeignKey(mm => mm.MatchId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Tournament - Creator User
+        modelBuilder.Entity<Tournament>()
+            .HasOne(t => t.CreatorUser)
+            .WithMany()
+            .HasForeignKey(t => t.CreatorUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Match - Tournament
+        modelBuilder.Entity<Match>()
+            .HasOne(m => m.Tournament)
+            .WithMany(t => t.Matches)
+            .HasForeignKey(m => m.TournamentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Activity - User
+        modelBuilder.Entity<Activity>()
+            .HasOne(a => a.User)
+            .WithMany()
+            .HasForeignKey(a => a.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         // Tournament precision
         modelBuilder.Entity<Tournament>().Property(t => t.EntryFee).HasPrecision(18, 2);
 
         // Soft Delete Configuration & Propagation
         
-        // 1. User
-        modelBuilder.Entity<User>().Property<bool>("IsDeleted");
-        modelBuilder.Entity<User>().HasQueryFilter(u => !EF.Property<bool>(u, "IsDeleted"));
+        // 1. User - Hard Deleted to allow email reuse
 
         // 2. Team (Principal: User/Captain)
         modelBuilder.Entity<Team>().Property<bool>("IsDeleted");
@@ -140,14 +159,16 @@ public class AppDbContext : DbContext
 
 
 
-        // 7. TeamJoinRequest (Principals: Team, User)
-        modelBuilder.Entity<TeamJoinRequest>().HasQueryFilter(r => 
-            !EF.Property<bool>(r.Team!, "IsDeleted") && 
-            !EF.Property<bool>(r.User!, "IsDeleted"));
+        // 7. TeamJoinRequest (Principal: Team - User is hard-deleted)
+        modelBuilder.Entity<TeamJoinRequest>().HasQueryFilter(r =>
+            !EF.Property<bool>(r.Team!, "IsDeleted"));
 
-        // 8. Notification (Principal: User)
-        modelBuilder.Entity<Notification>().HasQueryFilter(n => 
-            !EF.Property<bool>(n.User!, "IsDeleted"));
+        // 8. Notification (Cascade delete when User is hard deleted)
+        modelBuilder.Entity<Notification>()
+            .HasOne(n => n.User)
+            .WithMany()
+            .HasForeignKey(n => n.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // 9. MatchEvent (Principal: Match -> Teams)
         modelBuilder.Entity<MatchEvent>().HasQueryFilter(me => 
@@ -166,9 +187,30 @@ public class AppDbContext : DbContext
             .HasForeignKey(o => o.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        modelBuilder.Entity<Otp>().HasQueryFilter(o => !EF.Property<bool>(o.User!, "IsDeleted"));
+        // Otp: User is hard-deleted with cascade, no IsDeleted filter needed
 
         // PERFORMANCE INDEXES
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.Email)
+            .IsUnique()
+            .HasDatabaseName("UQ_Users_Email");
+
+        modelBuilder.Entity<User>()
+            .HasIndex(u => new { u.Governorate, u.City, u.Neighborhood })
+            .HasDatabaseName("IX_Users_Location");
+
+        modelBuilder.Entity<Tournament>()
+            .HasIndex(t => new { t.CreatorUserId, t.Status })
+            .HasDatabaseName("IX_Tournaments_Creator_Status");
+
+        modelBuilder.Entity<Activity>()
+            .HasIndex(a => new { a.UserId, a.CreatedAt })
+            .HasDatabaseName("IX_Activities_User_Date");
+
+        modelBuilder.Entity<Activity>()
+            .HasIndex(a => a.Type)
+            .HasDatabaseName("IX_Activities_Type");
+
         modelBuilder.Entity<Match>()
             .HasIndex(m => m.Date)
             .HasDatabaseName("IX_Matches_Date");
@@ -180,6 +222,21 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Match>()
             .HasIndex(m => new { m.TournamentId, m.Status })
             .HasDatabaseName("IX_Matches_Tournament_Status");
+
+        modelBuilder.Entity<Player>()
+            .HasIndex(p => p.UserId)
+            .HasDatabaseName("IX_Players_User");
+
+        // UNIQUE CONSTRAINTS
+        modelBuilder.Entity<TeamRegistration>()
+            .HasIndex(tr => new { tr.TournamentId, tr.TeamId })
+            .IsUnique()
+            .HasDatabaseName("UQ_TeamRegistration_Tournament_Team");
+
+        modelBuilder.Entity<Player>()
+            .HasIndex(p => new { p.TeamId, p.UserId })
+            .IsUnique()
+            .HasDatabaseName("UQ_Player_Team_User");
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -198,11 +255,11 @@ public class AppDbContext : DbContext
             }
         }
         
-        // Handle Soft Delete for User, Team, Player
+        // Handle Soft Delete for Team, Player (Users are now Hard Deleted to allow email reuse)
         foreach (var entry in ChangeTracker.Entries())
         {
             if (entry.State == EntityState.Deleted && 
-               (entry.Entity is User || entry.Entity is Team || entry.Entity is Player))
+               (entry.Entity is Team || entry.Entity is Player))
             {
                 entry.State = EntityState.Modified;
                 entry.Property("IsDeleted").CurrentValue = true;

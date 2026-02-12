@@ -24,10 +24,7 @@ public class UserStatusCheckMiddleware
                 var user = await userService.GetByIdAsync(userId);
 
                 // If user doesn't exist (deleted) or is suspended, return 403 Forbidden
-                // Allow TournamentCreator to access even if Pending
-                if (user == null || 
-                    user.Status == UserStatus.Suspended.ToString() ||
-                    (user.Status == UserStatus.Pending.ToString() && user.Role != UserRole.TournamentCreator.ToString()))
+                if (user == null || user.Status == UserStatus.Suspended.ToString())
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     await context.Response.WriteAsync("Account is disabled or does not exist.");

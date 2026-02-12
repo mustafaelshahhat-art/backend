@@ -2,6 +2,7 @@ using Application.DTOs.Matches;
 using Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Domain.Enums;
 
 namespace Api.Controllers;
 
@@ -42,11 +43,11 @@ public class MatchesController : ControllerBase
     [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<MatchDto>> StartMatch(Guid id)
     {
-        if (!await IsUserActiveAsync() && !User.IsInRole("Admin"))
+        var (userId, userRole) = GetUserContext();
+        if (userRole != UserRole.Admin.ToString() && !await IsUserActiveAsync(userId))
         {
             return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من إدارة المباريات.");
         }
-        var (userId, userRole) = GetUserContext();
         var match = await _matchService.StartMatchAsync(id, userId, userRole);
         return Ok(match);
     }
@@ -55,11 +56,11 @@ public class MatchesController : ControllerBase
     [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<MatchDto>> EndMatch(Guid id)
     {
-        if (!await IsUserActiveAsync() && !User.IsInRole("Admin"))
+        var (userId, userRole) = GetUserContext();
+        if (userRole != UserRole.Admin.ToString() && !await IsUserActiveAsync(userId))
         {
             return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من إدارة المباريات.");
         }
-        var (userId, userRole) = GetUserContext();
         var match = await _matchService.EndMatchAsync(id, userId, userRole);
         return Ok(match);
     }
@@ -68,11 +69,11 @@ public class MatchesController : ControllerBase
     [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<MatchDto>> AddEvent(Guid id, AddMatchEventRequest request)
     {
-        if (!await IsUserActiveAsync() && !User.IsInRole("Admin"))
+        var (userId, userRole) = GetUserContext();
+        if (userRole != UserRole.Admin.ToString() && !await IsUserActiveAsync(userId))
         {
             return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من إضافة أحداث للمباراة.");
         }
-        var (userId, userRole) = GetUserContext();
         var match = await _matchService.AddEventAsync(id, request, userId, userRole);
         return Ok(match);
     }
@@ -86,8 +87,6 @@ public class MatchesController : ControllerBase
         return Ok(match);
     }
 
-
-
     [HttpPatch("{id}")]
     [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<MatchDto>> UpdateMatch(Guid id, UpdateMatchRequest request)
@@ -99,21 +98,14 @@ public class MatchesController : ControllerBase
 
     private (Guid userId, string userRole) GetUserContext()
     {
-        var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value 
-                  ?? User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
-        
-        var role = User.IsInRole("Admin") ? "Admin" : "TournamentCreator";
+        var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? UserRole.Player.ToString();
         return (Guid.Parse(idStr!), role);
     }
 
-    private async Task<bool> IsUserActiveAsync()
+    private async Task<bool> IsUserActiveAsync(Guid userId)
     {
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value 
-                  ?? User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
-                  
-        if (userId == null) return false;
-
-        var user = await _userService.GetByIdAsync(Guid.Parse(userId));
-        return user?.Status == "Active";
+        var user = await _userService.GetByIdAsync(userId);
+        return user?.Status == UserStatus.Active.ToString();
     }
 }
