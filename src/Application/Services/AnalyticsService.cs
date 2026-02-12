@@ -18,7 +18,6 @@ public class AnalyticsService : IAnalyticsService
     private readonly IRepository<Team> _teamRepository;
     private readonly IRepository<Player> _playerRepository;
     private readonly IRepository<Tournament> _tournamentRepository;
-    private readonly IRepository<Objection> _objectionRepository;
     private readonly IRepository<Match> _matchRepository;
     private readonly IMapper _mapper;
 
@@ -28,7 +27,6 @@ public class AnalyticsService : IAnalyticsService
         IRepository<Team> teamRepository,
         IRepository<Player> playerRepository,
         IRepository<Tournament> tournamentRepository,
-        IRepository<Objection> objectionRepository,
         IRepository<Match> matchRepository,
         IMapper mapper)
     {
@@ -37,7 +35,6 @@ public class AnalyticsService : IAnalyticsService
         _teamRepository = teamRepository;
         _playerRepository = playerRepository;
         _tournamentRepository = tournamentRepository;
-        _objectionRepository = objectionRepository;
         _matchRepository = matchRepository;
         _mapper = mapper;
     }
@@ -49,7 +46,7 @@ public class AnalyticsService : IAnalyticsService
         // Total Users: Maybe participants in their tournaments?
         // Let's implement scoped counts for creators.
         
-        int totalUsers, totalTeams, activeTournaments, pendingObjections, matchesToday, loginsToday, totalGoals;
+        int totalUsers, totalTeams, activeTournaments, matchesToday, loginsToday, totalGoals;
 
         if (creatorId.HasValue)
         {
@@ -61,8 +58,7 @@ public class AnalyticsService : IAnalyticsService
             // Teams in my tournaments
             totalTeams = myTournaments.SelectMany(t => t.Registrations).Select(r => r.TeamId).Distinct().Count();
             
-            // Objections in my tournaments
-            pendingObjections = await _objectionRepository.CountAsync(o => o.Status == Domain.Enums.ObjectionStatus.Pending && myTournamentIds.Contains(o.Match!.TournamentId));
+
             
             var today = DateTime.UtcNow.Date;
             matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today && myTournamentIds.Contains(m.TournamentId));
@@ -82,7 +78,6 @@ public class AnalyticsService : IAnalyticsService
 
             totalTeams = await _teamRepository.CountAsync(_ => true);
             activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == "registration_open" || t.Status == "active");
-            pendingObjections = await _objectionRepository.CountAsync(o => o.Status == Domain.Enums.ObjectionStatus.Pending);
 
             var today = DateTime.UtcNow.Date;
             matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today);
@@ -98,7 +93,6 @@ public class AnalyticsService : IAnalyticsService
             TotalTeams = totalTeams,
 
             ActiveTournaments = activeTournaments,
-            PendingObjections = pendingObjections,
             MatchesToday = matchesToday,
             LoginsToday = loginsToday,
             TotalGoals = totalGoals

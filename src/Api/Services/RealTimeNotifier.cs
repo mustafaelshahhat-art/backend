@@ -292,42 +292,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendObjectionSubmittedAsync(Application.DTOs.Objections.ObjectionDto objection)
-    {
-        try
-        {
-            // Security: Only admins and the submitting team should know about the objection
-            await _hubContext.Clients.Group("role:Admin").SendAsync("ObjectionSubmitted", objection);
-            
-            // Notify the specific captain
-            if (objection.CaptainId != Guid.Empty)
-            {
-                await _hubContext.Clients.User(objection.CaptainId.ToString()).SendAsync("ObjectionSubmitted", objection);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error sending objection submitted");
-        }
-    }
 
-    public async Task SendObjectionResolvedAsync(Application.DTOs.Objections.ObjectionDto objection)
-    {
-        try
-        {
-            // Security: Broadcast resolution only to Admins and the involved captain
-            await _hubContext.Clients.Group("role:Admin").SendAsync("ObjectionResolved", objection);
-            
-            if (objection.CaptainId != Guid.Empty)
-            {
-                await _hubContext.Clients.User(objection.CaptainId.ToString()).SendAsync("ObjectionResolved", objection);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error sending objection resolved");
-        }
-    }
 
     public async Task SendSystemEventAsync(string type, object metadata, string? group = null)
     {

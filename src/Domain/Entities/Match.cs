@@ -32,5 +32,4 @@ public class Match : BaseEntity
 
 
     public ICollection<MatchEvent> Events { get; set; } = new List<MatchEvent>();
-    public ICollection<Objection> Objections { get; set; } = new List<Objection>();
 }

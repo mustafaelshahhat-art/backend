@@ -3,7 +3,6 @@ using Application.DTOs.Auth;
 using Application.DTOs.Teams;
 using Application.DTOs.Tournaments;
 using Application.DTOs.Matches;
-using Application.DTOs.Objections;
 using Application.DTOs.Users;
 
 namespace Application.Validators;
@@ -49,15 +48,7 @@ public class AddMatchEventRequestValidator : AbstractValidator<AddMatchEventRequ
     }
 }
 
-public class SubmitObjectionRequestValidator : AbstractValidator<SubmitObjectionRequest>
-{
-    public SubmitObjectionRequestValidator()
-    {
-        RuleFor(x => x.MatchId).NotEmpty();
-        RuleFor(x => x.Type).NotEmpty().IsEnumName(typeof(Domain.Enums.ObjectionType));
-        RuleFor(x => x.Description).NotEmpty().MinimumLength(10);
-    }
-}
+
 
 public class UpdateUserRequestValidator : AbstractValidator<UpdateUserRequest>
 {

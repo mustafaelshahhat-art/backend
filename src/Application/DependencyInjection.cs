@@ -22,7 +22,6 @@ public static class DependencyInjection
         services.AddScoped<ITournamentService, TournamentService>();
         services.AddScoped<IOtpService, OtpService>();
         services.AddScoped<IMatchService, MatchService>();
-        services.AddScoped<IObjectionService, ObjectionService>();
         services.AddScoped<IAnalyticsService, AnalyticsService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<ITournamentLifecycleService, TournamentLifecycleService>();

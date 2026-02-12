@@ -4,7 +4,6 @@ using Application.DTOs.Users;
 using Application.DTOs.Teams;
 using Application.DTOs.Tournaments;
 using Application.DTOs.Matches;
-using Application.DTOs.Objections;
 using Application.DTOs.Notifications;
 using Application.DTOs.Analytics;
 using Domain.Enums;
@@ -75,20 +74,7 @@ public class MappingProfile : Profile
             .ForMember(d => d.Type, o => o.MapFrom(s => s.Type.ToString()))
             .ForMember(d => d.PlayerName, o => o.MapFrom(s => s.Player != null ? s.Player.Name : string.Empty));
 
-        // Objection
-        CreateMap<Objection, ObjectionDto>()
-            .ForMember(d => d.TeamName, o => o.MapFrom(s => s.Team != null ? s.Team.Name : string.Empty))
-            .ForMember(d => d.CaptainId, o => o.MapFrom(s => s.Team != null && s.Team.Players != null 
-                ? (s.Team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain) != null ? s.Team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain).UserId : Guid.Empty) 
-                : Guid.Empty))
-            .ForMember(d => d.CaptainName, o => o.MapFrom(s => s.Team != null && s.Team.Players != null 
-                ? (s.Team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain) != null ? s.Team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain).Name : string.Empty) 
-                : string.Empty))
-            .ForMember(d => d.TournamentName, o => o.MapFrom(s => s.Match != null && s.Match.Tournament != null ? s.Match.Tournament.Name : string.Empty))
-            .ForMember(d => d.HomeTeamName, o => o.MapFrom(s => s.Match != null && s.Match.HomeTeam != null ? s.Match.HomeTeam.Name : string.Empty))
-            .ForMember(d => d.AwayTeamName, o => o.MapFrom(s => s.Match != null && s.Match.AwayTeam != null ? s.Match.AwayTeam.Name : string.Empty))
-            .ForMember(d => d.Type, o => o.MapFrom(s => s.Type.ToString()))
-            .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()));
+
 
         // Notification
         CreateMap<Notification, NotificationDto>();

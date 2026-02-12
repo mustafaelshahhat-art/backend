@@ -20,7 +20,6 @@ public class AppDbContext : DbContext
     public DbSet<TeamRegistration> TeamRegistrations { get; set; }
     public DbSet<Match> Matches { get; set; }
     public DbSet<MatchEvent> MatchEvents { get; set; }
-    public DbSet<Objection> Objections { get; set; }
     public DbSet<Notification> Notifications { get; set; }
     public DbSet<Activity> Activities { get; set; }
     public DbSet<TeamJoinRequest> TeamJoinRequests { get; set; }
@@ -100,12 +99,7 @@ public class AppDbContext : DbContext
             .HasForeignKey(me => me.MatchId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Objection
-        modelBuilder.Entity<Objection>()
-            .HasOne(o => o.Match)
-            .WithMany(m => m.Objections)
-            .HasForeignKey(o => o.MatchId)
-            .OnDelete(DeleteBehavior.Cascade);
+
 
         // MatchMessage
         modelBuilder.Entity<MatchMessage>()
@@ -144,9 +138,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TeamRegistration>().HasQueryFilter(tr => 
             !EF.Property<bool>(tr.Team!, "IsDeleted"));
 
-        // 6. Objection (Principal: Team)
-        modelBuilder.Entity<Objection>().HasQueryFilter(o => 
-            !EF.Property<bool>(o.Team!, "IsDeleted"));
+
 
         // 7. TeamJoinRequest (Principals: Team, User)
         modelBuilder.Entity<TeamJoinRequest>().HasQueryFilter(r => 

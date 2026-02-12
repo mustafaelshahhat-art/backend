@@ -26,9 +26,6 @@ public static class NotificationTemplates
     public const string INVITE_ACCEPTED = "INVITE_ACCEPTED";
     public const string INVITE_REJECTED = "INVITE_REJECTED";
     
-    public const string OBJECTION_SUBMITTED = "OBJECTION_SUBMITTED";
-    public const string OBJECTION_APPROVED = "OBJECTION_APPROVED";
-    public const string OBJECTION_REJECTED = "OBJECTION_REJECTED";
     
     public const string TEAM_APPROVED = "TEAM_APPROVED";
     public const string TEAM_REJECTED = "TEAM_REJECTED";
@@ -61,9 +58,7 @@ public static class NotificationTemplates
         { INVITE_ACCEPTED, ("قبول الدعوة", "قبل اللاعب {playerName} دعوتكم للانضمام للفريق.") },
         { INVITE_REJECTED, ("رفض الدعوة", "رفض اللاعب {playerName} دعوتكم للانضمام للفريق.") },
         
-        { OBJECTION_SUBMITTED, ("اعتراض جديد", "تم تقديم اعتراض جديد بخصوص المباراة #{matchId}.") },
-        { OBJECTION_APPROVED, ("قبول الاعتراض", "تم قبول الاعتراض المقدم بخصوص المباراة #{matchId}.") },
-        { OBJECTION_REJECTED, ("رفض الاعتراض", "تم رفض الاعتراض المقدم بخصوص المباراة #{matchId}.") },
+
         
         { TEAM_APPROVED, ("قبول الفريق", "تمت الموافقة على مشاركة فريقك في بطولة {tournamentName}.") },
         { TEAM_REJECTED, ("رفض المشاركة", "نأسف، تم رفض طلب مشاركة فريقك في بطولة {tournamentName}: {reason}") },

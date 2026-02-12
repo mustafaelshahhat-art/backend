@@ -35,8 +35,6 @@ public static class ActivityConstants
     public const string PASSWORD_CHANGED = "PASSWORD_CHANGED";
     public const string AVATAR_UPDATED = "AVATAR_UPDATED";
     
-    public const string OBJECTION_SUBMITTED = "OBJECTION_SUBMITTED";
-    public const string OBJECTION_RESOLVED = "OBJECTION_RESOLVED";
     public const string PAYMENT_SUBMITTED = "PAYMENT_SUBMITTED";
     public const string PAYMENT_APPROVED = "PAYMENT_APPROVED";
 
@@ -77,8 +75,7 @@ public static class ActivityConstants
         { TEAM_DEACTIVATED, ("إدارة", "إلغاء تنشيط", "تم إلغاء تنشيط فريق {teamName}") },
 
 
-        { OBJECTION_SUBMITTED, ("اعتراض", "تقديم اعتراض", "تم تقديم اعتراض بخصوص مباراة {matchInfo} من قبل {teamName}") },
-        { OBJECTION_RESOLVED, ("اعتراض", "حسم اعتراض", "تم حسم الاعتراض في مباراة {matchInfo} بقرار: {resolution}") },
+
 
         { PAYMENT_SUBMITTED, ("دفع", "إيصال دفع", "تم رفع إيصال دفع من قبل فريق {teamName}") },
         { PAYMENT_APPROVED, ("دفع", "قبول دفع", "تم اعتماد دفع الرسوم لفريق {teamName}") },
