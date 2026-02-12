@@ -48,58 +48,74 @@ public class TournamentService : ITournamentService
     public async Task<IEnumerable<TournamentDto>> GetAllAsync(Guid? creatorId = null)
     {
         IEnumerable<Tournament> tournaments;
+        var includes = new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" };
+        
         if (creatorId.HasValue)
         {
-            tournaments = await _tournamentRepository.FindAsync(
+            tournaments = await _tournamentRepository.GetNoTrackingAsync(
                 t => t.CreatorUserId == creatorId.Value,
-                new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" }
+                includes
             );
         }
         else
         {
-            tournaments = await _tournamentRepository.GetAllAsync(new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" });
+            tournaments = await _tournamentRepository.GetAllNoTrackingAsync(includes);
         }
+
+        var tournamentList = tournaments.ToList();
+        var ids = tournamentList.Select(t => t.Id).ToList();
+
+        // Fix N+1: Pre-fetch all matches and registrations for checking intervention
+        var allMatches = (await _matchRepository.GetNoTrackingAsync(m => ids.Contains(m.TournamentId)))
+            .GroupBy(m => m.TournamentId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var allRegistrations = (await _registrationRepository.GetNoTrackingAsync(r => ids.Contains(r.TournamentId)))
+            .GroupBy(r => r.TournamentId)
+            .ToDictionary(g => g.Key, g => g.ToList());
         
         var dtos = new List<TournamentDto>();
-        foreach (var t in tournaments)
+        foreach (var t in tournamentList)
         {
-            dtos.Add(await MapToDtoWithInterventionAsync(t));
+            var matches = allMatches.GetValueOrDefault(t.Id, new List<Match>());
+            var registrations = allRegistrations.GetValueOrDefault(t.Id, new List<TeamRegistration>());
+            
+            var dto = _mapper.Map<TournamentDto>(t);
+            dto.RequiresAdminIntervention = CheckInterventionRequiredInternal(t, matches, registrations);
+            dtos.Add(dto);
         }
         return dtos;
     }
 
     public async Task<TournamentDto?> GetByIdAsync(Guid id)
     {
-        var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" });
-        return tournament == null ? null : await MapToDtoWithInterventionAsync(tournament);
+        var tournament = await _tournamentRepository.GetByIdNoTrackingAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" });
+        if (tournament == null) return null;
+
+        var matches = (await _matchRepository.GetNoTrackingAsync(m => m.TournamentId == id)).ToList();
+        var registrations = (await _registrationRepository.GetNoTrackingAsync(r => r.TournamentId == id)).ToList();
+
+        var dto = _mapper.Map<TournamentDto>(tournament);
+        dto.RequiresAdminIntervention = CheckInterventionRequiredInternal(tournament, matches, registrations);
+        return dto;
     }
 
     private async Task<TournamentDto?> GetByIdFreshAsync(Guid id)
     {
-        var tournament = await _tournamentRepository.GetByIdNoTrackingAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" });
-        return tournament == null ? null : await MapToDtoWithInterventionAsync(tournament);
+        return await GetByIdAsync(id);
     }
 
-    private async Task<TournamentDto> MapToDtoWithInterventionAsync(Tournament tournament)
+    private bool CheckInterventionRequiredInternal(Tournament tournament, List<Match> matches, List<TeamRegistration> registrations)
     {
-        var dto = _mapper.Map<TournamentDto>(tournament);
-        dto.RequiresAdminIntervention = await CheckInterventionRequiredAsync(tournament);
-        return dto;
-    }
-
-    private async Task<bool> CheckInterventionRequiredAsync(Tournament tournament)
-    {
-        var matches = (await _matchRepository.FindAsync(m => m.TournamentId == tournament.Id)).ToList();
-        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournament.Id && r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn);
-        var regCount = registrations.Count();
-        var approvedCount = registrations.Count(r => r.Status == RegistrationStatus.Approved);
+        var relevantRegistrations = registrations.Where(r => r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn).ToList();
+        var regCount = relevantRegistrations.Count;
+        var approvedCount = relevantRegistrations.Count(r => r.Status == RegistrationStatus.Approved);
 
         // Case 1: Registration closed but should be active (All approved, capacity reached, but no matches)
         if (tournament.Status == "registration_closed")
         {
             if (regCount == tournament.MaxTeams && approvedCount == regCount && !matches.Any())
             {
-                 // System should have auto-generated matches but didn't (e.g. error) or some manual intervention left it here
                  return true;
             }
             
@@ -353,12 +369,13 @@ public class TournamentService : ITournamentService
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
 
-        // Authorization: Only the specific Tournament Creator (even if Admin, only for their own)
+        // Authorization: Tournament Creator or Admin
         var isOwner = tournament.CreatorUserId == userId;
+        var isAdmin = userRole == UserRole.Admin.ToString();
 
-        if (!isOwner)
+        if (!isOwner && !isAdmin)
         {
-             throw new ForbiddenException("غير مصرح لك بإدارة طلبات هذه البطولة. فقط منظم البطولة يمكنه ذلك.");
+             throw new ForbiddenException("غير مصرح لك بإدارة طلبات هذه البطولة. فقط منظم البطولة أو مدير النظام يمكنه ذلك.");
         }
 
         var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, new[] { "Team", "Team.Players" })).FirstOrDefault();
@@ -415,12 +432,13 @@ public class TournamentService : ITournamentService
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
 
-        // Authorization: Only the specific Tournament Creator
+        // Authorization: Tournament Creator or Admin
         var isOwner = tournament.CreatorUserId == userId;
+        var isAdmin = userRole == UserRole.Admin.ToString();
 
-        if (!isOwner)
+        if (!isOwner && !isAdmin)
         {
-             throw new ForbiddenException("غير مصرح لك بإدارة طلبات هذه البطولة. فقط منظم البطولة يمكنه ذلك.");
+             throw new ForbiddenException("غير مصرح لك بإدارة طلبات هذه البطولة. فقط منظم البطولة أو مدير النظام يمكنه ذلك.");
         }
 
         var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, new[] { "Team", "Team.Players" })).FirstOrDefault();

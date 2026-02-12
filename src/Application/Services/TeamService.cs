@@ -63,51 +63,57 @@ public class TeamService : ITeamService
     public async Task<IEnumerable<TeamDto>> GetAllAsync(Guid? captainId = null, Guid? playerId = null)
     {
         IEnumerable<Team> teams;
+        var includes = new[] { "Players" };
 
         if (captainId.HasValue)
         {
-            teams = await _teamRepository.FindAsync(t => t.Players.Any(p => p.TeamRole == TeamRole.Captain && p.UserId == captainId.Value), new[] { "Players" });
+            teams = await _teamRepository.GetNoTrackingAsync(t => t.Players.Any(p => p.TeamRole == TeamRole.Captain && p.UserId == captainId.Value), includes);
         }
         else if (playerId.HasValue)
         {
-            teams = await _teamRepository.FindAsync(t => t.Players.Any(p => p.UserId == playerId.Value), new[] { "Players" });
+            teams = await _teamRepository.GetNoTrackingAsync(t => t.Players.Any(p => p.UserId == playerId.Value), includes);
         }
         else
         {
-            teams = await _teamRepository.GetAllAsync(t => t.Players);
+            teams = await _teamRepository.GetAllNoTrackingAsync(includes);
         }
 
         var teamDtos = _mapper.Map<IEnumerable<TeamDto>>(teams).ToList();
         
-        // OPTIMIZED STATS CALCULATION: Fetch lightweight DTOs instead of full entities
+        // OPTIMIZED STATS CALCULATION: Fetch lightweight DTOs instead of full entities once
         var finishedMatches = (await _matchRepository.GetFinishedMatchOutcomesAsync()).ToList();
 
         if (finishedMatches.Any()) 
         {
              foreach (var dto in teamDtos)
              {
-                 var stats = new TeamStatsDto();
-                 var teamMatches = finishedMatches.Where(m => m.HomeTeamId == dto.Id || m.AwayTeamId == dto.Id);
-
-                 foreach (var match in teamMatches)
-                 {
-                     stats.Matches++;
-                     bool isHome = match.HomeTeamId == dto.Id;
-                     int teamScore = isHome ? match.HomeScore : match.AwayScore;
-                     int opponentScore = isHome ? match.AwayScore : match.HomeScore;
-
-                     stats.GoalsFor += teamScore;
-                     stats.GoalsAgainst += opponentScore;
-
-                     if (teamScore > opponentScore) stats.Wins++;
-                     else if (teamScore == opponentScore) stats.Draws++;
-                     else stats.Losses++;
-                 }
-                 dto.Stats = stats;
+                 dto.Stats = CalculateStatsFromMatches(dto.Id, finishedMatches);
              }
         }
 
         return teamDtos;
+    }
+
+    private TeamStatsDto CalculateStatsFromMatches(Guid teamId, IEnumerable<MatchOutcomeDto> finishedMatches)
+    {
+        var stats = new TeamStatsDto();
+        var teamMatches = finishedMatches.Where(m => m.HomeTeamId == teamId || m.AwayTeamId == teamId);
+
+        foreach (var match in teamMatches)
+        {
+            stats.Matches++;
+            bool isHome = match.HomeTeamId == teamId;
+            int teamScore = isHome ? match.HomeScore : match.AwayScore;
+            int opponentScore = isHome ? match.AwayScore : match.HomeScore;
+
+            stats.GoalsFor += teamScore;
+            stats.GoalsAgainst += opponentScore;
+
+            if (teamScore > opponentScore) stats.Wins++;
+            else if (teamScore == opponentScore) stats.Draws++;
+            else stats.Losses++;
+        }
+        return stats;
     }
 
     // ... (Use existing methods until DisableTeamAsync)
@@ -179,7 +185,7 @@ public class TeamService : ITeamService
 
     public async Task<TeamDto?> GetByIdAsync(Guid id)
     {
-        var team = await _teamRepository.GetByIdAsync(id, t => t.Players);
+        var team = await _teamRepository.GetByIdNoTrackingAsync(id, t => t.Players);
         if (team == null) return null;
 
         var teamDto = _mapper.Map<TeamDto>(team);
@@ -188,23 +194,7 @@ public class TeamService : ITeamService
         var finishedMatches = (await _matchRepository.GetFinishedMatchOutcomesAsync())
             .Where(m => m.HomeTeamId == id || m.AwayTeamId == id); // In-memory filter on lightweight list
 
-        var stats = new TeamStatsDto();
-        foreach (var match in finishedMatches)
-        {
-            stats.Matches++;
-            bool isHome = match.HomeTeamId == id;
-            int teamScore = isHome ? match.HomeScore : match.AwayScore;
-            int opponentScore = isHome ? match.AwayScore : match.HomeScore;
-
-            stats.GoalsFor += teamScore;
-            stats.GoalsAgainst += opponentScore;
-
-            if (teamScore > opponentScore) stats.Wins++;
-            else if (teamScore == opponentScore) stats.Draws++;
-            else stats.Losses++;
-        }
-
-        teamDto.Stats = stats;
+        teamDto.Stats = CalculateStatsFromMatches(id, finishedMatches);
         return teamDto;
     }
 
@@ -212,7 +202,7 @@ public class TeamService : ITeamService
     {
         if (userRole == UserRole.Admin.ToString()) return;
 
-        var team = await _teamRepository.GetByIdAsync(teamId, t => t.Players);
+        var team = await _teamRepository.GetByIdNoTrackingAsync(teamId, t => t.Players);
         if (team == null) throw new NotFoundException(nameof(Team), teamId);
 
         var isCaptain = team.Players.Any(p => p.UserId == userId && p.TeamRole == TeamRole.Captain);
@@ -816,24 +806,7 @@ public class TeamService : ITeamService
             {
                 foreach (var dto in allTeams)
                 {
-                    var stats = new TeamStatsDto();
-                    var teamMatches = finishedMatches.Where(m => m.HomeTeamId == dto.Id || m.AwayTeamId == dto.Id);
-                    
-                    foreach (var match in teamMatches)
-                    {
-                        stats.Matches++;
-                        bool isHome = match.HomeTeamId == dto.Id;
-                        int teamScore = isHome ? match.HomeScore : match.AwayScore;
-                        int opponentScore = isHome ? match.AwayScore : match.HomeScore;
-                        
-                        stats.GoalsFor += teamScore;
-                        stats.GoalsAgainst += opponentScore;
-                        
-                        if (teamScore > opponentScore) stats.Wins++;
-                        else if (teamScore == opponentScore) stats.Draws++;
-                        else stats.Losses++;
-                    }
-                    dto.Stats = stats;
+                    dto.Stats = CalculateStatsFromMatches(dto.Id, finishedMatches);
                 }
             }
         }

@@ -56,6 +56,16 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
         return await query.FirstOrDefaultAsync(e => e.Id == id);
     }
 
+    public async Task<T?> GetByIdNoTrackingAsync(Guid id, params Expression<Func<T, object>>[] includes)
+    {
+        IQueryable<T> query = _dbSet.AsNoTracking();
+        foreach (var include in includes)
+        {
+            query = query.Include(include);
+        }
+        return await query.FirstOrDefaultAsync(e => e.Id == id);
+    }
+
     public async Task<IEnumerable<T>> GetAllAsync()
     {
         return await _dbSet.ToListAsync();
@@ -81,6 +91,16 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
         return await query.ToListAsync();
     }
 
+    public async Task<IEnumerable<T>> GetAllNoTrackingAsync(string[] includePaths)
+    {
+        IQueryable<T> query = _dbSet.AsNoTracking();
+        foreach (var path in includePaths)
+        {
+            query = query.Include(path);
+        }
+        return await query.ToListAsync();
+    }
+
     public async Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate)
     {
         return await _dbSet.Where(predicate).ToListAsync();
@@ -89,6 +109,21 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
     public async Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate, string[] includePaths)
     {
         IQueryable<T> query = _dbSet;
+        foreach (var path in includePaths)
+        {
+            query = query.Include(path);
+        }
+        return await query.Where(predicate).ToListAsync();
+    }
+
+    public async Task<IEnumerable<T>> GetNoTrackingAsync(Expression<Func<T, bool>> predicate)
+    {
+        return await _dbSet.AsNoTracking().Where(predicate).ToListAsync();
+    }
+
+    public async Task<IEnumerable<T>> GetNoTrackingAsync(Expression<Func<T, bool>> predicate, string[] includePaths)
+    {
+        IQueryable<T> query = _dbSet.AsNoTracking();
         foreach (var path in includePaths)
         {
             query = query.Include(path);

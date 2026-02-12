@@ -1,5 +1,6 @@
 using Application.DTOs.Teams;
 using Application.Interfaces;
+using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -122,8 +123,8 @@ public class TeamsController : ControllerBase
     private (Guid userId, string userRole) GetUserContext()
     {
         var idStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var role = User.IsInRole("Admin") ? "Admin" : 
-                   User.IsInRole("TournamentCreator") ? "TournamentCreator" : "User";
+        var role = User.IsInRole(UserRole.Admin.ToString()) ? UserRole.Admin.ToString() : 
+                   User.IsInRole(UserRole.TournamentCreator.ToString()) ? UserRole.TournamentCreator.ToString() : UserRole.Player.ToString();
         return (Guid.Parse(idStr!), role);
     }
 

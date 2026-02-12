@@ -1,5 +1,6 @@
 using Application.DTOs.Users;
 using Application.Interfaces;
+using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -32,7 +33,7 @@ public class UsersController : ControllerBase
     {
         var (userId, userRole) = GetUserContext();
         
-        if (userRole == "Admin")
+        if (userRole == UserRole.Admin.ToString())
         {
             var users = await _userService.GetByRoleAsync(role);
             return Ok(users);
@@ -48,7 +49,7 @@ public class UsersController : ControllerBase
     {
         var (userId, userRole) = GetUserContext();
 
-        if (userId == id || userRole == "Admin")
+        if (userId == id || userRole == UserRole.Admin.ToString())
         {
             var user = await _userService.GetByIdAsync(id);
             if (user == null) return NotFound();
@@ -66,7 +67,7 @@ public class UsersController : ControllerBase
     {
         var (userId, userRole) = GetUserContext();
 
-        if (userId != id && userRole != "Admin")
+        if (userId != id && userRole != UserRole.Admin.ToString())
         {
             return Forbid();
         }
@@ -224,8 +225,8 @@ public class UsersController : ControllerBase
     private (Guid userId, string userRole) GetUserContext()
     {
         var idStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var role = User.IsInRole("Admin") ? "Admin" : 
-                   User.IsInRole("TournamentCreator") ? "TournamentCreator" : "Player";
+        var role = User.IsInRole(UserRole.Admin.ToString()) ? UserRole.Admin.ToString() : 
+                   User.IsInRole(UserRole.TournamentCreator.ToString()) ? UserRole.TournamentCreator.ToString() : UserRole.Player.ToString();
         return (Guid.Parse(idStr!), role);
     }
 }

@@ -7,6 +7,8 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,11 +29,24 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend",
         policy =>
         {
-            policy.SetIsOriginAllowed(origin => true) // Allow any origin for local network access
+            policy.WithOrigins("http://localhost:4200") // Restrict to trusted development origin
                   .AllowAnyHeader()
                   .AllowAnyMethod()
                   .AllowCredentials(); // Required for SignalR
         });
+});
+
+// Rate Limiting
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter(policyName: "fixed", options =>
+    {
+        options.PermitLimit = 100;
+        options.Window = TimeSpan.FromMinutes(1);
+        options.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
+        options.QueueLimit = 2;
+    });
 });
 
 // Add Layer Dependencies
@@ -138,6 +153,7 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseMiddleware<UserStatusCheckMiddleware>();
 app.UseMiddleware<MaintenanceModeMiddleware>();
+app.UseRateLimiter(); // Enable Rate Limiting
 app.UseAuthorization();
 
 app.MapControllers();

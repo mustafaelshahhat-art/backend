@@ -2,6 +2,7 @@ using Application.DTOs.Analytics;
 using Application.DTOs.Notifications;
 using Application.Interfaces;
 using Application.Services;
+using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -40,7 +41,7 @@ public class AnalyticsController : ControllerBase
     public async Task<ActionResult> GetOverview([FromQuery] Guid? teamId = null)
     {
         var (userId, userRole) = GetUserContext();
-        var isAdmin = userRole == "Admin";
+        var isAdmin = userRole == UserRole.Admin.ToString();
 
         if (teamId.HasValue)
         {
@@ -50,8 +51,8 @@ public class AnalyticsController : ControllerBase
                 var team = await _teamService.GetByIdAsync(teamId.Value);
                 if (team == null) return NotFound();
                 
-                // Note: TeamDto has CaptainId
-                if (team.CaptainId != userId)
+                // Check if user is the captain within the Players list
+                if (!team.Players.Any(p => p.UserId == userId && p.TeamRole == TeamRole.Captain))
                 {
                     return Forbid();
                 }
@@ -74,8 +75,8 @@ public class AnalyticsController : ControllerBase
     public async Task<ActionResult<IEnumerable<ActivityDto>>> GetRecentActivity()
     {
         var (userId, userRole) = GetUserContext();
-        var isAdmin = userRole == "Admin";
-        var isCreator = userRole == "TournamentCreator";
+        var isAdmin = userRole == UserRole.Admin.ToString();
+        var isCreator = userRole == UserRole.TournamentCreator.ToString();
         
         if (!isAdmin && !isCreator) return Forbid();
 
@@ -87,9 +88,8 @@ public class AnalyticsController : ControllerBase
     private (Guid userId, string userRole) GetUserContext()
     {
         var idStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var role = User.IsInRole("Admin") ? "Admin" : 
-                   User.IsInRole("TournamentCreator") ? "TournamentCreator" : "Player";
+        var role = User.IsInRole(UserRole.Admin.ToString()) ? UserRole.Admin.ToString() : 
+                   User.IsInRole(UserRole.TournamentCreator.ToString()) ? UserRole.TournamentCreator.ToString() : UserRole.Player.ToString();
         return (Guid.Parse(idStr!), role);
     }
 }
-

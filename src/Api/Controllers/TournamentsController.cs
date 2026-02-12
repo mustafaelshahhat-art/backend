@@ -1,6 +1,7 @@
 using Application.DTOs.Tournaments;
 using Application.DTOs.Matches;
 using Application.Interfaces;
+using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -25,7 +26,7 @@ public class TournamentsController : ControllerBase
     public async Task<ActionResult<IEnumerable<TournamentDto>>> GetAll()
     {
         Guid? creatorId = null;
-        if (User.Identity?.IsAuthenticated == true && User.IsInRole("TournamentCreator"))
+        if (User.Identity?.IsAuthenticated == true && User.IsInRole(UserRole.TournamentCreator.ToString()))
         {
             var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (!string.IsNullOrEmpty(userIdStr))
@@ -52,7 +53,7 @@ public class TournamentsController : ControllerBase
     public async Task<ActionResult<TournamentDto>> Create(CreateTournamentRequest request)
     {
         Guid? creatorId = null;
-        if (User.IsInRole("TournamentCreator"))
+        if (User.IsInRole(UserRole.TournamentCreator.ToString()))
         {
             var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (!string.IsNullOrEmpty(userIdStr))
@@ -160,7 +161,7 @@ public class TournamentsController : ControllerBase
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
-        var userRole = User.IsInRole("Admin") ? "Admin" : "TournamentCreator";
+        var userRole = User.IsInRole(UserRole.Admin.ToString()) ? UserRole.Admin.ToString() : UserRole.TournamentCreator.ToString();
 
         var result = await _tournamentService.ApproveRegistrationAsync(id, teamId, userId, userRole);
         return Ok(result);
@@ -174,7 +175,7 @@ public class TournamentsController : ControllerBase
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
-        var userRole = User.IsInRole("Admin") ? "Admin" : "TournamentCreator";
+        var userRole = User.IsInRole(UserRole.Admin.ToString()) ? UserRole.Admin.ToString() : UserRole.TournamentCreator.ToString();
 
         var result = await _tournamentService.RejectRegistrationAsync(id, teamId, request, userId, userRole);
         return Ok(result);
@@ -185,7 +186,7 @@ public class TournamentsController : ControllerBase
     public async Task<ActionResult<IEnumerable<PendingPaymentResponse>>> GetPendingPayments()
     {
         Guid? creatorId = null;
-        if (User.IsInRole("TournamentCreator"))
+        if (User.IsInRole(UserRole.TournamentCreator.ToString()))
         {
             var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (!string.IsNullOrEmpty(userIdStr))
@@ -203,7 +204,7 @@ public class TournamentsController : ControllerBase
     public async Task<ActionResult<IEnumerable<PendingPaymentResponse>>> GetAllPaymentRequests()
     {
         Guid? creatorId = null;
-        if (User.IsInRole("TournamentCreator"))
+        if (User.IsInRole(UserRole.TournamentCreator.ToString()))
         {
             var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (!string.IsNullOrEmpty(userIdStr))
@@ -279,7 +280,7 @@ public class TournamentsController : ControllerBase
     private (Guid userId, string userRole) GetUserContext()
     {
         var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        var role = User.IsInRole("Admin") ? "Admin" : "TournamentCreator";
+        var role = User.IsInRole(UserRole.Admin.ToString()) ? UserRole.Admin.ToString() : UserRole.TournamentCreator.ToString();
         return (Guid.Parse(idStr!), role);
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using Domain.Enums;
 
 namespace Application.DTOs.Teams;
 
@@ -15,6 +16,8 @@ public class PlayerDto
     public int YellowCards { get; set; }
     public int RedCards { get; set; }
     public Guid TeamId { get; set; }
+    public Guid? UserId { get; set; }
+    public TeamRole TeamRole { get; set; }
 }
 
 public class AddPlayerRequest

@@ -7,7 +7,6 @@ public class TeamDto
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
-    public Guid CaptainId { get; set; }
     public string CaptainName { get; set; } = string.Empty;
     public string? Logo { get; set; }
     public string Founded { get; set; } = string.Empty;

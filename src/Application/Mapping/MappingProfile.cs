@@ -38,11 +38,7 @@ public class MappingProfile : Profile
                 : new List<TeamRegistration>()))
             .ForMember(d => d.WinnerTeamName, o => o.MapFrom(s => s.WinnerTeam != null ? s.WinnerTeam.Name : null));
 
-        // Team
         CreateMap<Team, TeamDto>()
-            .ForMember(d => d.CaptainId, o => o.MapFrom(s => s.Players != null 
-                ? (s.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain) != null ? s.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain).UserId : Guid.Empty) 
-                : Guid.Empty))
             .ForMember(d => d.CaptainName, o => o.MapFrom(s => s.Players != null 
                 ? (s.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain) != null ? s.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain).Name : string.Empty) 
                 : string.Empty))
