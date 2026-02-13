@@ -14,27 +14,44 @@ public class TransactionManager : ITransactionManager
         _context = context;
     }
 
-    public async Task BeginTransactionAsync()
+    public async Task<TResult> ExecuteInTransactionAsync<TResult>(Func<Task<TResult>> operation)
     {
-        await _context.Database.BeginTransactionAsync();
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var result = await operation();
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return result;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
 
-    public async Task CommitTransactionAsync()
+    public async Task ExecuteInTransactionAsync(Func<Task> operation)
     {
-        try 
+        var strategy = _context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            await _context.SaveChangesAsync(); // Ensure changes are saved before commit
-            await _context.Database.CommitTransactionAsync();
-        }
-        catch
-        {
-            await _context.Database.RollbackTransactionAsync();
-            throw;
-        }
-    }
-
-    public async Task RollbackTransactionAsync()
-    {
-        await _context.Database.RollbackTransactionAsync();
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                await operation();
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
 }

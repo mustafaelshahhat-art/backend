@@ -4,7 +4,6 @@ namespace Application.Interfaces;
 
 public interface ITransactionManager
 {
-    Task BeginTransactionAsync();
-    Task CommitTransactionAsync();
-    Task RollbackTransactionAsync();
+    Task<TResult> ExecuteInTransactionAsync<TResult>(Func<Task<TResult>> operation);
+    Task ExecuteInTransactionAsync(Func<Task> operation);
 }

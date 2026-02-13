@@ -21,20 +21,9 @@ public class TransactionBehavior<TRequest, TResponse> : IPipelineBehavior<TReque
             return await next();
         }
 
-        try
+        return await _transactionManager.ExecuteInTransactionAsync(async () => 
         {
-            await _transactionManager.BeginTransactionAsync();
-            
-            var response = await next();
-            
-            await _transactionManager.CommitTransactionAsync();
-            
-            return response;
-        }
-        catch (Exception)
-        {
-            await _transactionManager.RollbackTransactionAsync();
-            throw;
-        }
+            return await next();
+        });
     }
 }

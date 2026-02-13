@@ -19,6 +19,12 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// PROD-AUDIT: Global Request Size Limit
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = 10 * 1024 * 1024; // 10 MB
+});
+
 // PROD-AUDIT: Structured Logging
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
@@ -60,13 +66,28 @@ builder.Services.Configure<CookiePolicyOptions>(options =>
 });
 
 // CORS
+// CORS
+var allowedOrigins = builder.Configuration["AllowedOrigins"]?.Split(';', StringSplitOptions.RemoveEmptyEntries);
+if (builder.Environment.IsProduction() && (allowedOrigins == null || allowedOrigins.Length == 0))
+{
+    throw new InvalidOperationException("AllowedOrigins is not configured. This is required for Production.");
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend",
         policy =>
         {
-            policy.WithOrigins("http://localhost:4200") // Restrict to trusted development origin
-                   .AllowAnyHeader()
+            if (allowedOrigins != null && allowedOrigins.Length > 0)
+            {
+                policy.WithOrigins(allowedOrigins);
+            }
+            else
+            {
+                policy.WithOrigins("http://localhost:4200"); // Fallback for Development
+            }
+            
+            policy.AllowAnyHeader()
                    .AllowAnyMethod()
                    .AllowCredentials(); // Required for SignalR
         });

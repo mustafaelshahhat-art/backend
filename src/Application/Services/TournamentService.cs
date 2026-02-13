@@ -496,96 +496,85 @@ public class TournamentService : ITournamentService
 
     public async Task<TeamRegistrationDto> ApproveRegistrationAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole)
     {
-        await _tournamentRepository.BeginTransactionAsync();
-        try
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+
+        // Authorization: Tournament Creator or Admin
+        var isOwner = tournament.CreatorUserId == userId;
+        var isAdmin = userRole == UserRole.Admin.ToString();
+
+        if (!isOwner && !isAdmin)
         {
-            var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
-            if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
-
-            // Authorization: Tournament Creator or Admin
-            var isOwner = tournament.CreatorUserId == userId;
-            var isAdmin = userRole == UserRole.Admin.ToString();
-
-            if (!isOwner && !isAdmin)
-            {
-                throw new ForbiddenException("غير مصرح لك بإدارة طلبات هذه البطولة. فقط منظم البطولة أو مدير النظام يمكنه ذلك.");
-            }
-
-            var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, new[] { "Team", "Team.Players" })).FirstOrDefault();
-            if (registration == null) throw new NotFoundException("التسجيل غير موجود.");
-
-            // State Validation: Must be Pending or WaitingList (if promoted)
-            if (registration.Status != RegistrationStatus.PendingPaymentReview && registration.Status != RegistrationStatus.WaitingList)
-            {
-                throw new ConflictException($"لا يمكن اعتماد الطلب. الحالة الحالية: {registration.Status}");
-            }
-
-            // PART 1: Duplicate Player Participation Prevention
-            var playerIds = registration.Team?.Players.Select(p => p.Id).ToList() ?? new List<Guid>();
-            if (playerIds.Any())
-            {
-                var existingParticipations = await _tournamentPlayerRepository.FindAsync(tp => tp.TournamentId == tournamentId && playerIds.Contains(tp.PlayerId));
-                if (existingParticipations.Any())
-                {
-                    throw new ConflictException("واحد أو أكثر من اللاعبين مسجل بالفعل في فريق آخر في هذه البطولة.");
-                }
-            }
-
-            registration.Status = RegistrationStatus.Approved;
-            
-            await _registrationRepository.UpdateAsync(registration);
-
-            // Populate TournamentPlayers tracking
-            if (registration.Team?.Players != null)
-            {
-                var participations = registration.Team.Players
-                    .Select(p => new TournamentPlayer
-                    {
-                        TournamentId = tournamentId,
-                        PlayerId = p.Id,
-                        TeamId = registration.TeamId,
-                        RegistrationId = registration.Id
-                    }).ToList();
-                
-                await _tournamentPlayerRepository.AddRangeAsync(participations);
-            }
-            
-            // Check if all teams are approved and we reached max capacity to auto-generate matches
-            var allRegistrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId);
-            var activeRegistrations = allRegistrations.Where(r => r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn).ToList();
-            
-            if (activeRegistrations.Count == tournament.MaxTeams && activeRegistrations.All(r => r.Status == RegistrationStatus.Approved))
-            {
-                var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
-                if (!existingMatches.Any() && tournament.Status != TournamentStatus.Active)
-                {
-                    await GenerateMatchesAsync(tournamentId, userId, userRole);
-                }
-            }
-
-            await _tournamentRepository.CommitTransactionAsync();
-
-            var captainId = registration.Team?.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain)?.UserId;
-            if (captainId != null)
-            {
-                await _notificationService.SendNotificationByTemplateAsync(
-                    captainId.Value, 
-                    NotificationTemplates.TEAM_APPROVED, 
-                    new Dictionary<string, string> { 
-                        { "teamName", registration.Team?.Name ?? "فريق" },
-                        { "tournamentName", tournament.Name }
-                    }, 
-                    "registration_approved"
-                );
-            }
-
-            return _mapper.Map<TeamRegistrationDto>(registration);
+            throw new ForbiddenException("غير مصرح لك بإدارة طلبات هذه البطولة. فقط منظم البطولة أو مدير النظام يمكنه ذلك.");
         }
-        catch (Exception)
+
+        var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, new[] { "Team", "Team.Players" })).FirstOrDefault();
+        if (registration == null) throw new NotFoundException("التسجيل غير موجود.");
+
+        // State Validation: Must be Pending or WaitingList (if promoted)
+        if (registration.Status != RegistrationStatus.PendingPaymentReview && registration.Status != RegistrationStatus.WaitingList)
         {
-            await _tournamentRepository.RollbackTransactionAsync();
-            throw;
+            throw new ConflictException($"لا يمكن اعتماد الطلب. الحالة الحالية: {registration.Status}");
         }
+
+        // PART 1: Duplicate Player Participation Prevention
+        var playerIds = registration.Team?.Players.Select(p => p.Id).ToList() ?? new List<Guid>();
+        if (playerIds.Any())
+        {
+            var existingParticipations = await _tournamentPlayerRepository.FindAsync(tp => tp.TournamentId == tournamentId && playerIds.Contains(tp.PlayerId));
+            if (existingParticipations.Any())
+            {
+                throw new ConflictException("واحد أو أكثر من اللاعبين مسجل بالفعل في فريق آخر في هذه البطولة.");
+            }
+        }
+
+        registration.Status = RegistrationStatus.Approved;
+        
+        await _registrationRepository.UpdateAsync(registration);
+
+        // Populate TournamentPlayers tracking
+        if (registration.Team?.Players != null)
+        {
+            var participations = registration.Team.Players
+                .Select(p => new TournamentPlayer
+                {
+                    TournamentId = tournamentId,
+                    PlayerId = p.Id,
+                    TeamId = registration.TeamId,
+                    RegistrationId = registration.Id
+                }).ToList();
+            
+            await _tournamentPlayerRepository.AddRangeAsync(participations);
+        }
+        
+        // Check if all teams are approved and we reached max capacity to auto-generate matches
+        var allRegistrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId);
+        var activeRegistrations = allRegistrations.Where(r => r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn).ToList();
+        
+        if (activeRegistrations.Count == tournament.MaxTeams && activeRegistrations.All(r => r.Status == RegistrationStatus.Approved))
+        {
+            var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+            if (!existingMatches.Any() && tournament.Status != TournamentStatus.Active)
+            {
+                await GenerateMatchesAsync(tournamentId, userId, userRole);
+            }
+        }
+
+        var captainId = registration.Team?.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain)?.UserId;
+        if (captainId != null)
+        {
+            await _notificationService.SendNotificationByTemplateAsync(
+                captainId.Value, 
+                NotificationTemplates.TEAM_APPROVED, 
+                new Dictionary<string, string> { 
+                    { "teamName", registration.Team?.Name ?? "فريق" },
+                    { "tournamentName", tournament.Name }
+                }, 
+                "registration_approved"
+            );
+        }
+
+        return _mapper.Map<TeamRegistrationDto>(registration);
     }
 
     public async Task<TeamRegistrationDto> RejectRegistrationAsync(Guid tournamentId, Guid teamId, RejectRegistrationRequest request, Guid userId, string userRole)
@@ -1111,33 +1100,22 @@ public class TournamentService : ITournamentService
             throw new ForbiddenException("فقط كابتن الفريق يمكنه سحب الفريق من البطولة.");
         }
 
-        await _registrationRepository.BeginTransactionAsync();
-        try
-        {
-            registration.Status = RegistrationStatus.Withdrawn;
-            await _registrationRepository.UpdateAsync(registration);
+        registration.Status = RegistrationStatus.Withdrawn;
+        await _registrationRepository.UpdateAsync(registration);
 
-            // Cleanup participation
-            var participations = await _tournamentPlayerRepository.FindAsync(tp => tp.RegistrationId == registration.Id);
-            foreach (var p in participations) await _tournamentPlayerRepository.DeleteAsync(p);
+        // Cleanup participation
+        var participations = await _tournamentPlayerRepository.FindAsync(tp => tp.RegistrationId == registration.Id);
+        foreach (var p in participations) await _tournamentPlayerRepository.DeleteAsync(p);
 
-            tournament.CurrentTeams--;
-            await _tournamentRepository.UpdateAsync(tournament);
+        tournament.CurrentTeams--;
+        await _tournamentRepository.UpdateAsync(tournament);
 
-            await _registrationRepository.CommitTransactionAsync();
-
-            await _analyticsService.LogActivityByTemplateAsync(
-                "TEAM_WITHDRAWN", 
-                new Dictionary<string, string> { { "teamName", team.Name }, { "tournamentName", tournament.Name } }, 
-                userId, 
-                "كابتن الفريق"
-            );
-        }
-        catch (Exception)
-        {
-            await _registrationRepository.RollbackTransactionAsync();
-            throw;
-        }
+        await _analyticsService.LogActivityByTemplateAsync(
+            "TEAM_WITHDRAWN", 
+            new Dictionary<string, string> { { "teamName", team.Name }, { "tournamentName", tournament.Name } }, 
+            userId, 
+            "كابتن الفريق"
+        );
     }
 
     public async Task<TeamRegistrationDto> PromoteWaitingTeamAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole)

@@ -188,7 +188,8 @@ public class TournamentsController : ControllerBase
     public async Task<ActionResult<TeamRegistrationDto>> ApproveRegistration(Guid id, Guid teamId)
     {
         var (userId, userRole) = GetUserContext();
-        var result = await _tournamentService.ApproveRegistrationAsync(id, teamId, userId, userRole);
+        var command = new Application.Features.Tournaments.Commands.ApproveRegistration.ApproveRegistrationCommand(id, teamId, userId, userRole);
+        var result = await _mediator.Send(command);
         return Ok(result);
     }
 
@@ -205,7 +206,8 @@ public class TournamentsController : ControllerBase
     public async Task<IActionResult> WithdrawTeam(Guid id, Guid teamId)
     {
         var (userId, _) = GetUserContext();
-        await _tournamentService.WithdrawTeamAsync(id, teamId, userId);
+        var command = new Application.Features.Tournaments.Commands.WithdrawTeam.WithdrawTeamCommand(id, teamId, userId);
+        await _mediator.Send(command);
         return NoContent();
     }
 
