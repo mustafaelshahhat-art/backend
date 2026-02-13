@@ -26,6 +26,7 @@ public class AppDbContext : DbContext
     public DbSet<MatchMessage> MatchMessages { get; set; }
     public DbSet<SystemSetting> SystemSettings { get; set; }
     public DbSet<Otp> Otps { get; set; }
+    public DbSet<TournamentPlayer> TournamentPlayers { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -115,6 +116,24 @@ public class AppDbContext : DbContext
             .HasForeignKey(t => t.CreatorUserId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // TournamentPlayer Config
+        modelBuilder.Entity<TournamentPlayer>()
+            .HasOne(tp => tp.Tournament)
+            .WithMany(t => t.TournamentPlayers)
+            .HasForeignKey(tp => tp.TournamentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<TournamentPlayer>()
+            .HasOne(tp => tp.Registration)
+            .WithMany()
+            .HasForeignKey(tp => tp.RegistrationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<TournamentPlayer>()
+            .HasIndex(tp => new { tp.TournamentId, tp.PlayerId })
+            .IsUnique()
+            .HasDatabaseName("UQ_TournamentPlayer_Tournament_Player");
+
         // Match - Tournament
         modelBuilder.Entity<Match>()
             .HasOne(m => m.Tournament)
@@ -162,6 +181,11 @@ public class AppDbContext : DbContext
         // 7. TeamJoinRequest (Principal: Team - User is hard-deleted)
         modelBuilder.Entity<TeamJoinRequest>().HasQueryFilter(r =>
             !EF.Property<bool>(r.Team!, "IsDeleted"));
+
+        // 7.5 TournamentPlayer (Principal: Player/Team)
+        modelBuilder.Entity<TournamentPlayer>().HasQueryFilter(tp =>
+            !EF.Property<bool>(tp.Player!, "IsDeleted") &&
+            !EF.Property<bool>(tp.Team!, "IsDeleted"));
 
         // 8. Notification (Cascade delete when User is hard deleted)
         modelBuilder.Entity<Notification>()

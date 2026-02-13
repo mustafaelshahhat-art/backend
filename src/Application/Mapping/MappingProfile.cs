@@ -30,14 +30,18 @@ public class MappingProfile : Profile
 
         // Tournament
         CreateMap<Tournament, TournamentDto>()
-            .ForMember(d => d.Status, o => o.MapFrom(s => s.Status))
+            .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()))
             .ForMember(d => d.Format, o => o.MapFrom(s => s.Format.ToString()))
             .ForMember(d => d.MatchType, o => o.MapFrom(s => s.MatchType.ToString()))
             .ForMember(d => d.Registrations, o => o.MapFrom(s => s.Registrations != null 
                 ? s.Registrations.Where(r => r.Status != RegistrationStatus.Rejected) 
                 : new List<TeamRegistration>()))
             .ForMember(d => d.WinnerTeamName, o => o.MapFrom(s => s.WinnerTeam != null ? s.WinnerTeam.Name : null))
-            .ForMember(d => d.Mode, o => o.MapFrom(s => s.GetEffectiveMode()));
+            .ForMember(d => d.Mode, o => o.MapFrom(s => s.GetEffectiveMode()))
+            .ForMember(d => d.AllowLateRegistration, o => o.MapFrom(s => s.AllowLateRegistration))
+            .ForMember(d => d.LateRegistrationMode, o => o.MapFrom(s => s.LateRegistrationMode))
+            .ForMember(d => d.OpeningMatchHomeTeamId, o => o.MapFrom(s => s.OpeningMatchHomeTeamId))
+            .ForMember(d => d.OpeningMatchAwayTeamId, o => o.MapFrom(s => s.OpeningMatchAwayTeamId));
 
         CreateMap<Team, TeamDto>()
             .ForMember(d => d.CaptainName, o => o.MapFrom(s => s.Players != null 

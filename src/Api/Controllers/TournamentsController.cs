@@ -177,6 +177,23 @@ public class TournamentsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("{id}/registrations/{teamId}/withdraw")]
+    public async Task<IActionResult> WithdrawTeam(Guid id, Guid teamId)
+    {
+        var (userId, _) = GetUserContext();
+        await _tournamentService.WithdrawTeamAsync(id, teamId, userId);
+        return NoContent();
+    }
+
+    [HttpPost("{id}/registrations/{teamId}/promote")]
+    [Authorize(Policy = "RequireTournamentOwner")]
+    public async Task<ActionResult<TeamRegistrationDto>> PromoteWaitingTeam(Guid id, Guid teamId)
+    {
+        var (userId, userRole) = GetUserContext();
+        var result = await _tournamentService.PromoteWaitingTeamAsync(id, teamId, userId, userRole);
+        return Ok(result);
+    }
+
     [HttpGet("payments/pending")]
     [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<IEnumerable<PendingPaymentResponse>>> GetPendingPayments()

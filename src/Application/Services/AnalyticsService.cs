@@ -52,7 +52,7 @@ public class AnalyticsService : IAnalyticsService
             // Scoped counts for creators
             activeTournaments = await _tournamentRepository.CountAsync(t => 
                 t.CreatorUserId == creatorId.Value && 
-                (t.Status == "registration_open" || t.Status == "active"));
+                (t.Status == Domain.Enums.TournamentStatus.RegistrationOpen || t.Status == Domain.Enums.TournamentStatus.Active));
             
             // Count distinct teams across all tournaments of this creator
             var registrations = await _registrationRepository.FindAsync(r => r.Tournament.CreatorUserId == creatorId.Value);
@@ -75,7 +75,7 @@ public class AnalyticsService : IAnalyticsService
             // Global counts for admins
             totalUsers = await _userRepository.CountAsync(u => u.IsEmailVerified);
             totalTeams = await _teamRepository.CountAsync(_ => true);
-            activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == "registration_open" || t.Status == "active");
+            activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == Domain.Enums.TournamentStatus.RegistrationOpen || t.Status == Domain.Enums.TournamentStatus.Active);
             matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today);
             loginsToday = await _activityRepository.CountAsync(a => a.Type == Common.ActivityConstants.USER_LOGIN && a.CreatedAt.Date == today);
             
@@ -105,7 +105,7 @@ public class AnalyticsService : IAnalyticsService
         var tournamentCountTask = _registrationRepository.CountAsync(r => 
             r.TeamId == teamId && 
             r.Status == Domain.Enums.RegistrationStatus.Approved &&
-            (r.Tournament.Status == "active" || r.Tournament.Status == "registration_open"));
+            (r.Tournament.Status == Domain.Enums.TournamentStatus.Active || r.Tournament.Status == Domain.Enums.TournamentStatus.RegistrationOpen));
 
         await Task.WhenAll(playerCountTask, matchCountTask, tournamentCountTask);
 

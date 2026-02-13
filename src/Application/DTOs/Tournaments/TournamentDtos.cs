@@ -10,6 +10,7 @@ public class TournamentDto
     public string Name { get; set; } = string.Empty;
     public Guid? CreatorUserId { get; set; }
     public string Status { get; set; } = string.Empty;
+    public TournamentMode? Mode { get; set; }
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
     public DateTime RegistrationDeadline { get; set; }
@@ -33,7 +34,10 @@ public class TournamentDto
     public Guid? WinnerTeamId { get; set; }
     public string? WinnerTeamName { get; set; }
     public bool RequiresAdminIntervention { get; set; }
-    public TournamentMode Mode { get; set; }
+    public bool AllowLateRegistration { get; set; }
+    public LateRegistrationMode LateRegistrationMode { get; set; }
+    public Guid? OpeningMatchHomeTeamId { get; set; }
+    public Guid? OpeningMatchAwayTeamId { get; set; }
     public Guid? OpeningMatchId { get; set; }
 }
 
@@ -59,6 +63,8 @@ public class CreateTournamentRequest
     public SeedingMode SeedingMode { get; set; }
     public string? PaymentMethodsJson { get; set; }
     public TournamentMode? Mode { get; set; }
+    public bool AllowLateRegistration { get; set; }
+    public LateRegistrationMode LateRegistrationMode { get; set; }
 }
 
 public class UpdateTournamentRequest
@@ -85,6 +91,10 @@ public class UpdateTournamentRequest
     public string? PaymentMethodsJson { get; set; }
     public TournamentMode? Mode { get; set; }
     public Guid? OpeningMatchId { get; set; }
+    public bool? AllowLateRegistration { get; set; }
+    public LateRegistrationMode? LateRegistrationMode { get; set; }
+    public Guid? OpeningMatchHomeTeamId { get; set; }
+    public Guid? OpeningMatchAwayTeamId { get; set; }
 }
 
 public class TeamRegistrationDto
@@ -138,6 +148,8 @@ public class TournamentStandingDto
     public int GoalsAgainst { get; set; }
     public int GoalDifference => GoalsFor - GoalsAgainst;
     public int Points { get; set; }
+    public int YellowCards { get; set; }
+    public int RedCards { get; set; }
     public int? GroupId { get; set; }
     public List<string> Form { get; set; } = new(); // W, D, L
 }

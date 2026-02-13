@@ -18,8 +18,8 @@ public class Tournament : BaseEntity
     // I missed `TournamentStatus` enum in previous step. I'll add it or use string.
     // Better use string to be compliant exactly or Enum with converter. Best: Enum.
     
-    // Adding TournamentStatus Enum property
-    public string Status { get; set; } = "draft"; // using string for flexibility or I should define Enum properly.
+    // Updated Status to Enum
+    public TournamentStatus Status { get; set; } = TournamentStatus.Draft;
 
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
@@ -41,6 +41,14 @@ public class Tournament : BaseEntity
     public TournamentMode? Mode { get; set; }
     public Guid? OpeningMatchId { get; set; }
 
+    // Opening Match Selection Configuration
+    public Guid? OpeningMatchHomeTeamId { get; set; }
+    public Guid? OpeningMatchAwayTeamId { get; set; }
+
+    // Late Registration Policy
+    public bool AllowLateRegistration { get; set; } = false;
+    public LateRegistrationMode LateRegistrationMode { get; set; } = LateRegistrationMode.None;
+
     // New Configurations
     public bool IsHomeAwayEnabled { get; set; } = false; 
     public SeedingMode SeedingMode { get; set; } = SeedingMode.ShuffleOnly;
@@ -57,6 +65,7 @@ public class Tournament : BaseEntity
 
     public ICollection<TeamRegistration> Registrations { get; set; } = new List<TeamRegistration>();
     public ICollection<Match> Matches { get; set; } = new List<Match>();
+    public ICollection<TournamentPlayer> TournamentPlayers { get; set; } = new List<TournamentPlayer>();
 
     public TournamentMode GetEffectiveMode()
     {

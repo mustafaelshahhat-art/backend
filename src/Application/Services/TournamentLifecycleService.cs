@@ -46,7 +46,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
     public async Task CheckAndFinalizeTournamentAsync(Guid tournamentId)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
-        if (tournament == null || tournament.Status == "completed") return;
+        if (tournament == null || tournament.Status == TournamentStatus.Completed) return;
 
         var allMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
         if (!allMatches.Any()) return;
@@ -59,8 +59,19 @@ public class TournamentLifecycleService : ITournamentLifecycleService
 
             if (groupMatches.Any() && groupMatches.All(m => m.Status == MatchStatus.Finished) && !knockoutMatches.Any())
             {
-                // Advance to Knockout R1
-                await GenerateKnockoutR1Async(tournament, allMatches);
+                // PART 3 Logic: Transition to WaitingForOpeningMatchSelection
+                if (tournament.Status != TournamentStatus.WaitingForOpeningMatchSelection)
+                {
+                    tournament.Status = TournamentStatus.WaitingForOpeningMatchSelection;
+                    await _tournamentRepository.UpdateAsync(tournament);
+                    
+                    await _analyticsService.LogActivityByTemplateAsync("GROUPS_FINISHED", new Dictionary<string, string> { { "tournamentName", tournament.Name } }, null, "System");
+                    await _notifier.SendTournamentUpdatedAsync(_mapper.Map<TournamentDto>(tournament));
+                    
+                    // Note: GenerateKnockoutR1Async should now be called by Admin action (SetOpeningMatch or similar)
+                    // But for backward compatibility or auto-flow if no opening match fields are set:
+                    // we could auto-advance if needed. Re-evaluating based on requirements.
+                }
                 return;
             }
         }
@@ -98,29 +109,55 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         return actionableMatches.Where(m => m.RoundNumber == maxRound).ToList();
     }
 
-    private async Task GenerateKnockoutR1Async(Tournament tournament, IEnumerable<Match> allMatches)
+    public async Task GenerateKnockoutR1Async(Guid tournamentId)
     {
-        // ... (existing logic for seeding/pairing same as before) ...
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        if (tournament == null) return;
+
+        var allMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+        
         // 1. Calculate Standings per Group
         var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournament.Id && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.Withdrawn));
         
         var teamStats = CalculateStandings(allMatches, registrations);
         
-        // 2. Qualify teams
-        var qualifiedTeams = new List<(Guid TeamId, int GroupId, int Rank)>();
-        
-        var groups = teamStats.GroupBy(s => s.GroupId ?? 0);
+        // 2. Qualify teams (Part 2 Logic: Smart Qualification)
+        var qualificationPool = new List<TournamentStandingDto>();
+        var groups = teamStats.GroupBy(s => s.GroupId ?? 0).ToList();
+        var best3rdsPool = new List<TournamentStandingDto>();
+
         foreach (var g in groups)
         {
-             var ranked = g.OrderByDescending(s => s.Points)
-                           .ThenByDescending(s => s.GoalDifference)
-                           .ThenByDescending(s => s.GoalsFor)
-                           .ToList();
-             for (int i = 0; i < Math.Min(ranked.Count, tournament.QualifiedTeamsPerGroup); i++)
+             var ranked = RankTeams(g.ToList());
+             
+             // Top 2 always qualify
+             for (int i = 0; i < Math.Min(ranked.Count, 2); i++)
              {
-                 qualifiedTeams.Add((ranked[i].TeamId, g.Key, i + 1));
+                 qualificationPool.Add(ranked[i]);
+             }
+
+             // Others go to best-3rd pool if they are 3rd
+             if (ranked.Count > 2)
+             {
+                 best3rdsPool.Add(ranked[2]);
              }
         }
+
+        int baseQualifiedCount = qualificationPool.Count;
+        int targetBracketSize = NextPowerOfTwo(baseQualifiedCount);
+
+        if (baseQualifiedCount < targetBracketSize)
+        {
+            int needed = targetBracketSize - baseQualifiedCount;
+            var ranked3rds = RankTeams(best3rdsPool);
+            for (int i = 0; i < Math.Min(ranked3rds.Count, needed); i++)
+            {
+                qualificationPool.Add(ranked3rds[i]);
+            }
+        }
+
+        // Mapping to pairing format
+        var qualifiedTeams = qualificationPool.Select(t => (TeamId: t.TeamId, GroupId: t.GroupId ?? 0)).ToList();
         
         // 3. Generate Pairings
         var newMatches = new List<Match>();
@@ -128,67 +165,45 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         int round = (allMatches.Max(m => m.RoundNumber) ?? 0) + 1;
         bool isDoubleLeg = tournament.MatchType == TournamentLegType.HomeAndAway || tournament.Format == TournamentFormat.GroupsWithHomeAwayKnockout;
 
-        // Strategy: Separate Rank 1 and Rank 2
-        var pot1 = qualifiedTeams.Where(t => t.Rank == 1).ToList();
-        var pot2 = qualifiedTeams.Where(t => t.Rank == 2).ToList();
-        var others = qualifiedTeams.Where(t => t.Rank > 2).ToList(); // If any
-        
-        var pairings = new List<(Guid Home, Guid Away)>();
+        // PART 3 Logic: Opening Match Selection
+        if (tournament.OpeningMatchHomeTeamId.HasValue && tournament.OpeningMatchAwayTeamId.HasValue)
+        {
+            var homeId = tournament.OpeningMatchHomeTeamId.Value;
+            var awayId = tournament.OpeningMatchAwayTeamId.Value;
 
-        bool useRankBased = tournament.SeedingMode == SeedingMode.RankBased;
-        if (tournament.SeedingMode == SeedingMode.ShuffleOnly) useRankBased = false;
-        
-        // If exact Winners vs Runners logic applies (Even groups, 2 qualified) AND RankBased enabled
-        if (useRankBased && pot1.Count > 0 && pot1.Count == pot2.Count && others.Count == 0)
-        {
-             bool success = false;
-             var random = new Random();
-             
-             // Max 100 retries
-             for(int attempt=0; attempt<100; attempt++)
-             {
-                 var currentPairings = new List<(Guid Home, Guid Away)>();
-                 var availableRunners = pot2.OrderBy(x => random.Next()).ToList();
-                 bool validAttempt = true;
-                 
-                 foreach(var winner in pot1)
-                 {
-                     var validRunner = availableRunners.FirstOrDefault(r => r.GroupId != winner.GroupId);
-                     if (validRunner.TeamId == Guid.Empty)
-                     {
-                         validAttempt = false;
-                         break;
-                     }
-                     currentPairings.Add((winner.TeamId, validRunner.TeamId));
-                     availableRunners.Remove(validRunner);
-                 }
-                 
-                 if (validAttempt)
-                 {
-                     pairings = currentPairings;
-                     success = true;
-                     break;
-                 }
-             }
-             
-             if (!success)
-             {
-                 var all = pot1.Concat(pot2).Select(t => t.TeamId).OrderBy(x => random.Next()).ToList();
-                 for(int i=0; i<all.Count; i+=2) pairings.Add((all[i], all[i+1]));
-             }
-        }
-        else
-        {
-            var all = qualifiedTeams.OrderBy(x => x.Rank).ThenBy(x => Guid.NewGuid()).ToList();
-            var pool = all.Select(t => t).ToList();
-            while(pool.Count >= 2)
+            // Ensure they are qualified
+            if (qualifiedTeams.Any(t => t.TeamId == homeId) && qualifiedTeams.Any(t => t.TeamId == awayId))
             {
-                var home = pool[0]; pool.RemoveAt(0);
-                var away = pool.FirstOrDefault(t => t.GroupId != home.GroupId);
-                if (away.TeamId == Guid.Empty) away = pool[0];
-                pool.Remove(away);
-                pairings.Add((home.TeamId, away.TeamId));
+                var openingMatch = CreateMatch(tournament, homeId, awayId, matchDate, null, round, "Knockout");
+                openingMatch.StageName = "Opening Match";
+                newMatches.Add(openingMatch);
+
+                if (isDoubleLeg)
+                    newMatches.Add(CreateMatch(tournament, awayId, homeId, matchDate.AddDays(3), null, round, "Knockout"));
+
+                qualifiedTeams.RemoveAll(t => t.TeamId == homeId || t.TeamId == awayId);
+                matchDate = matchDate.AddHours(2);
             }
+        }
+
+        // PART 5 Logic: Prevent same-group teams from meeting in first knockout round
+        var pairings = new List<(Guid Home, Guid Away)>();
+        var random = new Random();
+        var pool = qualifiedTeams.OrderBy(x => random.Next()).ToList();
+
+        while (pool.Count >= 2)
+        {
+            var home = pool[0];
+            pool.RemoveAt(0);
+
+            // Attempt to find someone from a different group
+            var awayCandidates = pool.Where(t => t.GroupId != home.GroupId).ToList();
+            var away = awayCandidates.Any() 
+                ? awayCandidates[random.Next(awayCandidates.Count)] 
+                : pool[0]; // Fallback to anyone if forced (e.g. all remaining from same group)
+            
+            pool.Remove(away);
+            pairings.Add((home.TeamId, away.TeamId));
         }
 
         foreach(var pair in pairings)
@@ -202,12 +217,37 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         
         foreach(var m in newMatches) await _matchRepository.AddAsync(m);
         
+        tournament.Status = TournamentStatus.Active;
+        await _tournamentRepository.UpdateAsync(tournament);
+
         // Notify
         await _analyticsService.LogActivityByTemplateAsync("KNOCKOUT_STARTED", new Dictionary<string, string> { { "tournamentName", tournament.Name } }, null, "System");
         await _notificationService.SendNotificationAsync(Guid.Empty, "بدء الأدوار الإقصائية", $"تأهلت الفرق وبدأت الأدوار الإقصائية لبطولة {tournament.Name}", "all");
         
         // Notify Real-Time
         await _notifier.SendMatchesGeneratedAsync(_mapper.Map<IEnumerable<MatchDto>>(newMatches));
+    }
+
+    private List<TournamentStandingDto> RankTeams(List<TournamentStandingDto> teams)
+    {
+        return teams.OrderByDescending(s => s.Points)
+                    .ThenByDescending(s => s.GoalDifference)
+                    .ThenByDescending(s => s.GoalsFor)
+                    // Part 2 Logic: Red Cards ASC, Yellow Cards ASC
+                    .ThenBy(s => s.RedCards)
+                    .ThenBy(s => s.YellowCards)
+                    .ThenBy(x => Guid.NewGuid()) // Random draw
+                    .ToList();
+    }
+
+    private int NextPowerOfTwo(int n)
+    {
+        if (n <= 2) return 2;
+        if (n <= 4) return 4;
+        if (n <= 8) return 8;
+        if (n <= 16) return 16;
+        if (n <= 32) return 32;
+        return 64; // reasonable upper limit for tournaments
     }
 
     private async Task GenerateNextKnockoutRoundAsync(Tournament tournament, List<Match> previousRoundMatches)
@@ -235,8 +275,8 @@ public class TournamentLifecycleService : ITournamentLifecycleService
              }
              else
              {
-                 winnerId = match.HomeScore > match.AwayScore ? match.HomeTeamId : match.AwayTeamId;
-                 if (match.HomeScore == match.AwayScore) winnerId = match.HomeTeamId;
+                  winnerId = match.HomeScore > match.AwayScore ? match.HomeTeamId : match.AwayTeamId;
+                  if (match.HomeScore == match.AwayScore) winnerId = match.HomeTeamId;
              }
              
              winners.Add(winnerId);
@@ -288,7 +328,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
              winnerId = finalMatch.HomeScore > finalMatch.AwayScore ? finalMatch.HomeTeamId : finalMatch.AwayTeamId;
          }
          
-         tournament.Status = "completed";
+         tournament.Status = TournamentStatus.Completed;
          tournament.WinnerTeamId = winnerId;
          await _tournamentRepository.UpdateAsync(tournament);
          
@@ -301,12 +341,16 @@ public class TournamentLifecycleService : ITournamentLifecycleService
          await _notifier.SendTournamentUpdatedAsync(_mapper.Map<TournamentDto>(tournament));
     }
 
-    private List<TournamentStandingDto> CalculateStandings(IEnumerable<Match> allMatches, IEnumerable<TeamRegistration> teams)
+    public List<TournamentStandingDto> CalculateStandings(IEnumerable<Match> allMatches, IEnumerable<TeamRegistration> teams)
     {
-        // Reuse logic from TournamentService (duplicated here for isolation or inject)
-        // Simplified
-        var standings = teams.Select(t => new TournamentStandingDto { TeamId = t.TeamId, GroupId = GetGroupId(allMatches, t.TeamId) }).ToList();
-        // ... (calc stats for group matches only)
+        var standings = teams.Select(t => new TournamentStandingDto 
+        { 
+            TeamId = t.TeamId, 
+            TeamName = t.Team?.Name ?? "فريق",
+            TeamLogoUrl = t.Team?.Logo,
+            GroupId = GetGroupId(allMatches, t.TeamId) 
+        }).ToList();
+        
         foreach(var m in allMatches.Where(mm => (mm.GroupId != null || mm.StageName == "League") && mm.Status == MatchStatus.Finished))
         {
              var h = standings.FirstOrDefault(s => s.TeamId == m.HomeTeamId);
@@ -314,19 +358,49 @@ public class TournamentLifecycleService : ITournamentLifecycleService
              
              if (h != null) 
              { 
-                 h.Points += (m.HomeScore > m.AwayScore ? 3 : (m.HomeScore == m.AwayScore ? 1 : 0)); 
+                 h.Played++;
                  h.GoalsFor += m.HomeScore;
                  h.GoalsAgainst += m.AwayScore;
+                 
+                 if (m.HomeScore > m.AwayScore) { h.Points += 3; h.Won++; h.Form.Add("W"); }
+                 else if (m.HomeScore == m.AwayScore) { h.Points += 1; h.Drawn++; h.Form.Add("D"); }
+                 else { h.Lost++; h.Form.Add("L"); }
              }
              
              if (a != null) 
              { 
-                 a.Points += (m.AwayScore > m.HomeScore ? 3 : (m.AwayScore == m.HomeScore ? 1 : 0)); 
+                 a.Played++;
                  a.GoalsFor += m.AwayScore;
                  a.GoalsAgainst += m.HomeScore;
+
+                 if (m.AwayScore > m.HomeScore) { a.Points += 3; a.Won++; a.Form.Add("W"); }
+                 else if (m.AwayScore == m.HomeScore) { a.Points += 1; a.Drawn++; a.Form.Add("D"); }
+                 else { a.Lost++; a.Form.Add("L"); }
+             }
+
+             // Count Cards
+             if (m.Events != null)
+             {
+                 foreach(var e in m.Events)
+                 {
+                     var teamStanding = standings.FirstOrDefault(s => s.TeamId == e.TeamId);
+                     if (teamStanding == null) continue;
+                     
+                     if (e.Type == MatchEventType.YellowCard) teamStanding.YellowCards++;
+                     else if (e.Type == MatchEventType.RedCard) teamStanding.RedCards++;
+                 }
              }
         }
-        return standings;
+        
+        // Final Sort: Group > Points > GD > GF > (Lower) RedCards > (Lower) YellowCards
+        return standings
+            .OrderBy(s => s.GroupId ?? 0)
+            .ThenByDescending(s => s.Points)
+            .ThenByDescending(s => s.GoalDifference)
+            .ThenByDescending(s => s.GoalsFor)
+            .ThenBy(s => s.RedCards)
+            .ThenBy(s => s.YellowCards)
+            .ToList();
     }
     
     private int? GetGroupId(IEnumerable<Match> matches, Guid teamId)
