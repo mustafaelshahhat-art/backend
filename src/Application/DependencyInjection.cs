@@ -5,6 +5,7 @@ using Application.Services;
 using Application.Validators;
 using FluentValidation;
 using AutoMapper;
+using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Application;
@@ -16,6 +17,11 @@ public static class DependencyInjection
         services.AddAutoMapper(typeof(MappingProfile).Assembly);
         services.AddValidatorsFromAssembly(typeof(RegisterRequestValidator).Assembly);
         
+        services.AddMediatR(cfg => {
+            cfg.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(Application.Common.Behaviors.TransactionBehavior<,>));
+        });
+
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<ITeamService, TeamService>();

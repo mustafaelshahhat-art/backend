@@ -14,7 +14,27 @@ using Domain.Interfaces;
 using Domain.Entities;
 using Shared.Exceptions;
 
+using Serilog;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+
 var builder = WebApplication.CreateBuilder(args);
+
+// PROD-AUDIT: Structured Logging
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .WriteTo.File("logs/log-.txt", rollingInterval: RollingInterval.Day)
+    .CreateLogger();
+
+builder.Host.UseSerilog();
+
+// PROD-AUDIT: Fail fast if secrets are missing
+var jwtSecret = builder.Configuration["JwtSettings:Secret"];
+if (string.IsNullOrEmpty(jwtSecret) || jwtSecret.Length < 16)
+{
+    throw new InvalidOperationException("CRITICAL: JwtSettings:Secret is missing or too short. Configure via UserSecrets or Env Vars.");
+}
 
 // Add services to the container.
 builder.Services.AddControllers()
@@ -22,6 +42,10 @@ builder.Services.AddControllers()
     {
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
     });
+
+// PROD-AUDIT: Health Checks (Database)
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<Infrastructure.Data.AppDbContext>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, Api.Infrastructure.CustomUserIdProvider>();
@@ -196,6 +220,7 @@ app.UseRateLimiter(); // Enable Rate Limiting
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 app.MapHub<Api.Hubs.NotificationHub>("/hubs/notifications");
 app.MapHub<Api.Hubs.MatchChatHub>("/hubs/chat");
 

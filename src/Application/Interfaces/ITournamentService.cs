@@ -9,6 +9,7 @@ namespace Application.Interfaces;
 public interface ITournamentService
 {
     Task<IEnumerable<TournamentDto>> GetAllAsync(Guid? creatorId = null);
+    Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? creatorId = null);
     Task<TournamentDto?> GetByIdAsync(Guid id);
     Task<TournamentDto> CreateAsync(CreateTournamentRequest request, Guid? creatorId = null);
     Task<TournamentDto> UpdateAsync(Guid id, UpdateTournamentRequest request, Guid userId, string userRole);
@@ -29,6 +30,7 @@ public interface ITournamentService
     Task<IEnumerable<GroupDto>> GetGroupsAsync(Guid tournamentId);
     Task<BracketDto> GetBracketAsync(Guid tournamentId);
     Task<TournamentDto> CloseRegistrationAsync(Guid id, Guid userId, string userRole);
+    Task ProcessAutomatedStateTransitionsAsync();
     Task EliminateTeamAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole);
     Task<TournamentDto> EmergencyStartAsync(Guid id, Guid userId, string userRole);
     Task<TournamentDto> EmergencyEndAsync(Guid id, Guid userId, string userRole);

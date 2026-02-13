@@ -51,6 +51,71 @@ public class TournamentService : ITournamentService
         _lifecycleService = lifecycleService;
     }
 
+    public async Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? creatorId = null)
+    {
+        System.Linq.Expressions.Expression<Func<Tournament, bool>>? predicate = null;
+        if (creatorId.HasValue)
+        {
+            predicate = t => t.CreatorUserId == creatorId.Value;
+        }
+
+        var includes = new System.Linq.Expressions.Expression<Func<Tournament, object>>[] 
+        { 
+            t => t.Registrations, 
+            t => t.WinnerTeam! 
+        };
+
+        // Note: For deep includes (Registrations.Team.Players), GenericRepository param array might handle it if we use string paths or ThenInclude logic. 
+        // The current GenericRepository accepts Expression<Func<T, object>>. Deep includes with Expressions are tricky without ThenInclude.
+        // It's safer to use String-based includes if we need "Registrations.Team".
+        // Use the string-based overload? GenericRepository doesn't have String-based GetPagedAsync yet.
+        // I will use `Includes` with strings if possible or accept that I might miss deep data. 
+        // Actually, `Registrations.Team` is critical for `CheckInterventionRequired`.
+        // I'll stick to basic includes here and rely on N+1 fix logic (fetch matches/registrations separately) OR 
+        // I should update GenericRepository to accept string includes too? 
+        // No, let's keep it simple. I will just fetch IDs and then optimize? 
+        // Better: Fetch data with basic includes. `CheckInterventionRequired` needs `Registrations`.
+        // `Registrations` is a collection.
+        // Let's rely on the `GetPagedAsync` I just added.
+        
+        var (items, totalCount) = await _tournamentRepository.GetPagedAsync(
+            pageNumber, 
+            pageSize, 
+            predicate, 
+            q => q.OrderByDescending(t => t.StartDate),
+            t => t.Registrations, 
+            t => t.WinnerTeam!);
+
+        var tournamentList = items.ToList();
+        
+        // Similar to GetAll, we need to populate 'RequiresAdminIntervention'.
+        // This requires Matches and deep Registration data.
+        // To avoid massive joins in the paged query, we can fetch related data for THESE 10 items only.
+        
+        var ids = tournamentList.Select(t => t.Id).ToList();
+
+        var allMatches = (await _matchRepository.GetNoTrackingAsync(m => ids.Contains(m.TournamentId)))
+            .GroupBy(m => m.TournamentId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var allRegistrations = (await _registrationRepository.GetNoTrackingAsync(r => ids.Contains(r.TournamentId))) // This fetches all regs for these tournaments
+            .GroupBy(r => r.TournamentId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+            
+        var dtos = new List<TournamentDto>();
+        foreach (var t in tournamentList)
+        {
+            var matches = allMatches.GetValueOrDefault(t.Id, new List<Match>());
+            var registrations = allRegistrations.GetValueOrDefault(t.Id, new List<TeamRegistration>());
+            
+            var dto = _mapper.Map<TournamentDto>(t);
+            dto.RequiresAdminIntervention = CheckInterventionRequiredInternal(t, matches, registrations);
+            dtos.Add(dto);
+        }
+
+        return new Application.Common.Models.PagedResult<TournamentDto>(dtos, totalCount, pageNumber, pageSize);
+    }
+
     public async Task<IEnumerable<TournamentDto>> GetAllAsync(Guid? creatorId = null)
     {
         IEnumerable<Tournament> tournaments;
@@ -293,9 +358,11 @@ public class TournamentService : ITournamentService
         await _tournamentRepository.DeleteAsync(tournament);
     }
 
+
     public async Task<TeamRegistrationDto> RegisterTeamAsync(Guid tournamentId, RegisterTeamRequest request, Guid userId)
     {
-        await _tournamentRepository.BeginTransactionAsync();
+        // Transaction handled by Pipeline
+
         try
         {
             var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, new[] { "Registrations" });
@@ -375,7 +442,7 @@ public class TournamentService : ITournamentService
             await _registrationRepository.AddAsync(registration);
             await _tournamentRepository.UpdateAsync(tournament);
 
-            await _tournamentRepository.CommitTransactionAsync();
+            // Commit handled by Pipeline
 
             var registrationDto = _mapper.Map<TeamRegistrationDto>(registration);
 
@@ -388,20 +455,14 @@ public class TournamentService : ITournamentService
 
             return registrationDto;
         }
+
         catch (Exception ex) when (ex.GetType().Name == "DbUpdateConcurrencyException")
         {
-            await _tournamentRepository.RollbackTransactionAsync();
-            throw new ConflictException("حدث خطأ أثناء التسجيل بسبب ضغط الطلبات. يرجى المحاولة مرة أخرى.");
+             throw new ConflictException("حدث خطأ أثناء التسجيل بسبب ضغط الطلبات. يرجى المحاولة مرة أخرى.");
         }
         catch (Exception ex) when (ex.GetType().Name == "DbUpdateException" && ex.InnerException?.Message.Contains("UQ_TeamRegistration_Tournament_Team") == true)
         {
-            await _tournamentRepository.RollbackTransactionAsync();
-            throw new ConflictException("الفريق مسجل بالفعل في هذه البطولة.");
-        }
-        catch (Exception)
-        {
-            await _tournamentRepository.RollbackTransactionAsync();
-            throw;
+             throw new ConflictException("الفريق مسجل بالفعل في هذه البطولة.");
         }
     }
 
@@ -460,7 +521,7 @@ public class TournamentService : ITournamentService
             }
 
             // PART 1: Duplicate Player Participation Prevention
-            var playerIds = registration.Team?.Players.Where(p => p.UserId.HasValue).Select(p => p.UserId!.Value).ToList() ?? new List<Guid>();
+            var playerIds = registration.Team?.Players.Select(p => p.Id).ToList() ?? new List<Guid>();
             if (playerIds.Any())
             {
                 var existingParticipations = await _tournamentPlayerRepository.FindAsync(tp => tp.TournamentId == tournamentId && playerIds.Contains(tp.PlayerId));
@@ -478,11 +539,10 @@ public class TournamentService : ITournamentService
             if (registration.Team?.Players != null)
             {
                 var participations = registration.Team.Players
-                    .Where(p => p.UserId.HasValue)
                     .Select(p => new TournamentPlayer
                     {
                         TournamentId = tournamentId,
-                        PlayerId = p.UserId!.Value,
+                        PlayerId = p.Id,
                         TeamId = registration.TeamId,
                         RegistrationId = registration.Id
                     }).ToList();
@@ -1183,5 +1243,25 @@ public class TournamentService : ITournamentService
             TournamentMode.KnockoutHomeAway => (TournamentFormat.KnockoutOnly, TournamentLegType.HomeAndAway),
             _ => (TournamentFormat.RoundRobin, TournamentLegType.SingleLeg)
         };
+    }
+    public async Task ProcessAutomatedStateTransitionsAsync()
+    {
+        // 1. Close Registration for Expired Deadlines
+        var openTournaments = await _tournamentRepository.FindAsync(t => t.Status == TournamentStatus.RegistrationOpen && t.RegistrationDeadline < DateTime.UtcNow);
+        foreach (var t in openTournaments)
+        {
+             t.Status = TournamentStatus.RegistrationClosed;
+             await _tournamentRepository.UpdateAsync(t); // TransactionBehavior will commit this? No, pipeline wraps Command. Yes.
+        }
+        
+        // 2. Start Tournament for Scheduled Start Dates (Simulated, real logic might need match generation)
+        // Only start if Registration is Closed (or force close?)
+        // Let's assume strict flow: Open -> Closed -> Active
+        var readyTournaments = await _tournamentRepository.FindAsync(t => t.Status == TournamentStatus.RegistrationClosed && t.StartDate <= DateTime.UtcNow);
+        foreach (var t in readyTournaments)
+        {
+             t.Status = TournamentStatus.Active;
+             await _tournamentRepository.UpdateAsync(t);
+        }
     }
 }

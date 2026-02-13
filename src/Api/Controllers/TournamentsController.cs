@@ -14,11 +14,13 @@ public class TournamentsController : ControllerBase
 {
     private readonly ITournamentService _tournamentService;
     private readonly IUserService _userService;
+    private readonly MediatR.IMediator _mediator;
 
-    public TournamentsController(ITournamentService tournamentService, IUserService userService)
+    public TournamentsController(ITournamentService tournamentService, IUserService userService, MediatR.IMediator mediator)
     {
         _tournamentService = tournamentService;
         _userService = userService;
+        _mediator = mediator;
     }
 
     [HttpGet]
@@ -39,6 +41,26 @@ public class TournamentsController : ControllerBase
 
         var tournaments = await _tournamentService.GetAllAsync(creatorId);
         return Ok(tournaments);
+    }
+
+    [HttpGet("paged")]
+    [AllowAnonymous]
+    public async Task<ActionResult<Application.Common.Models.PagedResult<TournamentDto>>> GetPaged([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    {
+        Guid? creatorId = null;
+        var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+        
+        if (User.Identity?.IsAuthenticated == true && role == UserRole.TournamentCreator.ToString())
+        {
+            var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userIdStr))
+            {
+                creatorId = Guid.Parse(userIdStr);
+            }
+        }
+
+        var result = await _tournamentService.GetPagedAsync(page, pageSize, creatorId);
+        return Ok(result);
     }
 
     [HttpGet("{id}")]
@@ -110,7 +132,9 @@ public class TournamentsController : ControllerBase
             return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من التسجيل في البطولات.");
         }
         
-        var registration = await _tournamentService.RegisterTeamAsync(id, request, userId);
+        // PROD-AUDIT: Use Command for Transaction Safety
+        var command = new Application.Features.Tournaments.Commands.RegisterTeam.RegisterTeamCommand(id, request.TeamId, userId);
+        var registration = await _mediator.Send(command);
         return Ok(registration);
     }
 

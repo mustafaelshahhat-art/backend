@@ -17,6 +17,7 @@ public static class DependencyInjection
             options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
 
         services.AddScoped(typeof(IRepository<>), typeof(GenericRepository<>));
+        services.AddScoped<ITransactionManager, TransactionManager>();
         
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IPasswordHasher, PasswordHasher>();
@@ -27,6 +28,8 @@ public static class DependencyInjection
         services.AddScoped<IEmailService, Services.EmailService>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorization.TeamCaptainHandler>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorization.TournamentOwnerHandler>();
+
+        services.AddHostedService<Infrastructure.BackgroundJobs.TournamentBackgroundService>();
 
         return services;
     }

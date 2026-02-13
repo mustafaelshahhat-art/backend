@@ -216,6 +216,40 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
         return await _dbSet.Where(predicate).Select(selector).Where(s => !string.IsNullOrEmpty(s)).Select(s => s!).Distinct().ToListAsync();
     }
 
+    public async Task<(IEnumerable<T> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<T, bool>>? predicate = null, Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null, params Expression<Func<T, object>>[] includes)
+    {
+        IQueryable<T> query = _dbSet.AsNoTracking();
+
+        if (includes != null)
+        {
+            foreach (var include in includes)
+            {
+                query = query.Include(include);
+            }
+        }
+
+        if (predicate != null)
+        {
+            query = query.Where(predicate);
+        }
+
+        int totalCount = await query.CountAsync();
+
+        if (orderBy != null)
+        {
+            query = orderBy(query);
+        }
+        else
+        {
+            // Default ordering is required for consistency
+            query = query.OrderBy(e => e.Id);
+        }
+
+        var items = await query.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
+
+        return (items, totalCount);
+    }
+
     public async Task BeginTransactionAsync()
     {
         await _context.Database.BeginTransactionAsync();
