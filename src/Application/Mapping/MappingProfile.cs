@@ -44,10 +44,8 @@ public class MappingProfile : Profile
             .ForMember(d => d.OpeningMatchAwayTeamId, o => o.MapFrom(s => s.OpeningMatchAwayTeamId));
 
         CreateMap<Team, TeamDto>()
-            .ForMember(d => d.CaptainName, o => o.MapFrom(s => s.Players != null 
-                ? (s.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain) != null ? s.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain).Name : string.Empty) 
-                : string.Empty))
-            .ForMember(d => d.PlayerCount, o => o.MapFrom(s => s.Players != null ? s.Players.Count : 0))
+            .ForMember(d => d.CaptainName, o => o.Ignore())
+            .ForMember(d => d.PlayerCount, o => o.Ignore())
             .ForMember(d => d.MaxPlayers, o => o.MapFrom(s => 10));
         
         // Player
@@ -55,9 +53,7 @@ public class MappingProfile : Profile
         CreateMap<TeamRegistration, TeamRegistrationDto>()
             .ForMember(d => d.TeamName, o => o.MapFrom(s => s.Team != null ? s.Team.Name : string.Empty))
             .ForMember(d => d.TeamLogoUrl, o => o.MapFrom(s => s.Team != null ? s.Team.Logo : null))
-            .ForMember(d => d.CaptainName, o => o.MapFrom(s => s.Team != null && s.Team.Players != null 
-                ? (s.Team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain) != null ? s.Team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain).Name : string.Empty) 
-                : string.Empty))
+            .ForMember(d => d.CaptainName, o => o.Ignore())
             .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()))
             .ForMember(d => d.RegisteredAt, o => o.MapFrom(s => s.CreatedAt));
 

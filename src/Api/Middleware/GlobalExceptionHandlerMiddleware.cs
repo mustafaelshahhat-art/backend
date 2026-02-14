@@ -80,11 +80,13 @@ public class GlobalExceptionHandlerMiddleware
 
         context.Response.StatusCode = (int)statusCode;
 
+        var env = context.RequestServices.GetRequiredService<IWebHostEnvironment>();
+        
         var response = new
         {
             code = errorCode,
             message = message,
-            details = details
+            details = env.IsDevelopment() ? details ?? exception.StackTrace : details
         };
 
         return context.Response.WriteAsync(JsonSerializer.Serialize(response));

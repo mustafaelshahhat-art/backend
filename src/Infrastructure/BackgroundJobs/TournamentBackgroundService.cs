@@ -2,6 +2,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MediatR;
+using Application.Interfaces;
 using Application.Features.Tournaments.Commands.ProcessAutomatedEvents;
 
 namespace Infrastructure.BackgroundJobs;
@@ -35,6 +36,23 @@ public class TournamentBackgroundService : BackgroundService
 
     private async Task DoWorkAsync(CancellationToken stoppingToken)
     {
+        const string lockKey = "tournament_events_processor";
+        var distributedLock = _scopeFactory.CreateScope().ServiceProvider.GetRequiredService<IDistributedLock>();
+        try
+        {
+            // TTL of 6 minutes (higher than 5 min interval to prevent overlaps on drift, but short enough to recover on crash)
+            if (!await distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromMinutes(6)))
+            {
+                _logger.LogWarning("FAILED to acquire distributed lock for {LockKey}. Skipping this cycle to prevent overlap.", lockKey);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error acquiring distributed lock for {LockKey}. Skipping cycle for safety.", lockKey);
+            return;
+        }
+
         try
         {
             _logger.LogInformation("Processing automated tournament events...");
@@ -50,6 +68,10 @@ public class TournamentBackgroundService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while processing automated tournament events.");
+        }
+        finally
+        {
+            await distributedLock.ReleaseLockAsync(lockKey);
         }
     }
 }

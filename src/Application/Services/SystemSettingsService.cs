@@ -1,6 +1,7 @@
 using Application.DTOs.Settings;
 using Application.Interfaces;
 using Domain.Entities;
+using Microsoft.Extensions.Caching.Memory;
 using Domain.Interfaces;
 
 namespace Application.Services;
@@ -9,18 +10,22 @@ public class SystemSettingsService : ISystemSettingsService
 {
     private readonly IRepository<SystemSetting> _settingsRepository;
     private readonly IAnalyticsService _analyticsService;
+    private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
+    private const string CacheKey = "SystemSettings_Global";
 
     public SystemSettingsService(
         IRepository<SystemSetting> settingsRepository,
-        IAnalyticsService analyticsService)
+        IAnalyticsService analyticsService,
+        Microsoft.Extensions.Caching.Memory.IMemoryCache cache)
     {
         _settingsRepository = settingsRepository;
         _analyticsService = analyticsService;
+        _cache = cache;
     }
 
     public async Task<SystemSettingsDto> GetSettingsAsync()
     {
-        var settings = await GetOrCreateSettingsAsync();
+        var settings = await GetCachedSettingsAsync();
         return new SystemSettingsDto
         {
             AllowTeamCreation = settings.AllowTeamCreation,
@@ -33,15 +38,15 @@ public class SystemSettingsService : ISystemSettingsService
     {
         var settings = await GetOrCreateSettingsAsync();
 
-        var logMsg = $"[{DateTime.UtcNow}] Updating Settings. ID: {settings.Id}, New Team={dto.AllowTeamCreation}, New Maint={dto.MaintenanceMode}{Environment.NewLine}";
-        System.IO.File.AppendAllText("settings_debug.log", logMsg);
-
         settings.AllowTeamCreation = dto.AllowTeamCreation;
         settings.MaintenanceMode = dto.MaintenanceMode;
         settings.UpdatedAt = DateTime.UtcNow;
         settings.UpdatedByAdminId = adminId;
 
         await _settingsRepository.UpdateAsync(settings);
+        
+        // Invalidate Cache
+        _cache.Remove(CacheKey);
         
         return new SystemSettingsDto
         {
@@ -53,14 +58,28 @@ public class SystemSettingsService : ISystemSettingsService
 
     public async Task<bool> IsTeamCreationAllowedAsync()
     {
-        var settings = await GetOrCreateSettingsAsync();
+        var settings = await GetCachedSettingsAsync();
         return settings.AllowTeamCreation;
     }
 
     public async Task<bool> IsMaintenanceModeEnabledAsync()
     {
-        var settings = await GetOrCreateSettingsAsync();
+        var settings = await GetCachedSettingsAsync();
         return settings.MaintenanceMode;
+    }
+
+    private async Task<SystemSetting> GetCachedSettingsAsync()
+    {
+        if (!_cache.TryGetValue(CacheKey, out SystemSetting settings))
+        {
+            settings = await GetOrCreateSettingsAsync();
+            var options = new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions()
+                .SetSlidingExpiration(TimeSpan.FromMinutes(5))
+                .SetAbsoluteExpiration(TimeSpan.FromHours(1));
+            
+            _cache.Set(CacheKey, settings, options);
+        }
+        return settings!;
     }
 
     /// <summary>

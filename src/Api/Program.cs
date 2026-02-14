@@ -112,6 +112,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 // Helpers
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<Application.Interfaces.ICurrentUserAccessor, Infrastructure.Authentication.CurrentUserAccessor>();
 
 // Swagger
 builder.Services.AddEndpointsApiExplorer();
@@ -154,7 +155,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
             ValidAudience = builder.Configuration["JwtSettings:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:Secret"]!))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:Secret"]!)),
+            ClockSkew = TimeSpan.Zero // PROD-AUDIT: Strict expiration
         };
         
         options.Events = new JwtBearerEvents
@@ -171,6 +173,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     if (user == null || user.TokenVersion != tokenVersion || user.Status == UserStatus.Suspended)
                     {
                         context.Fail("Token is no longer valid.");
+                    }
+                    else 
+                    {
+                        // PROD-AUDIT FIX: Store resolved user in accessor to prevent duplicate DB reads in middleware/services
+                        var userAccessor = context.HttpContext.RequestServices.GetRequiredService<Application.Interfaces.ICurrentUserAccessor>();
+                        userAccessor.SetUser(user);
                     }
                 }
                 else
@@ -213,6 +221,44 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
+// PROD-AUDIT: Redis Health Guard
+// In Production, fail fast if Redis is unavailable to prevent unsafe background operations.
+if (app.Environment.IsProduction())
+{
+    try
+    {
+        var redis = app.Services.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>();
+        var db = redis.GetDatabase();
+        db.Ping();
+        Log.Information("Redis connectivity verified.");
+    }
+    catch (Exception ex)
+    {
+        Log.Fatal(ex, "CRITICAL: Redis is unreachable in Production. Terminating application for safety.");
+        throw new ApplicationException("Redis connectivity is required in Production environment.", ex);
+    }
+}
+else
+{
+    // PROD-AUDIT: Optional Redis check for development
+    var lockProvider = builder.Configuration["DistributedLock:Provider"] ?? "Sql";
+    if (lockProvider.Equals("Redis", StringComparison.OrdinalIgnoreCase))
+    {
+        try
+        {
+            var redis = app.Services.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>();
+            if (redis.IsConnected)
+            {
+                Log.Information("Redis connectivity verified (Development).");
+            }
+        }
+        catch
+        {
+            Log.Warning("Redis is unreachable. Using SQL Fallback if configured.");
+        }
+    }
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -229,9 +275,19 @@ app.UseHttpsRedirection();
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 
 app.UseCookiePolicy();
+app.UseMiddleware<CorrelationIdMiddleware>(); // PROD-AUDIT: Traceability
+app.UseMiddleware<SlowQueryMiddleware>(); // PROD-AUDIT: Performance
+app.UseSerilogRequestLogging(options =>
+{
+    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    {
+        diagnosticContext.Set("CorrelationId", httpContext.Response.Headers["X-Correlation-ID"]);
+    };
+});
 
 app.UseStaticFiles();
 
+app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
@@ -241,7 +297,14 @@ app.UseRateLimiter(); // Enable Rate Limiting
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false // Just check if the app is alive
+});
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready") || true // Check DB, etc.
+});
 app.MapHub<Api.Hubs.NotificationHub>("/hubs/notifications");
 app.MapHub<Api.Hubs.MatchChatHub>("/hubs/chat");
 

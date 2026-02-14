@@ -13,6 +13,39 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        // PROD-AUDIT: Distributed Safety (Redis)
+        var redisConnectionString = configuration["Redis:ConnectionString"] 
+            ?? configuration.GetConnectionString("Redis") 
+            ?? "localhost:6379";
+
+        services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp => 
+        {
+            var options = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
+            options.AbortOnConnectFail = false; 
+            options.ConnectRetry = 3;
+            options.ConnectTimeout = 5000;
+            return StackExchange.Redis.ConnectionMultiplexer.Connect(options);
+        });
+            
+        // PROD-AUDIT: Distributed Safety
+        // Use SQL Fallback in Development for convenience, enforce Redis in Production for performance.
+        var isProduction = configuration["ASPNETCORE_ENVIRONMENT"] == "Production";
+        var lockProvider = configuration["DistributedLock:Provider"];
+        
+        if (string.IsNullOrEmpty(lockProvider))
+        {
+            lockProvider = isProduction ? "Redis" : "Sql";
+        }
+
+        if (lockProvider.Equals("Sql", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<IDistributedLock, Services.SqlDistributedLockService>();
+        }
+        else
+        {
+            services.AddSingleton<IDistributedLock, Services.RedisLockService>();
+        }
+
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(configuration.GetConnectionString("DefaultConnection"),
                 sqlOptions => sqlOptions.EnableRetryOnFailure(
@@ -33,7 +66,9 @@ public static class DependencyInjection
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorization.TeamCaptainHandler>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorization.TournamentOwnerHandler>();
 
+        services.AddSingleton<IDomainEventTypeCache, Infrastructure.BackgroundJobs.DomainEventTypeCache>();
         services.AddHostedService<Infrastructure.BackgroundJobs.TournamentBackgroundService>();
+        services.AddHostedService<Infrastructure.BackgroundJobs.OutboxProcessor>();
 
         return services;
     }

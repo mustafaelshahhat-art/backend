@@ -18,6 +18,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
+    [Api.Infrastructure.Filters.FileValidation]
     public async Task<ActionResult<AuthResponse>> Register([FromForm] RegisterRequest request, IFormFile? idFront, IFormFile? idBack)
     {
         if (idFront != null) request.IdFrontUrl = await SaveFile(idFront);

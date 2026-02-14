@@ -55,18 +55,18 @@ public class AnalyticsService : IAnalyticsService
                 (t.Status == Domain.Enums.TournamentStatus.RegistrationOpen || t.Status == Domain.Enums.TournamentStatus.Active));
             
             // Count distinct teams across all tournaments of this creator
-            var registrations = await _registrationRepository.FindAsync(r => r.Tournament.CreatorUserId == creatorId.Value);
+            var registrations = await _registrationRepository.FindAsync(r => r.Tournament != null && r.Tournament.CreatorUserId == creatorId.Value);
             totalTeams = registrations.Select(r => r.TeamId).Distinct().Count(); // Still a bit in-memory but better than downloading tournaments
             
             matchesToday = await _matchRepository.CountAsync(m => 
                 m.Date.HasValue && m.Date.Value.Date == today && 
-                m.Tournament.CreatorUserId == creatorId.Value);
+                m.Tournament != null && m.Tournament.CreatorUserId == creatorId.Value);
             
             var homeGoals = await _matchRepository.SumAsync(m => 
-                m.Status == Domain.Enums.MatchStatus.Finished && m.Tournament.CreatorUserId == creatorId.Value, 
+                m.Status == Domain.Enums.MatchStatus.Finished && m.Tournament != null && m.Tournament.CreatorUserId == creatorId.Value, 
                 m => m.HomeScore);
             var awayGoals = await _matchRepository.SumAsync(m => 
-                m.Status == Domain.Enums.MatchStatus.Finished && m.Tournament.CreatorUserId == creatorId.Value, 
+                m.Status == Domain.Enums.MatchStatus.Finished && m.Tournament != null && m.Tournament.CreatorUserId == creatorId.Value, 
                 m => m.AwayScore);
             totalGoals = (int)(homeGoals + awayGoals);
         }
@@ -105,7 +105,7 @@ public class AnalyticsService : IAnalyticsService
         var tournamentCountTask = _registrationRepository.CountAsync(r => 
             r.TeamId == teamId && 
             r.Status == Domain.Enums.RegistrationStatus.Approved &&
-            (r.Tournament.Status == Domain.Enums.TournamentStatus.Active || r.Tournament.Status == Domain.Enums.TournamentStatus.RegistrationOpen));
+            (r.Tournament != null && (r.Tournament.Status == Domain.Enums.TournamentStatus.Active || r.Tournament.Status == Domain.Enums.TournamentStatus.RegistrationOpen)));
 
         await Task.WhenAll(playerCountTask, matchCountTask, tournamentCountTask);
 

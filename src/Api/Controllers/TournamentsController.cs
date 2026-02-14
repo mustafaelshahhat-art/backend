@@ -147,6 +147,7 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpPost("{id}/registrations/{teamId}/payment")]
+    [Api.Infrastructure.Filters.FileValidation]
     public async Task<ActionResult<TeamRegistrationDto>> SubmitPayment(Guid id, Guid teamId, [FromForm] IFormFile receipt, [FromForm] string? senderNumber, [FromForm] string? paymentMethod)
     {
         var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -285,7 +286,7 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpPost("{id}/emergency/start")]
-    [Authorize(Policy = "RequireTournamentOwner")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<TournamentDto>> EmergencyStart(Guid id)
     {
         var (userId, userRole) = GetUserContext();
@@ -294,7 +295,7 @@ public class TournamentsController : ControllerBase
     }
 
     [HttpPost("{id}/emergency/end")]
-    [Authorize(Policy = "RequireTournamentOwner")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<TournamentDto>> EmergencyEnd(Guid id)
     {
         var (userId, userRole) = GetUserContext();

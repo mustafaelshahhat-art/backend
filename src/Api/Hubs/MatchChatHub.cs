@@ -5,6 +5,7 @@ using Application.Interfaces;
 using Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Api.Hubs;
@@ -17,15 +18,19 @@ public class MatchChatHub : Hub
     private readonly Application.Interfaces.IUserService _userService;
     private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
 
+    private readonly ICurrentUserAccessor _userAccessor;
+
     public MatchChatHub(
         IMatchMessageRepository messageRepository,
         Domain.Interfaces.IRepository<Match> matchRepository,
         Application.Interfaces.IUserService userService,
+        ICurrentUserAccessor userAccessor,
         Microsoft.Extensions.Caching.Memory.IMemoryCache cache)
     {
         _messageRepository = messageRepository;
         _matchRepository = matchRepository;
         _userService = userService;
+        _userAccessor = userAccessor;
         _cache = cache;
     }
 
@@ -85,15 +90,27 @@ public class MatchChatHub : Hub
 
     private async Task<bool> VerifyMatchAccessAsync(string matchId, Guid userId)
     {
-        var user = await _userService.GetByIdAsync(userId);
-        if (user == null || !user.TeamId.HasValue) return false;
+        // PROD-AUDIT: Use cached user from accessor if available
+        var userTeamId = _userAccessor.User?.TeamId;
+        
+        if (!userTeamId.HasValue)
+        {
+            var user = await _userService.GetByIdAsync(userId);
+            if (user == null || !user.TeamId.HasValue) return false;
+            userTeamId = user.TeamId;
+        }
 
         if (!Guid.TryParse(matchId, out var matchGuid)) return false;
         
-        // Use a projection query if possible, but GetById is fine for now as we cache it.
-        var match = await _matchRepository.GetByIdAsync(matchGuid);
-        if (match == null) return false;
+        // Use lean projection to avoid join explosion/full entity materialization
+        var matchTeams = await _matchRepository.GetQueryable()
+            .AsNoTracking()
+            .Where(m => m.Id == matchGuid)
+            .Select(m => new { m.HomeTeamId, m.AwayTeamId })
+            .FirstOrDefaultAsync();
 
-        return match.HomeTeamId == user.TeamId || match.AwayTeamId == user.TeamId;
+        if (matchTeams == null) return false;
+
+        return matchTeams.HomeTeamId == userTeamId || matchTeams.AwayTeamId == userTeamId;
     }
 }

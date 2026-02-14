@@ -218,6 +218,9 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
 
     public async Task<(IEnumerable<T> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<T, bool>>? predicate = null, Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null, params Expression<Func<T, object>>[] includes)
     {
+        // PROD-AUDIT: Enforce Max Page Size
+        if (pageSize > 100) pageSize = 100;
+
         IQueryable<T> query = _dbSet.AsNoTracking();
 
         if (includes != null)
@@ -248,6 +251,11 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
         var items = await query.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
 
         return (items, totalCount);
+    }
+
+    public IQueryable<T> GetQueryable()
+    {
+        return _dbSet.AsNoTracking();
     }
 
     public async Task BeginTransactionAsync()

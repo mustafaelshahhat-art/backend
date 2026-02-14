@@ -12,4 +12,10 @@ public abstract class BaseEntity
 
     [Timestamp]
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
+    private readonly List<Domain.Interfaces.IDomainEvent> _domainEvents = new();
+    public IReadOnlyCollection<Domain.Interfaces.IDomainEvent> DomainEvents => _domainEvents.AsReadOnly();
+
+    public void AddDomainEvent(Domain.Interfaces.IDomainEvent domainEvent) => _domainEvents.Add(domainEvent);
+    public void ClearDomainEvents() => _domainEvents.Clear();
 }

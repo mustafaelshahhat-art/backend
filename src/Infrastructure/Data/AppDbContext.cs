@@ -27,6 +27,7 @@ public class AppDbContext : DbContext
     public DbSet<SystemSetting> SystemSettings { get; set; }
     public DbSet<Otp> Otps { get; set; }
     public DbSet<TournamentPlayer> TournamentPlayers { get; set; }
+    public DbSet<OutboxMessage> OutboxMessages { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -257,6 +258,18 @@ public class AppDbContext : DbContext
             .IsUnique()
             .HasDatabaseName("UQ_TeamRegistration_Tournament_Team");
 
+        modelBuilder.Entity<TeamRegistration>()
+            .HasIndex(tr => tr.Status)
+            .HasDatabaseName("IX_TeamRegistration_Status");
+
+        modelBuilder.Entity<Match>()
+            .HasIndex(m => m.HomeTeamId)
+            .HasDatabaseName("IX_Matches_HomeTeamId");
+
+        modelBuilder.Entity<Match>()
+            .HasIndex(m => m.AwayTeamId)
+            .HasDatabaseName("IX_Matches_AwayTeamId");
+
         modelBuilder.Entity<Player>()
             .HasIndex(p => new { p.TeamId, p.UserId })
             .IsUnique()
@@ -288,6 +301,33 @@ public class AppDbContext : DbContext
                 entry.State = EntityState.Modified;
                 entry.Property("IsDeleted").CurrentValue = true;
             }
+        }
+
+        // Capture Domain Events
+        var domainEvents = ChangeTracker.Entries<BaseEntity>()
+            .Select(e => e.Entity)
+            .SelectMany(e => 
+            {
+                var events = e.DomainEvents.ToList();
+                e.ClearDomainEvents();
+                return events;
+            })
+            .ToList();
+
+        if (domainEvents.Any())
+        {
+            var outboxMessages = domainEvents.Select(domainEvent => new OutboxMessage
+            {
+                Id = Guid.NewGuid(),
+                OccurredOn = domainEvent.OccurredOn,
+                Type = domainEvent.GetType().Name,
+                Content = System.Text.Json.JsonSerializer.Serialize(domainEvent, domainEvent.GetType()),
+                Status = OutboxMessageStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+
+            this.OutboxMessages.AddRange(outboxMessages);
         }
 
         return base.SaveChangesAsync(cancellationToken);

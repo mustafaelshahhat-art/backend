@@ -8,6 +8,7 @@ using AutoMapper;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using Shared.Exceptions;
 
 namespace Application.Services;
@@ -54,15 +55,23 @@ public class UserService : IUserService
 
     public async Task<UserDto?> GetByIdAsync(Guid id)
     {
-        var user = await _userRepository.GetByIdAsync(id);
+        // PROD-AUDIT: Use consolidated query with AsNoTracking. Avoid multiple DB roundtrips.
+        var user = await _userRepository.GetQueryable()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == id);
+            
         if (user == null) return null;
 
         var dto = _mapper.Map<UserDto>(user);
 
-        // Fetch Team Name and Ownership if exists
+        // Fetch Team Details and Recent Activities in parallel or consolidated
         if (user.TeamId.HasValue)
         {
-            var team = await _teamRepository.GetByIdAsync(user.TeamId.Value, t => t.Players);
+            var team = await _teamRepository.GetQueryable()
+                .AsNoTracking()
+                .Include(t => t.Players)
+                .FirstOrDefaultAsync(t => t.Id == user.TeamId.Value);
+
             if (team != null)
             {
                 var player = team.Players.FirstOrDefault(p => p.UserId == id);
@@ -72,10 +81,10 @@ public class UserService : IUserService
         }
         else
         {
-            // Fallback: If user has a team they are captain of but TeamId is null, use it
-            var ownedTeam = (await _teamRepository.FindAsync(
-                t => t.Players.Any(p => p.UserId == id && p.TeamRole == TeamRole.Captain), 
-                new[] { "Players" })).FirstOrDefault();
+            var ownedTeam = (await _teamRepository.GetQueryable()
+                .AsNoTracking()
+                .Include(t => t.Players)
+                .FirstOrDefaultAsync(t => t.Players.Any(p => p.UserId == id && p.TeamRole == TeamRole.Captain)));
             
             if (ownedTeam != null)
             {
@@ -85,9 +94,14 @@ public class UserService : IUserService
             }
         }
 
-        // Fetch Recent Activities
-        var activities = await _activityRepository.FindAsync(a => a.UserId == id);
-        dto.Activities = _mapper.Map<List<UserActivityDto>>(activities.OrderByDescending(a => a.CreatedAt).Take(10).ToList());
+        var activities = await _activityRepository.GetQueryable()
+            .AsNoTracking()
+            .Where(a => a.UserId == id)
+            .OrderByDescending(a => a.CreatedAt)
+            .Take(10)
+            .ToListAsync();
+            
+        dto.Activities = _mapper.Map<List<UserActivityDto>>(activities);
 
         return dto;
     }

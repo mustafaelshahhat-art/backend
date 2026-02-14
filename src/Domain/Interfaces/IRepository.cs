@@ -36,6 +36,9 @@ public interface IRepository<T> where T : BaseEntity
     Task<long> SumAsync(Expression<Func<T, bool>> predicate, Expression<Func<T, int>> selector);
     Task<IEnumerable<string>> GetDistinctAsync(Expression<Func<T, bool>> predicate, Expression<Func<T, string?>> selector);
     Task<(IEnumerable<T> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<T, bool>>? predicate = null, Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null, params Expression<Func<T, object>>[] includes);
+    
+    // Performance Optimization
+    IQueryable<T> GetQueryable();
     Task BeginTransactionAsync();
     Task CommitTransactionAsync();
     Task RollbackTransactionAsync();

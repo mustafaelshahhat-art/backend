@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Application.DTOs.Tournaments;
 using Application.DTOs.Matches;
@@ -10,6 +11,7 @@ using AutoMapper;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using Shared.Exceptions;
 
 namespace Application.Services;
@@ -53,31 +55,12 @@ public class TournamentService : ITournamentService
 
     public async Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? creatorId = null)
     {
-        System.Linq.Expressions.Expression<Func<Tournament, bool>>? predicate = null;
+        Expression<Func<Tournament, bool>>? predicate = null;
         if (creatorId.HasValue)
         {
             predicate = t => t.CreatorUserId == creatorId.Value;
         }
 
-        var includes = new System.Linq.Expressions.Expression<Func<Tournament, object>>[] 
-        { 
-            t => t.Registrations, 
-            t => t.WinnerTeam! 
-        };
-
-        // Note: For deep includes (Registrations.Team.Players), GenericRepository param array might handle it if we use string paths or ThenInclude logic. 
-        // The current GenericRepository accepts Expression<Func<T, object>>. Deep includes with Expressions are tricky without ThenInclude.
-        // It's safer to use String-based includes if we need "Registrations.Team".
-        // Use the string-based overload? GenericRepository doesn't have String-based GetPagedAsync yet.
-        // I will use `Includes` with strings if possible or accept that I might miss deep data. 
-        // Actually, `Registrations.Team` is critical for `CheckInterventionRequired`.
-        // I'll stick to basic includes here and rely on N+1 fix logic (fetch matches/registrations separately) OR 
-        // I should update GenericRepository to accept string includes too? 
-        // No, let's keep it simple. I will just fetch IDs and then optimize? 
-        // Better: Fetch data with basic includes. `CheckInterventionRequired` needs `Registrations`.
-        // `Registrations` is a collection.
-        // Let's rely on the `GetPagedAsync` I just added.
-        
         var (items, totalCount) = await _tournamentRepository.GetPagedAsync(
             pageNumber, 
             pageSize, 
@@ -87,29 +70,57 @@ public class TournamentService : ITournamentService
             t => t.WinnerTeam!);
 
         var tournamentList = items.ToList();
-        
-        // Similar to GetAll, we need to populate 'RequiresAdminIntervention'.
-        // This requires Matches and deep Registration data.
-        // To avoid massive joins in the paged query, we can fetch related data for THESE 10 items only.
-        
-        var ids = tournamentList.Select(t => t.Id).ToList();
+        var ids = tournamentList.Select(t => t.Id).Distinct().ToList();
 
-        var allMatches = (await _matchRepository.GetNoTrackingAsync(m => ids.Contains(m.TournamentId)))
+        // Optimized Aggregation at SQL Level via projection
+        // Note: Using ToList() (sync) because Application layer cannot reference EF Core for ToListAsync().
+        // Since tournamentList is small (page size), these queries are efficient.
+        var matchStats = _matchRepository.GetQueryable()
+            .Where(m => ids.Contains(m.TournamentId))
             .GroupBy(m => m.TournamentId)
-            .ToDictionary(g => g.Key, g => g.ToList());
+            .Select(g => new 
+            { 
+                TournamentId = g.Key, 
+                TotalMatches = g.Count(),
+                FinishedMatches = g.Count(m => m.Status == MatchStatus.Finished)
+            })
+            .ToList();
 
-        var allRegistrations = (await _registrationRepository.GetNoTrackingAsync(r => ids.Contains(r.TournamentId))) // This fetches all regs for these tournaments
+        var regStats = _registrationRepository.GetQueryable()
+            .Where(r => ids.Contains(r.TournamentId) && r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn)
             .GroupBy(r => r.TournamentId)
-            .ToDictionary(g => g.Key, g => g.ToList());
-            
+            .Select(g => new 
+            { 
+                TournamentId = g.Key, 
+                TotalRegistrations = g.Count(), 
+                ApprovedRegistrations = g.Count(r => r.Status == RegistrationStatus.Approved) 
+            })
+            .ToList();
+
         var dtos = new List<TournamentDto>();
         foreach (var t in tournamentList)
         {
-            var matches = allMatches.GetValueOrDefault(t.Id, new List<Match>());
-            var registrations = allRegistrations.GetValueOrDefault(t.Id, new List<TeamRegistration>());
-            
+            var mStat = matchStats.FirstOrDefault(s => s.TournamentId == t.Id);
+            var rStat = regStats.FirstOrDefault(s => s.TournamentId == t.Id);
+
             var dto = _mapper.Map<TournamentDto>(t);
-            dto.RequiresAdminIntervention = CheckInterventionRequiredInternal(t, matches, registrations);
+            dto.RequiresAdminIntervention = CheckInterventionRequiredOptimized(t, 
+                mStat?.TotalMatches ?? 0, 
+                mStat?.FinishedMatches ?? 0, 
+                rStat?.TotalRegistrations ?? 0, 
+                rStat?.ApprovedRegistrations ?? 0);
+            
+            // PROD-AUDIT: Manual mapping for ignored properties
+            foreach (var regDto in dto.Registrations)
+            {
+                var sourceReg = t.Registrations.FirstOrDefault(r => r.Id == regDto.Id);
+                if (sourceReg?.Team != null)
+                {
+                    regDto.CaptainName = sourceReg.Team.Players?
+                        .FirstOrDefault(p => p.TeamRole == TeamRole.Captain)?.Name ?? string.Empty;
+                }
+            }
+            
             dtos.Add(dto);
         }
 
@@ -118,41 +129,65 @@ public class TournamentService : ITournamentService
 
     public async Task<IEnumerable<TournamentDto>> GetAllAsync(Guid? creatorId = null)
     {
-        IEnumerable<Tournament> tournaments;
-        var includes = new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" };
-        
-        if (creatorId.HasValue)
+        if (!creatorId.HasValue)
         {
-            tournaments = await _tournamentRepository.GetNoTrackingAsync(
-                t => t.CreatorUserId == creatorId.Value,
-                includes
-            );
+             return (await GetPagedAsync(1, 100, null)).Items; 
         }
-        else
-        {
-            tournaments = await _tournamentRepository.GetAllNoTrackingAsync(includes);
-        }
+
+        var tournaments = await _tournamentRepository.GetNoTrackingAsync(
+            t => t.CreatorUserId == creatorId.Value,
+            new[] { "Registrations", "WinnerTeam" }
+        );
 
         var tournamentList = tournaments.ToList();
-        var ids = tournamentList.Select(t => t.Id).ToList();
-
-        // Fix N+1: Pre-fetch all matches and registrations for checking intervention
-        var allMatches = (await _matchRepository.GetNoTrackingAsync(m => ids.Contains(m.TournamentId)))
-            .GroupBy(m => m.TournamentId)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        var allRegistrations = (await _registrationRepository.GetNoTrackingAsync(r => ids.Contains(r.TournamentId)))
-            .GroupBy(r => r.TournamentId)
-            .ToDictionary(g => g.Key, g => g.ToList());
+        var ids = tournamentList.Select(t => t.Id).Distinct().ToList();
         
+        var matchStats = _matchRepository.GetQueryable()
+            .Where(m => ids.Contains(m.TournamentId))
+            .GroupBy(m => m.TournamentId)
+            .Select(g => new 
+            { 
+                TournamentId = g.Key, 
+                TotalMatches = g.Count(),
+                FinishedMatches = g.Count(m => m.Status == MatchStatus.Finished)
+            })
+            .ToList();
+
+        var regStats = _registrationRepository.GetQueryable()
+            .Where(r => ids.Contains(r.TournamentId) && r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn)
+            .GroupBy(r => r.TournamentId)
+            .Select(g => new 
+            { 
+                TournamentId = g.Key, 
+                TotalRegistrations = g.Count(), 
+                ApprovedRegistrations = g.Count(r => r.Status == RegistrationStatus.Approved) 
+            })
+            .ToList();
+
         var dtos = new List<TournamentDto>();
         foreach (var t in tournamentList)
         {
-            var matches = allMatches.GetValueOrDefault(t.Id, new List<Match>());
-            var registrations = allRegistrations.GetValueOrDefault(t.Id, new List<TeamRegistration>());
-            
+            var mStat = matchStats.FirstOrDefault(s => s.TournamentId == t.Id);
+            var rStat = regStats.FirstOrDefault(s => s.TournamentId == t.Id);
+
             var dto = _mapper.Map<TournamentDto>(t);
-            dto.RequiresAdminIntervention = CheckInterventionRequiredInternal(t, matches, registrations);
+            dto.RequiresAdminIntervention = CheckInterventionRequiredOptimized(t, 
+                mStat?.TotalMatches ?? 0, 
+                mStat?.FinishedMatches ?? 0, 
+                rStat?.TotalRegistrations ?? 0, 
+                rStat?.ApprovedRegistrations ?? 0);
+            
+            // PROD-AUDIT: Manual mapping for ignored properties
+            foreach (var regDto in dto.Registrations)
+            {
+                var sourceReg = t.Registrations.FirstOrDefault(r => r.Id == regDto.Id);
+                if (sourceReg?.Team != null)
+                {
+                    regDto.CaptainName = sourceReg.Team.Players?
+                        .FirstOrDefault(p => p.TeamRole == TeamRole.Captain)?.Name ?? string.Empty;
+                }
+            }
+            
             dtos.Add(dto);
         }
         return dtos;
@@ -160,14 +195,45 @@ public class TournamentService : ITournamentService
 
     public async Task<TournamentDto?> GetByIdAsync(Guid id)
     {
-        var tournament = await _tournamentRepository.GetByIdNoTrackingAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" });
+        // Use SplitQuery to prevent Cartesian Product/Join Explosion for deep includes
+        var tournament = await _tournamentRepository.GetQueryable()
+            .AsNoTracking()
+            .Include(t => t.Registrations)
+                .ThenInclude(r => r.Team)
+                .ThenInclude(t => t.Players)
+            .Include(t => t.WinnerTeam)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(t => t.Id == id);
+
         if (tournament == null) return null;
 
-        var matches = (await _matchRepository.GetNoTrackingAsync(m => m.TournamentId == id)).ToList();
-        var registrations = (await _registrationRepository.GetNoTrackingAsync(r => r.TournamentId == id)).ToList();
-
+        var matches = await _matchRepository.GetQueryable()
+            .AsNoTracking()
+            .Where(m => m.TournamentId == id)
+            .ToListAsync();
+        
+        var relevantRegs = tournament.Registrations.Where(r => r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn).ToList();
+        var totalMatches = matches.Count;
+        var finishedMatches = matches.Count(m => m.Status == MatchStatus.Finished);
+        
         var dto = _mapper.Map<TournamentDto>(tournament);
-        dto.RequiresAdminIntervention = CheckInterventionRequiredInternal(tournament, matches, registrations);
+        dto.RequiresAdminIntervention = CheckInterventionRequiredOptimized(tournament, 
+            totalMatches, 
+            finishedMatches, 
+            relevantRegs.Count, 
+            relevantRegs.Count(r => r.Status == RegistrationStatus.Approved));
+
+        // Manual mapping for captain names
+        foreach (var regDto in dto.Registrations)
+        {
+            var sourceReg = tournament.Registrations.FirstOrDefault(r => r.Id == regDto.Id);
+            if (sourceReg?.Team?.Players != null)
+            {
+                regDto.CaptainName = sourceReg.Team.Players
+                    .FirstOrDefault(p => p.TeamRole == TeamRole.Captain)?.Name ?? string.Empty;
+            }
+        }
+            
         return dto;
     }
 
@@ -176,22 +242,18 @@ public class TournamentService : ITournamentService
         return await GetByIdAsync(id);
     }
 
-    private bool CheckInterventionRequiredInternal(Tournament tournament, List<Match> matches, List<TeamRegistration> registrations)
+    private bool CheckInterventionRequiredOptimized(Tournament tournament, int totalMatches, int finishedMatches, int totalRegs, int approvedRegs)
     {
-        var relevantRegistrations = registrations.Where(r => r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn).ToList();
-        var regCount = relevantRegistrations.Count;
-        var approvedCount = relevantRegistrations.Count(r => r.Status == RegistrationStatus.Approved);
-
         // Case 1: Registration closed but should be active (All approved, capacity reached, but no matches)
         if (tournament.Status == TournamentStatus.RegistrationClosed)
         {
-            if (regCount == tournament.MaxTeams && approvedCount == regCount && !matches.Any())
+            if (totalRegs == tournament.MaxTeams && approvedRegs == totalRegs && totalMatches == 0)
             {
                  return true;
             }
             
             // Deadline passed but no matches generated
-            if (DateTime.UtcNow > tournament.StartDate && !matches.Any())
+            if (DateTime.UtcNow > tournament.StartDate && totalMatches == 0)
             {
                 return true;
             }
@@ -201,17 +263,17 @@ public class TournamentService : ITournamentService
         if (tournament.Status == TournamentStatus.Active)
         {
             // No matches at all but active
-            if (!matches.Any()) return true;
+            if (totalMatches == 0) return true;
 
             // All matches finished but status is not completed
-            if (matches.All(m => m.Status == MatchStatus.Finished)) return true;
+            if (totalMatches > 0 && totalMatches == finishedMatches) return true;
 
             // Past end date but not completed
             if (DateTime.UtcNow > tournament.EndDate.AddDays(2)) return true;
         }
 
         // Case 3: Completed but missing winner?
-        if (tournament.Status == TournamentStatus.Completed && tournament.WinnerTeamId == null && matches.Any())
+        if (tournament.Status == TournamentStatus.Completed && tournament.WinnerTeamId == null && totalMatches > 0)
         {
             return true;
         }
@@ -530,6 +592,19 @@ public class TournamentService : ITournamentService
 
         registration.Status = RegistrationStatus.Approved;
         
+        // Use Domain Event for reliable processing via Outbox
+        var captain = registration.Team?.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+        if (captain?.UserId != null)
+        {
+            registration.AddDomainEvent(new Domain.Events.TournamentRegistrationApprovedEvent(
+                tournamentId,
+                teamId,
+                captain.UserId.Value,
+                tournament.Name,
+                registration.Team?.Name ?? "فريق"
+            ));
+        }
+
         await _registrationRepository.UpdateAsync(registration);
 
         // Populate TournamentPlayers tracking
@@ -558,20 +633,6 @@ public class TournamentService : ITournamentService
             {
                 await GenerateMatchesAsync(tournamentId, userId, userRole);
             }
-        }
-
-        var captainId = registration.Team?.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain)?.UserId;
-        if (captainId != null)
-        {
-            await _notificationService.SendNotificationByTemplateAsync(
-                captainId.Value, 
-                NotificationTemplates.TEAM_APPROVED, 
-                new Dictionary<string, string> { 
-                    { "teamName", registration.Team?.Name ?? "فريق" },
-                    { "tournamentName", tournament.Name }
-                }, 
-                "registration_approved"
-            );
         }
 
         return _mapper.Map<TeamRegistrationDto>(registration);
@@ -603,6 +664,20 @@ public class TournamentService : ITournamentService
         registration.Status = RegistrationStatus.Rejected;
         registration.RejectionReason = request.Reason;
         
+        // Use Domain Event for reliable processing via Outbox
+        var captain = registration.Team?.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+        if (captain?.UserId != null)
+        {
+            registration.AddDomainEvent(new Domain.Events.TournamentRegistrationRejectedEvent(
+                tournamentId,
+                teamId,
+                captain.UserId.Value,
+                tournament.Name,
+                registration.Team?.Name ?? "فريق",
+                request.Reason
+            ));
+        }
+
         await _registrationRepository.UpdateAsync(registration);
 
         // Cleanup TournamentPlayers
@@ -641,21 +716,6 @@ public class TournamentService : ITournamentService
             {
                 await _notifier.SendTournamentUpdatedAsync(updatedTournament);
             }
-        }
-
-        var captainId = registration.Team?.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain)?.UserId;
-        if (captainId != null)
-        {
-             await _notificationService.SendNotificationByTemplateAsync(
-                 captainId.Value, 
-                 NotificationTemplates.TEAM_REJECTED, 
-                 new Dictionary<string, string> { 
-                     { "teamName", registration.Team?.Name ?? "فريق" },
-                     { "tournamentName", tournament?.Name ?? "Unknown" },
-                     { "reason", request.Reason }
-                 }, 
-                 "registration_rejected"
-             );
         }
 
         return _mapper.Map<TeamRegistrationDto>(registration);
