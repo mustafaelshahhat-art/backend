@@ -2,8 +2,7 @@ namespace Domain.Enums;
 
 public enum UserRole
 {
-    Player,
-
-    Admin,
-    TournamentCreator
+    Player = 0,
+    Admin = 1,
+    TournamentCreator = 2
 }

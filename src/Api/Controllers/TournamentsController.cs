@@ -73,6 +73,24 @@ public class TournamentsController : ControllerBase
         return Ok(tournament);
     }
 
+    [HttpGet("active/team/{teamId}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<TournamentDto>> GetActiveByTeam(Guid teamId, CancellationToken cancellationToken)
+    {
+        var tournament = await _tournamentService.GetActiveByTeamAsync(teamId, cancellationToken);
+        if (tournament == null) return NotFound();
+        return Ok(tournament);
+    }
+
+    [HttpGet("{id}/registration/team/{teamId}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<TeamRegistrationDto>> GetTeamRegistration(Guid id, Guid teamId, CancellationToken cancellationToken)
+    {
+        var registration = await _tournamentService.GetRegistrationByTeamAsync(id, teamId, cancellationToken);
+        if (registration == null) return NotFound();
+        return Ok(registration);
+    }
+
     [HttpPost]
     [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<TournamentDto>> Create(CreateTournamentRequest request, CancellationToken cancellationToken)

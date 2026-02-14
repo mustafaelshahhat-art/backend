@@ -41,7 +41,10 @@ public class MappingProfile : Profile
             .ForMember(d => d.AllowLateRegistration, o => o.MapFrom(s => s.AllowLateRegistration))
             .ForMember(d => d.LateRegistrationMode, o => o.MapFrom(s => s.LateRegistrationMode))
             .ForMember(d => d.OpeningMatchHomeTeamId, o => o.MapFrom(s => s.OpeningMatchHomeTeamId))
-            .ForMember(d => d.OpeningMatchAwayTeamId, o => o.MapFrom(s => s.OpeningMatchAwayTeamId));
+            .ForMember(d => d.OpeningMatchAwayTeamId, o => o.MapFrom(s => s.OpeningMatchAwayTeamId))
+            .ForMember(d => d.AdminId, o => o.MapFrom(s => s.CreatorUserId))
+            .ForMember(d => d.CreatedAt, o => o.MapFrom(s => s.CreatedAt))
+            .ForMember(d => d.UpdatedAt, o => o.MapFrom(s => s.UpdatedAt));
 
         CreateMap<Team, TeamDto>()
             .ForMember(d => d.CaptainName, o => o.Ignore())

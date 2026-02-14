@@ -77,7 +77,7 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("MatchUpdated", match, ct);
+            await _hubContext.Clients.Group($"match:{match.Id}").SendAsync("MatchUpdated", match, ct);
         }
         catch (Exception ex)
         {
@@ -113,7 +113,7 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("MatchDeleted", matchId, ct);
+            await _hubContext.Clients.Group($"match:{matchId}").SendAsync("MatchDeleted", matchId, ct);
         }
         catch (Exception ex)
         {
@@ -125,7 +125,7 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("TournamentUpdated", tournament, ct);
+            await _hubContext.Clients.Group($"tournament:{tournament.Id}").SendAsync("TournamentUpdated", tournament, ct);
         }
         catch (Exception ex)
         {
@@ -149,7 +149,7 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("TournamentDeleted", tournamentId, ct);
+            await _hubContext.Clients.Group($"tournament:{tournamentId}").SendAsync("TournamentDeleted", tournamentId, ct);
         }
         catch (Exception ex)
         {
@@ -261,7 +261,7 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("RegistrationUpdated", registration, ct);
+            await _hubContext.Clients.Group($"tournament:{registration.TournamentId}").SendAsync("RegistrationUpdated", registration, ct);
         }
         catch (Exception ex)
         {

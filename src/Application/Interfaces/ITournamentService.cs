@@ -10,8 +10,10 @@ namespace Application.Interfaces;
 public interface ITournamentService
 {
 
-    Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? creatorId = null, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default);
     Task<TournamentDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<TournamentDto?> GetActiveByTeamAsync(Guid teamId, CancellationToken ct = default);
+    Task<TeamRegistrationDto?> GetRegistrationByTeamAsync(Guid tournamentId, Guid teamId, CancellationToken ct = default);
     Task<TournamentDto> CreateAsync(CreateTournamentRequest request, Guid? creatorId = null, CancellationToken ct = default);
     Task<TournamentDto> UpdateAsync(Guid id, UpdateTournamentRequest request, Guid userId, string userRole, CancellationToken ct = default);
     Task DeleteAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default);

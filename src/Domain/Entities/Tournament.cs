@@ -7,7 +7,10 @@ namespace Domain.Entities;
 public class Tournament : BaseEntity
 {
     public string Name { get; set; } = string.Empty;
+    public string? NameAr { get; set; }
+    public string? NameEn { get; set; }
     public string Description { get; set; } = string.Empty;
+    public string? ImageUrl { get; set; }
     public Guid? CreatorUserId { get; set; }
     public User? CreatorUser { get; set; }
     // status: "registration_open|active|completed" mapped to logic or Enum?
@@ -26,6 +29,7 @@ public class Tournament : BaseEntity
     public DateTime RegistrationDeadline { get; set; }
     public decimal EntryFee { get; set; }
     public int MaxTeams { get; set; }
+    public int? MinTeams { get; set; }
     public int CurrentTeams { get; set; }
     public string Location { get; set; } = string.Empty;
     public string Rules { get; set; } = string.Empty;

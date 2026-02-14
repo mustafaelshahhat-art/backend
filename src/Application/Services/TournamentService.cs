@@ -29,6 +29,7 @@ public class TournamentService : ITournamentService
     private readonly IRealTimeNotifier _notifier;
     private readonly IRepository<TournamentPlayer> _tournamentPlayerRepository;
     private readonly ITournamentLifecycleService _lifecycleService;
+    private readonly IDistributedLock _distributedLock;
 
     public TournamentService(
         IRepository<Tournament> tournamentRepository,
@@ -40,7 +41,8 @@ public class TournamentService : ITournamentService
         IRepository<Team> teamRepository,
         IRealTimeNotifier notifier,
         IRepository<TournamentPlayer> tournamentPlayerRepository,
-        ITournamentLifecycleService lifecycleService)
+        ITournamentLifecycleService lifecycleService,
+        IDistributedLock distributedLock)
     {
         _tournamentRepository = tournamentRepository;
         _registrationRepository = registrationRepository;
@@ -52,9 +54,10 @@ public class TournamentService : ITournamentService
         _notifier = notifier;
         _tournamentPlayerRepository = tournamentPlayerRepository;
         _lifecycleService = lifecycleService;
+        _distributedLock = distributedLock;
     }
 
-    public async Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
     {
         Expression<Func<Tournament, bool>>? predicate = null;
         if (creatorId.HasValue)
@@ -63,7 +66,7 @@ public class TournamentService : ITournamentService
         }
 
         var (items, totalCount) = await _tournamentRepository.GetPagedAsync(
-            pageNumber, 
+            page, 
             pageSize, 
             predicate, 
             q => q.OrderByDescending(t => t.StartDate),
@@ -126,7 +129,7 @@ public class TournamentService : ITournamentService
             dtos.Add(dto);
         }
 
-        return new Application.Common.Models.PagedResult<TournamentDto>(dtos, totalCount, pageNumber, pageSize);
+        return new Application.Common.Models.PagedResult<TournamentDto>(dtos, totalCount, page, pageSize);
     }
 
 
@@ -178,6 +181,29 @@ public class TournamentService : ITournamentService
     private async Task<TournamentDto?> GetByIdFreshAsync(Guid id, CancellationToken ct = default)
     {
         return await GetByIdAsync(id, ct);
+    }
+
+    public async Task<TournamentDto?> GetActiveByTeamAsync(Guid teamId, CancellationToken ct = default)
+    {
+        var activeRegistration = await _registrationRepository.GetQueryable()
+            .AsNoTracking()
+            .Include(r => r.Tournament)
+            .Where(r => r.TeamId == teamId && 
+                        r.Status == RegistrationStatus.Approved && 
+                        r.Tournament!.Status == TournamentStatus.Active)
+            .Select(r => r.Tournament)
+            .FirstOrDefaultAsync(ct);
+
+        return activeRegistration != null ? _mapper.Map<TournamentDto>(activeRegistration) : null;
+    }
+
+    public async Task<TeamRegistrationDto?> GetRegistrationByTeamAsync(Guid tournamentId, Guid teamId, CancellationToken ct = default)
+    {
+        var registration = await _registrationRepository.GetQueryable()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.TournamentId == tournamentId && r.TeamId == teamId, ct);
+
+        return _mapper.Map<TeamRegistrationDto>(registration);
     }
 
     private bool CheckInterventionRequiredOptimized(Tournament tournament, int totalMatches, int finishedMatches, int totalRegs, int approvedRegs, CancellationToken ct)
@@ -361,7 +387,11 @@ public class TournamentService : ITournamentService
 
     public async Task<TeamRegistrationDto> RegisterTeamAsync(Guid tournamentId, RegisterTeamRequest request, Guid userId, CancellationToken ct = default)
     {
-        // Transaction handled by Pipeline
+        var lockKey = $"tournament_registration_{tournamentId}";
+        if (!await _distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(30), ct))
+        {
+            throw new ConflictException("النظام مشغول حالياً، يرجى المحاولة مرة أخرى.");
+        }
 
         try
         {
@@ -442,8 +472,6 @@ public class TournamentService : ITournamentService
             await _registrationRepository.AddAsync(registration, ct);
             await _tournamentRepository.UpdateAsync(tournament, ct);
 
-            // Commit handled by Pipeline
-
             var registrationDto = _mapper.Map<TeamRegistrationDto>(registration);
 
             // Notify Real-Time
@@ -455,7 +483,6 @@ public class TournamentService : ITournamentService
 
             return registrationDto;
         }
-
         catch (Exception ex) when (ex.GetType().Name == "DbUpdateConcurrencyException")
         {
              throw new ConflictException("حدث خطأ أثناء التسجيل بسبب ضغط الطلبات. يرجى المحاولة مرة أخرى.");
@@ -463,6 +490,10 @@ public class TournamentService : ITournamentService
         catch (Exception ex) when (ex.GetType().Name == "DbUpdateException" && ex.InnerException?.Message.Contains("UQ_TeamRegistration_Tournament_Team") == true)
         {
              throw new ConflictException("الفريق مسجل بالفعل في هذه البطولة.");
+        }
+        finally
+        {
+            await _distributedLock.ReleaseLockAsync(lockKey, ct);
         }
     }
 

@@ -8,7 +8,10 @@ public class TournamentDto
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string? NameAr { get; set; }
+    public string? NameEn { get; set; }
     public Guid? CreatorUserId { get; set; }
+    public string? ImageUrl { get; set; }
     public string Status { get; set; } = string.Empty;
     public TournamentMode? Mode { get; set; }
     public DateTime StartDate { get; set; }
@@ -16,6 +19,7 @@ public class TournamentDto
     public DateTime RegistrationDeadline { get; set; }
     public decimal EntryFee { get; set; }
     public int MaxTeams { get; set; }
+    public int? MinTeams { get; set; }
     public int CurrentTeams { get; set; }
     public string Location { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
@@ -39,6 +43,9 @@ public class TournamentDto
     public Guid? OpeningMatchHomeTeamId { get; set; }
     public Guid? OpeningMatchAwayTeamId { get; set; }
     public Guid? OpeningMatchId { get; set; }
+    public Guid? AdminId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
 }
 
 public class CreateTournamentRequest
