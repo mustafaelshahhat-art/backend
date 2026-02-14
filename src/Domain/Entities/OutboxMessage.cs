@@ -12,6 +12,7 @@ public class OutboxMessage : BaseEntity
     public DateTime? ScheduledAt { get; set; }
     public int RetryCount { get; set; }
     public string? Error { get; set; }
+    public string? DeadLetterReason { get; set; }
     public OutboxMessageStatus Status { get; set; } = OutboxMessageStatus.Pending;
 }
 

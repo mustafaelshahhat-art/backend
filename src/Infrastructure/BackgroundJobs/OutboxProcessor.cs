@@ -116,6 +116,7 @@ public class OutboxProcessor : BackgroundService
                     if (message.RetryCount >= MaxRetries)
                     {
                         message.Status = OutboxMessageStatus.DeadLetter;
+                        message.DeadLetterReason = ex.Message;
                     }
                     else
                     {
@@ -130,6 +131,15 @@ public class OutboxProcessor : BackgroundService
             }
 
             await dbContext.SaveChangesAsync(stoppingToken);
+
+            // PROD-AUDIT: Alerting for high DeadLetter count
+            var deadLetterCount = await dbContext.OutboxMessages
+                .CountAsync(m => m.Status == OutboxMessageStatus.DeadLetter, stoppingToken);
+            
+            if (deadLetterCount > 50)
+            {
+                _logger.LogCritical("[OUTBOX_ALERT] High number of DeadLetter messages detected: {Count}. Manual intervention required.", deadLetterCount);
+            }
         }
         finally
         {

@@ -68,6 +68,7 @@ public static class DependencyInjection
             new Services.ResilientEmailService(
                 sp.GetRequiredService<Services.EmailService>(), 
                 sp.GetRequiredService<ILogger<Services.ResilientEmailService>>()));
+        services.AddScoped<IOutboxAdminService, Services.OutboxAdminService>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorization.TeamCaptainHandler>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorization.TournamentOwnerHandler>();
 
