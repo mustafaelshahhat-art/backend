@@ -13,10 +13,12 @@ namespace Api.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
+    private readonly MediatR.IMediator _mediator;
 
-    public UsersController(IUserService userService)
+    public UsersController(IUserService userService, MediatR.IMediator mediator)
     {
         _userService = userService;
+        _mediator = mediator;
     }
 
     [HttpGet]
@@ -184,42 +186,10 @@ public class UsersController : ControllerBase
             return Unauthorized();
         }
 
-        if (string.IsNullOrWhiteSpace(request.Base64Image))
-        {
-            return BadRequest("Image data is required");
-        }
-
-        // Validate base64 image
-        var base64Data = request.Base64Image;
-        if (base64Data.StartsWith("data:image"))
-        {
-            base64Data = base64Data.Substring(base64Data.IndexOf(",") + 1);
-        }
-
-        try
-        {
-            var imageBytes = Convert.FromBase64String(base64Data);
-            
-            // Validate file size (max 2MB)
-            if (imageBytes.Length > 2 * 1024 * 1024)
-            {
-                return BadRequest("File size must be less than 2MB");
-            }
-        }
-        catch
-        {
-            return BadRequest("Invalid image data");
-        }
-
-        try
-        {
-            var avatarUrl = await _userService.UploadAvatarAsync(id, request, cancellationToken);
-            return Ok(new { avatarUrl });
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
+        var command = new Application.Features.Users.Commands.UploadAvatar.UploadAvatarCommand(id, request.Base64Image, request.FileName);
+        var avatarUrl = await _mediator.Send(command, cancellationToken);
+        
+        return Ok(new { avatarUrl });
     }
 
     private (Guid userId, string userRole) GetUserContext()
