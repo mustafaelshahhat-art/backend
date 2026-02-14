@@ -22,9 +22,10 @@ public class MatchesController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<MatchDto>>> GetAll(CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<MatchDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
-        var matches = await _matchService.GetAllAsync(cancellationToken);
+        if (pageSize > 100) pageSize = 100;
+        var matches = await _matchService.GetPagedAsync(page, pageSize, cancellationToken);
         return Ok(matches);
     }
 

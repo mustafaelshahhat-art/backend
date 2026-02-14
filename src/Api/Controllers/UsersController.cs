@@ -23,26 +23,28 @@ public class UsersController : ControllerBase
 
     [HttpGet]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<ActionResult<IEnumerable<UserDto>>> GetAll(CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<UserDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
-        var users = await _userService.GetAllAsync(cancellationToken);
+        if (pageSize > 100) pageSize = 100;
+        var users = await _userService.GetPagedAsync(page, pageSize, null, cancellationToken);
         return Ok(users);
     }
 
     [HttpGet("role/{role}")]
     [Authorize]
-    public async Task<ActionResult> GetByRole(string role, CancellationToken cancellationToken)
+    public async Task<ActionResult> GetByRole(string role, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
+        if (pageSize > 100) pageSize = 100;
         var (userId, userRole) = GetUserContext();
         
         if (userRole == UserRole.Admin.ToString())
         {
-            var users = await _userService.GetByRoleAsync(role, cancellationToken);
+            var users = await _userService.GetPagedAsync(page, pageSize, role, cancellationToken);
             return Ok(users);
         }
         
         // Non-admins get public/restricted view
-        var publicUsers = await _userService.GetPublicByRoleAsync(role, cancellationToken);
+        var publicUsers = await _userService.GetPublicPagedAsync(page, pageSize, role, cancellationToken);
         return Ok(publicUsers);
     }
 

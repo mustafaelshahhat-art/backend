@@ -67,40 +67,7 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
         return await query.FirstOrDefaultAsync(e => e.Id == id, ct);
     }
 
-    public async Task<IEnumerable<T>> GetAllAsync(CancellationToken ct = default)
-    {
-        return await _dbSet.ToListAsync(ct);
-    }
 
-    public async Task<IEnumerable<T>> GetAllAsync(Expression<Func<T, object>>[] includes, CancellationToken ct = default)
-    {
-        IQueryable<T> query = _dbSet;
-        foreach (var include in includes)
-        {
-            query = query.Include(include);
-        }
-        return await query.ToListAsync(ct);
-    }
-
-    public async Task<IEnumerable<T>> GetAllAsync(string[] includePaths, CancellationToken ct = default)
-    {
-        IQueryable<T> query = _dbSet;
-        foreach (var path in includePaths)
-        {
-            query = query.Include(path);
-        }
-        return await query.ToListAsync(ct);
-    }
-
-    public async Task<IEnumerable<T>> GetAllNoTrackingAsync(string[] includePaths, CancellationToken ct = default)
-    {
-        IQueryable<T> query = _dbSet.AsNoTracking();
-        foreach (var path in includePaths)
-        {
-            query = query.Include(path);
-        }
-        return await query.ToListAsync(ct);
-    }
 
     public async Task<bool> AnyAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default)
     {

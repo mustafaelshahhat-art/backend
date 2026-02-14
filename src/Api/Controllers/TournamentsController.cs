@@ -25,8 +25,9 @@ public class TournamentsController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<TournamentDto>>> GetAll(CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<TournamentDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
+        if (pageSize > 100) pageSize = 100;
         Guid? creatorId = null;
         var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
         
@@ -38,9 +39,9 @@ public class TournamentsController : ControllerBase
                 creatorId = Guid.Parse(userIdStr);
             }
         }
-
-        var tournaments = await _tournamentService.GetAllAsync(creatorId, cancellationToken);
-        return Ok(tournaments);
+ 
+        var result = await _tournamentService.GetPagedAsync(page, pageSize, creatorId, cancellationToken);
+        return Ok(result);
     }
 
     [HttpGet("paged")]

@@ -45,10 +45,12 @@ public class MatchService : IMatchService
         _lifecycleService = lifecycleService;
     }
 
-    public async Task<IEnumerable<MatchDto>> GetAllAsync(CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<MatchDto>> GetPagedAsync(int pageNumber, int pageSize, CancellationToken ct = default)
     {
-        var matches = await _matchRepository.GetAllAsync(new[] { "HomeTeam", "AwayTeam", "Events.Player" }, ct);
-        return _mapper.Map<IEnumerable<MatchDto>>(matches);
+        var result = await _matchRepository.GetPagedAsync(pageNumber, pageSize, null, q => q.OrderByDescending(m => m.Date), ct, m => m.HomeTeam!, m => m.AwayTeam!);
+        
+        var dtos = _mapper.Map<List<MatchDto>>(result.Items);
+        return new Application.Common.Models.PagedResult<MatchDto>(dtos, result.TotalCount, pageNumber, pageSize);
     }
 
     public async Task<MatchDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -438,18 +440,9 @@ public class MatchService : IMatchService
         return matchDto;
     }
 
-    public async Task<IEnumerable<MatchDto>> GenerateMatchesForTournamentAsync(Guid tournamentId, CancellationToken ct = default)
+    public Task<IEnumerable<MatchDto>> GenerateMatchesForTournamentAsync(Guid tournamentId, CancellationToken ct = default)
     {
-        // Check if matches already exist for this tournament
-        var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, ct);
-        if (existingMatches.Any())
-        {
-            throw new ConflictException("المباريات موجودة بالفعل لهذه البطولة.");
-        }
-
-        var allTeams = await _teamRepository.GetAllAsync(ct);
-        
-        throw new NotImplementedException("This method requires tournament registration data. Use GenerateMatchesAsync with team IDs.");
+        throw new NotImplementedException("Use GenerateMatchesAsync with team IDs instead.");
     }
 
     public async Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId, List<Guid> teamIds, CancellationToken ct = default)

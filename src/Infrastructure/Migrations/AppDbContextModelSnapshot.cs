@@ -178,6 +178,12 @@ namespace Infrastructure.Migrations
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Matches_Status");
 
+                    b.HasIndex("TournamentId", "GroupId")
+                        .HasDatabaseName("IX_Matches_Tournament_Group");
+
+                    b.HasIndex("TournamentId", "RoundNumber")
+                        .HasDatabaseName("IX_Matches_Tournament_Round");
+
                     b.HasIndex("TournamentId", "Status")
                         .HasDatabaseName("IX_Matches_Tournament_Status");
 
@@ -222,7 +228,8 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MatchId");
+                    b.HasIndex("MatchId")
+                        .HasDatabaseName("IX_MatchEvents_MatchId");
 
                     b.HasIndex("PlayerId");
 
@@ -270,7 +277,8 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MatchId");
+                    b.HasIndex("MatchId")
+                        .HasDatabaseName("IX_MatchMessages_MatchId");
 
                     b.ToTable("MatchMessages");
                 });
@@ -313,7 +321,8 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "IsRead")
+                        .HasDatabaseName("IX_Notifications_User_Read");
 
                     b.ToTable("Notifications");
                 });
@@ -446,7 +455,7 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Position")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("RedCards")
                         .HasColumnType("int");
@@ -459,7 +468,7 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<Guid>("TeamId")
                         .HasColumnType("uniqueidentifier");
@@ -477,6 +486,12 @@ namespace Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Position")
+                        .HasDatabaseName("IX_Players_Position");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_Players_Status");
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("IX_Players_User");
@@ -528,7 +543,7 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("City")
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -561,6 +576,12 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("City")
+                        .HasDatabaseName("IX_Teams_City");
+
+                    b.HasIndex("IsActive")
+                        .HasDatabaseName("IX_Teams_IsActive");
+
                     b.ToTable("Teams");
                 });
 
@@ -584,7 +605,7 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<Guid>("TeamId")
                         .HasColumnType("uniqueidentifier");
@@ -597,9 +618,11 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TeamId");
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_TeamJoinRequests_UserId");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("TeamId", "Status")
+                        .HasDatabaseName("IX_TeamJoinRequests_Team_Status");
 
                     b.ToTable("TeamJoinRequests");
                 });
@@ -769,6 +792,9 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_Tournaments_Status");
 
                     b.HasIndex("WinnerTeamId");
 

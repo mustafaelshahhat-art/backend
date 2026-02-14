@@ -129,71 +129,7 @@ public class TournamentService : ITournamentService
         return new Application.Common.Models.PagedResult<TournamentDto>(dtos, totalCount, pageNumber, pageSize);
     }
 
-    public async Task<IEnumerable<TournamentDto>> GetAllAsync(Guid? creatorId = null, CancellationToken ct = default)
-    {
-        if (!creatorId.HasValue)
-        {
-             return (await GetPagedAsync(1, 100, null)).Items; 
-        }
 
-        var tournaments = await _tournamentRepository.GetNoTrackingAsync(
-            t => t.CreatorUserId == creatorId.Value,
-            new[] { "Registrations", "WinnerTeam" }
-        , ct);
-
-        var tournamentList = tournaments.ToList();
-        var ids = tournamentList.Select(t => t.Id).Distinct().ToList();
-        
-        var matchStats = _matchRepository.GetQueryable()
-            .Where(m => ids.Contains(m.TournamentId))
-            .GroupBy(m => m.TournamentId)
-            .Select(g => new 
-            { 
-                TournamentId = g.Key, 
-                TotalMatches = g.Count(),
-                FinishedMatches = g.Count(m => m.Status == MatchStatus.Finished)
-            })
-            .ToList();
-
-        var regStats = _registrationRepository.GetQueryable()
-            .Where(r => ids.Contains(r.TournamentId) && r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn)
-            .GroupBy(r => r.TournamentId)
-            .Select(g => new 
-            { 
-                TournamentId = g.Key, 
-                TotalRegistrations = g.Count(), 
-                ApprovedRegistrations = g.Count(r => r.Status == RegistrationStatus.Approved) 
-            })
-            .ToList();
-
-        var dtos = new List<TournamentDto>();
-        foreach (var t in tournamentList)
-        {
-            var mStat = matchStats.FirstOrDefault(s => s.TournamentId == t.Id);
-            var rStat = regStats.FirstOrDefault(s => s.TournamentId == t.Id);
-
-            var dto = _mapper.Map<TournamentDto>(t);
-            dto.RequiresAdminIntervention = CheckInterventionRequiredOptimized(t, 
-                mStat?.TotalMatches ?? 0, 
-                mStat?.FinishedMatches ?? 0, 
-                rStat?.TotalRegistrations ?? 0, 
-                rStat?.ApprovedRegistrations ?? 0, ct);
-            
-            // PROD-AUDIT: Manual mapping for ignored properties
-            foreach (var regDto in dto.Registrations)
-            {
-                var sourceReg = t.Registrations.FirstOrDefault(r => r.Id == regDto.Id);
-                if (sourceReg?.Team != null)
-                {
-                    regDto.CaptainName = sourceReg.Team.Players?
-                        .FirstOrDefault(p => p.TeamRole == TeamRole.Captain)?.Name ?? string.Empty;
-                }
-            }
-            
-            dtos.Add(dto);
-        }
-        return dtos;
-    }
 
     public async Task<TournamentDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {

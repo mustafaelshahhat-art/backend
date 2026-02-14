@@ -284,6 +284,54 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<OutboxMessage>()
             .HasIndex(m => new { m.Status, m.ScheduledAt })
             .HasDatabaseName("IX_OutboxMessages_Status_ScheduledAt");
+
+        // SCALE PROTECTION INDEXES
+        modelBuilder.Entity<Team>()
+            .HasIndex(t => t.IsActive)
+            .HasDatabaseName("IX_Teams_IsActive");
+
+        modelBuilder.Entity<Team>()
+            .HasIndex(t => t.City)
+            .HasDatabaseName("IX_Teams_City");
+
+        modelBuilder.Entity<Player>()
+            .HasIndex(p => p.Status)
+            .HasDatabaseName("IX_Players_Status");
+
+        modelBuilder.Entity<Player>()
+            .HasIndex(p => p.Position)
+            .HasDatabaseName("IX_Players_Position");
+
+        modelBuilder.Entity<Notification>()
+            .HasIndex(n => new { n.UserId, n.IsRead })
+            .HasDatabaseName("IX_Notifications_User_Read");
+
+        modelBuilder.Entity<Tournament>()
+            .HasIndex(t => t.Status)
+            .HasDatabaseName("IX_Tournaments_Status");
+
+        modelBuilder.Entity<Match>()
+            .HasIndex(m => new { m.TournamentId, m.GroupId })
+            .HasDatabaseName("IX_Matches_Tournament_Group");
+
+        modelBuilder.Entity<Match>()
+            .HasIndex(m => new { m.TournamentId, m.RoundNumber })
+            .HasDatabaseName("IX_Matches_Tournament_Round");
+        modelBuilder.Entity<MatchEvent>()
+            .HasIndex(me => me.MatchId)
+            .HasDatabaseName("IX_MatchEvents_MatchId");
+
+        modelBuilder.Entity<MatchMessage>()
+            .HasIndex(mm => mm.MatchId)
+            .HasDatabaseName("IX_MatchMessages_MatchId");
+
+        modelBuilder.Entity<TeamJoinRequest>()
+            .HasIndex(r => new { r.TeamId, r.Status })
+            .HasDatabaseName("IX_TeamJoinRequests_Team_Status");
+
+        modelBuilder.Entity<TeamJoinRequest>()
+            .HasIndex(r => r.UserId)
+            .HasDatabaseName("IX_TeamJoinRequests_UserId");
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

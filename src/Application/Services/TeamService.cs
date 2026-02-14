@@ -61,25 +61,22 @@ public class TeamService : ITeamService
         _systemSettingsService = systemSettingsService;
     }
 
-    public async Task<IEnumerable<TeamDto>> GetAllAsync(Guid? captainId = null, Guid? playerId = null, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<TeamDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? captainId = null, Guid? playerId = null, CancellationToken ct = default)
     {
-        IEnumerable<Team> teams;
-        var includes = new[] { "Players" };
+        System.Linq.Expressions.Expression<Func<Team, bool>>? predicate = null;
+        var includes = new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players };
 
         if (captainId.HasValue)
         {
-            teams = await _teamRepository.GetNoTrackingAsync(t => t.Players.Any(p => p.TeamRole == TeamRole.Captain && p.UserId == captainId.Value), includes);
+            predicate = t => t.Players.Any(p => p.TeamRole == TeamRole.Captain && p.UserId == captainId.Value);
         }
         else if (playerId.HasValue)
         {
-            teams = await _teamRepository.GetNoTrackingAsync(t => t.Players.Any(p => p.UserId == playerId.Value), includes);
-        }
-        else
-        {
-            teams = await _teamRepository.GetAllNoTrackingAsync(includes, ct);
+            predicate = t => t.Players.Any(p => p.UserId == playerId.Value);
         }
 
-        var teamDtos = _mapper.Map<IEnumerable<TeamDto>>(teams).ToList();
+        var result = await _teamRepository.GetPagedAsync(pageNumber, pageSize, predicate, q => q.OrderBy(t => t.Name), ct, includes);
+        var teamDtos = _mapper.Map<List<TeamDto>>(result.Items);
         
         // OPTIMIZED STATS CALCULATION: Fetch lightweight DTOs instead of full entities once
         var finishedMatches = (await _matchRepository.GetFinishedMatchOutcomesAsync(ct)).ToList();
@@ -92,7 +89,7 @@ public class TeamService : ITeamService
              }
         }
 
-        return teamDtos;
+        return new Application.Common.Models.PagedResult<TeamDto>(teamDtos, result.TotalCount, pageNumber, pageSize);
     }
 
     private TeamStatsDto CalculateStatsFromMatches(Guid teamId, IEnumerable<MatchOutcomeDto> finishedMatches)

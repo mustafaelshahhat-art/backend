@@ -21,10 +21,11 @@ public class TeamsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<TeamDto>>> GetAll([FromQuery] Guid? captainId, [FromQuery] Guid? playerId, CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<TeamDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] Guid? captainId = null, [FromQuery] Guid? playerId = null, CancellationToken cancellationToken = default)
     {
-        var teams = await _teamService.GetAllAsync(captainId, playerId, cancellationToken);
-        return Ok(teams);
+        if (pageSize > 100) pageSize = 100;
+        var result = await _teamService.GetPagedAsync(page, pageSize, captainId, playerId, cancellationToken);
+        return Ok(result);
     }
 
     [HttpGet("{id}")]

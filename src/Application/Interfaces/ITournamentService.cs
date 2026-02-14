@@ -9,7 +9,7 @@ namespace Application.Interfaces;
 
 public interface ITournamentService
 {
-    Task<IEnumerable<TournamentDto>> GetAllAsync(Guid? creatorId = null, CancellationToken ct = default);
+
     Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? creatorId = null, CancellationToken ct = default);
     Task<TournamentDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<TournamentDto> CreateAsync(CreateTournamentRequest request, Guid? creatorId = null, CancellationToken ct = default);

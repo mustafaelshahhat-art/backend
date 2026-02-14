@@ -9,15 +9,14 @@ namespace Application.Interfaces;
 
 public interface IUserService
 {
-    Task<IEnumerable<UserDto>> GetAllAsync(CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<UserDto>> GetPagedAsync(int pageNumber, int pageSize, string? role = null, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<UserPublicDto>> GetPublicPagedAsync(int pageNumber, int pageSize, string? role = null, CancellationToken ct = default);
     Task<UserDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<UserPublicDto?> GetPublicByIdAsync(Guid id, CancellationToken ct = default);
     Task<UserDto> UpdateAsync(Guid id, UpdateUserRequest request, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
     Task SuspendAsync(Guid id, CancellationToken ct = default);
     Task ActivateAsync(Guid id, CancellationToken ct = default);
-    Task<IEnumerable<UserDto>> GetByRoleAsync(string role, CancellationToken ct = default);
-    Task<IEnumerable<UserPublicDto>> GetPublicByRoleAsync(string role, CancellationToken ct = default);
     
     /// <summary>
     /// Creates a new admin user. Only callable by existing admins.

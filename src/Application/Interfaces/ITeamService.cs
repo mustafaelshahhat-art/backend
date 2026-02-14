@@ -8,7 +8,7 @@ namespace Application.Interfaces;
 
 public interface ITeamService
 {
-    Task<IEnumerable<TeamDto>> GetAllAsync(Guid? captainId = null, Guid? playerId = null, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<TeamDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? captainId = null, Guid? playerId = null, CancellationToken ct = default);
     Task<TeamDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<TeamDto> CreateAsync(CreateTeamRequest request, Guid captainId, CancellationToken ct = default);
     Task<TeamDto> UpdateAsync(Guid id, UpdateTeamRequest request, Guid userId, string userRole, CancellationToken ct = default);

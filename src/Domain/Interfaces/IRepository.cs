@@ -14,10 +14,7 @@ public interface IRepository<T> where T : BaseEntity
     Task<T?> GetByIdAsync(Guid id, string[] includePaths, CancellationToken ct = default);
     Task<T?> GetByIdNoTrackingAsync(Guid id, string[] includePaths, CancellationToken ct = default);
     Task<T?> GetByIdNoTrackingAsync(Guid id, Expression<Func<T, object>>[] includes, CancellationToken ct = default);
-    Task<IEnumerable<T>> GetAllAsync(CancellationToken ct = default);
-    Task<IEnumerable<T>> GetAllAsync(Expression<Func<T, object>>[] includes, CancellationToken ct = default);
-    Task<IEnumerable<T>> GetAllAsync(string[] includePaths, CancellationToken ct = default);
-    Task<IEnumerable<T>> GetAllNoTrackingAsync(string[] includePaths, CancellationToken ct = default);
+
     Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default);
     Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate, bool ignoreFilters, CancellationToken ct = default);
     Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate, string[] includePaths, CancellationToken ct = default);

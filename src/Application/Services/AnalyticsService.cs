@@ -125,18 +125,16 @@ public class AnalyticsService : IAnalyticsService
         
         if (creatorId.HasValue)
         {
-            activities = await _activityRepository.GetNoTrackingAsync(a => a.UserId == creatorId.Value, ct);
+            var result = await _activityRepository.GetPagedAsync(1, 20, a => a.UserId == creatorId.Value, q => q.OrderByDescending(a => a.CreatedAt), ct);
+            activities = result.Items;
         }
         else
         {
-            // Limit to top 100 to avoid performance hit on large logs
-            var allActivities = await _activityRepository.GetAllNoTrackingAsync(Array.Empty<string>(), ct);
-            activities = allActivities.OrderByDescending(a => a.CreatedAt).Take(100);
+            var result = await _activityRepository.GetPagedAsync(1, 20, null, q => q.OrderByDescending(a => a.CreatedAt), ct);
+            activities = result.Items;
         }
         
-        var sorted = activities.OrderByDescending(a => a.CreatedAt).Take(20);
-        
-        return sorted.Select(a => 
+        return activities.Select(a => 
         {
             var localized = Common.ActivityConstants.GetLocalized(a.Type, null);
             return new ActivityDto

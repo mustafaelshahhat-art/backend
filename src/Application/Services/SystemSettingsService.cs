@@ -88,9 +88,8 @@ public class SystemSettingsService : ISystemSettingsService
     /// </summary>
     private async Task<SystemSetting> GetOrCreateSettingsAsync(CancellationToken ct = default)
     {
-        var allSettings = (await _settingsRepository.GetAllAsync(ct))
-            .OrderBy(s => s.CreatedAt)
-            .ToList();
+        var result = await _settingsRepository.GetPagedAsync(1, 10, null, q => q.OrderBy(s => s.CreatedAt), ct);
+        var allSettings = result.Items.ToList();
             
         // DATA INTEGRITY: If somehow multiple rows were created, keep only the first one
         if (allSettings.Count > 1)

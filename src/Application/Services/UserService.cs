@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Application.DTOs.Users;
@@ -48,10 +49,21 @@ public class UserService : IUserService
         _systemSettingsService = systemSettingsService;
     }
 
-    public async Task<IEnumerable<UserDto>> GetAllAsync(CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<UserDto>> GetPagedAsync(int pageNumber, int pageSize, string? role = null, CancellationToken ct = default)
     {
-        var users = await _userRepository.FindAsync(u => u.IsEmailVerified, ct);
-        return _mapper.Map<IEnumerable<UserDto>>(users);
+        Expression<Func<User, bool>>? predicate = null;
+        if (!string.IsNullOrEmpty(role) && Enum.TryParse<UserRole>(role, true, out var userRole))
+        {
+            predicate = u => u.Role == userRole && u.IsEmailVerified;
+        }
+        else
+        {
+            predicate = u => u.IsEmailVerified;
+        }
+
+        var result = await _userRepository.GetPagedAsync(pageNumber, pageSize, predicate, q => q.OrderBy(u => u.Name), ct);
+        var dtos = _mapper.Map<List<UserDto>>(result.Items);
+        return new Application.Common.Models.PagedResult<UserDto>(dtos, result.TotalCount, pageNumber, pageSize);
     }
 
     public async Task<UserDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -237,25 +249,22 @@ public class UserService : IUserService
         await _notificationService.SendNotificationByTemplateAsync(userId, NotificationTemplates.PASSWORD_CHANGED, new Dictionary<string, string>(), "all", ct);
     }
 
-    public async Task<IEnumerable<UserDto>> GetByRoleAsync(string role, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<UserPublicDto>> GetPublicPagedAsync(int pageNumber, int pageSize, string? role = null, CancellationToken ct = default)
     {
-        if (Enum.TryParse<UserRole>(role, true, out var userRole))
+        Expression<Func<User, bool>>? predicate = null;
+        if (!string.IsNullOrEmpty(role) && Enum.TryParse<UserRole>(role, true, out var userRole))
         {
-            var users = await _userRepository.FindAsync(u => u.Role == userRole && u.IsEmailVerified, ct);
-            return _mapper.Map<IEnumerable<UserDto>>(users);
+            if (userRole == UserRole.Admin) return new Application.Common.Models.PagedResult<UserPublicDto>(new List<UserPublicDto>(), 0, pageNumber, pageSize);
+            predicate = u => u.Role == userRole && u.IsEmailVerified;
         }
-        return new List<UserDto>();
-    }
+        else
+        {
+            predicate = u => u.Role != UserRole.Admin && u.IsEmailVerified;
+        }
 
-    public async Task<IEnumerable<UserPublicDto>> GetPublicByRoleAsync(string role, CancellationToken ct = default)
-    {
-        if (Enum.TryParse<UserRole>(role, true, out var userRole))
-        {
-            if (userRole == UserRole.Admin) return new List<UserPublicDto>();
-            var users = await _userRepository.FindAsync(u => u.Role == userRole && u.IsEmailVerified, ct);
-            return _mapper.Map<IEnumerable<UserPublicDto>>(users);
-        }
-        return new List<UserPublicDto>();
+        var result = await _userRepository.GetPagedAsync(pageNumber, pageSize, predicate, q => q.OrderBy(u => u.Name), ct);
+        var dtos = _mapper.Map<List<UserPublicDto>>(result.Items);
+        return new Application.Common.Models.PagedResult<UserPublicDto>(dtos, result.TotalCount, pageNumber, pageSize);
     }
 
     public async Task<UserPublicDto?> GetPublicByIdAsync(Guid id, CancellationToken ct = default)

@@ -36,17 +36,44 @@ public class ActivityLogMigrationService
     {
         _logger.LogInformation("Starting Activity Log Migration...");
 
-        var activities = (await _activityRepository.GetAllAsync(ct)).ToList();
-        bool anyUpdated = false;
-
-        // Cache lookups for performance (assuming reasonable dataset size)
-        var teams = (await _teamRepository.GetAllAsync(ct)).ToDictionary(t => t.Id, t => t.Name);
-        var tournaments = (await _tournamentRepository.GetAllAsync(ct)).ToDictionary(t => t.Id, t => t.Name);
-        var matchesInfo = (await _matchRepository.GetAllAsync(new[] { "HomeTeam", "AwayTeam" }, ct))
-            .ToDictionary(m => m.Id, m => $"{m.HomeTeam?.Name ?? "فريق"} vs {m.AwayTeam?.Name ?? "فريق"}");
-
-        foreach (var activity in activities)
+        // Fetch lookups using pagination (assuming reasonable dataset size for migration context)
+        var teams = new Dictionary<Guid, string>();
+        int teamPage = 1;
+        while (true)
         {
+            var pagedTeams = await _teamRepository.GetPagedAsync(teamPage++, 100, ct: ct);
+            foreach (var t in pagedTeams.Items) teams[t.Id] = t.Name;
+            if (pagedTeams.Items.Count() < 100) break;
+        }
+
+        var tournaments = new Dictionary<Guid, string>();
+        int tournamentPage = 1;
+        while (true)
+        {
+            var pagedTournaments = await _tournamentRepository.GetPagedAsync(tournamentPage++, 100, ct: ct);
+            foreach (var t in pagedTournaments.Items) tournaments[t.Id] = t.Name;
+            if (pagedTournaments.Items.Count() < 100) break;
+        }
+
+        var matchesInfo = new Dictionary<Guid, string>();
+        int matchPage = 1;
+        while (true)
+        {
+            var pagedMatches = await _matchRepository.GetPagedAsync(matchPage++, 100, ct: ct, includes: new System.Linq.Expressions.Expression<Func<Match, object>>[] { m => m.HomeTeam!, m => m.AwayTeam! });
+            foreach (var m in pagedMatches.Items) matchesInfo[m.Id] = $"{m.HomeTeam?.Name ?? "فريق"} vs {m.AwayTeam?.Name ?? "فريق"}";
+            if (pagedMatches.Items.Count() < 100) break;
+        }
+
+        bool anyUpdated = false;
+        int activityPage = 1;
+        while (true)
+        {
+            var pagedActivities = await _activityRepository.GetPagedAsync(activityPage++, 100, ct: ct);
+            var activities = pagedActivities.Items.ToList();
+            if (!activities.Any()) break;
+
+            foreach (var activity in activities)
+            {
             bool updated = false;
 
             // 1. Actor Normalization
@@ -210,6 +237,8 @@ public class ActivityLogMigrationService
                 anyUpdated = true;
             }
         }
+        if (activities.Count < 100) break;
+    }
 
         if (anyUpdated)
         {

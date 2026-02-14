@@ -9,11 +9,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace Infrastructure.Data.Migrations
+namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260214003202_FinalAlignment")]
-    partial class FinalAlignment
+    [Migration("20260214130721_AddScaleProtectionIndexes")]
+    partial class AddScaleProtectionIndexes
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -66,6 +66,54 @@ namespace Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_Activities_User_Date");
 
                     b.ToTable("Activities");
+                });
+
+            modelBuilder.Entity("Domain.Entities.IdempotentRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ResponseBody")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Route")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StatusCode")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key", "Route")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_IdempotentRequests_Key_Route");
+
+                    b.ToTable("IdempotentRequests");
                 });
 
             modelBuilder.Entity("Domain.Entities.Match", b =>
@@ -133,6 +181,12 @@ namespace Infrastructure.Data.Migrations
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Matches_Status");
 
+                    b.HasIndex("TournamentId", "GroupId")
+                        .HasDatabaseName("IX_Matches_Tournament_Group");
+
+                    b.HasIndex("TournamentId", "RoundNumber")
+                        .HasDatabaseName("IX_Matches_Tournament_Round");
+
                     b.HasIndex("TournamentId", "Status")
                         .HasDatabaseName("IX_Matches_Tournament_Status");
 
@@ -177,7 +231,8 @@ namespace Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MatchId");
+                    b.HasIndex("MatchId")
+                        .HasDatabaseName("IX_MatchEvents_MatchId");
 
                     b.HasIndex("PlayerId");
 
@@ -225,7 +280,8 @@ namespace Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MatchId");
+                    b.HasIndex("MatchId")
+                        .HasDatabaseName("IX_MatchMessages_MatchId");
 
                     b.ToTable("MatchMessages");
                 });
@@ -268,7 +324,8 @@ namespace Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "IsRead")
+                        .HasDatabaseName("IX_Notifications_User_Read");
 
                     b.ToTable("Notifications");
                 });
@@ -324,30 +381,33 @@ namespace Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Error")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("ErrorCount")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("OccurredOn")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime?>("ProcessedOn")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("RetryCount")
+                        .HasColumnType("int");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
+
+                    b.Property<DateTime?>("ScheduledAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -360,6 +420,9 @@ namespace Infrastructure.Data.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Status", "ScheduledAt")
+                        .HasDatabaseName("IX_OutboxMessages_Status_ScheduledAt");
 
                     b.ToTable("OutboxMessages");
                 });
@@ -395,7 +458,7 @@ namespace Infrastructure.Data.Migrations
 
                     b.Property<string>("Position")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("RedCards")
                         .HasColumnType("int");
@@ -408,7 +471,7 @@ namespace Infrastructure.Data.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<Guid>("TeamId")
                         .HasColumnType("uniqueidentifier");
@@ -426,6 +489,12 @@ namespace Infrastructure.Data.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Position")
+                        .HasDatabaseName("IX_Players_Position");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_Players_Status");
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("IX_Players_User");
@@ -477,7 +546,7 @@ namespace Infrastructure.Data.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("City")
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -510,6 +579,12 @@ namespace Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("City")
+                        .HasDatabaseName("IX_Teams_City");
+
+                    b.HasIndex("IsActive")
+                        .HasDatabaseName("IX_Teams_IsActive");
+
                     b.ToTable("Teams");
                 });
 
@@ -533,7 +608,7 @@ namespace Infrastructure.Data.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<Guid>("TeamId")
                         .HasColumnType("uniqueidentifier");
@@ -546,9 +621,11 @@ namespace Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TeamId");
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_TeamJoinRequests_UserId");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("TeamId", "Status")
+                        .HasDatabaseName("IX_TeamJoinRequests_Team_Status");
 
                     b.ToTable("TeamJoinRequests");
                 });
@@ -718,6 +795,9 @@ namespace Infrastructure.Data.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_Tournaments_Status");
 
                     b.HasIndex("WinnerTeamId");
 
