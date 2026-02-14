@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Application.DTOs.Auth;
 using Application.Interfaces;
@@ -62,7 +63,7 @@ public class AuthService : IAuthService
         _playerRepository = playerRepository;
     }
 
-    public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
+    public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Email))
         {
@@ -77,7 +78,7 @@ public class AuthService : IAuthService
             throw new BadRequestException("Name is required.");
         }
 
-        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email, true);
+        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email, true, ct);
         if (existingUser != null && existingUser.Any())
         {
             throw new ConflictException("Email already exists.");
@@ -109,27 +110,28 @@ public class AuthService : IAuthService
              // Logic for specific display ID can be better
         }
 
-        await _userRepository.AddAsync(user);
+        await _userRepository.AddAsync(user, ct);
 
         var token = _jwtTokenGenerator.GenerateToken(user);
         var refreshToken = _jwtTokenGenerator.GenerateRefreshToken();
 
         user.RefreshToken = refreshToken;
         user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
-        await _userRepository.UpdateAsync(user);
+        await _userRepository.UpdateAsync(user, ct);
         await _analyticsService.LogActivityByTemplateAsync(
             ActivityConstants.USER_REGISTERED, 
             new Dictionary<string, string> { { "userName", user.Name } }, 
             user.Id, 
-            user.Name
+            user.Name,
+            ct
         );
 
-        var mappedUser = await MapUserWithTeamInfoAsync(user);
+        var mappedUser = await MapUserWithTeamInfoAsync(user, ct);
 
         // DELAYED: Notification moved to VerifyEmailAsync after actual confirmation
 
         // OTP generation is fast (DB), keep it sync to ensure it exists
-        var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY");
+        var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY", ct);
         
         // FIRE-AND-FORGET Email: Move to background to make registration instant
         _ = Task.Run(async () => 
@@ -159,7 +161,7 @@ public class AuthService : IAuthService
         { 
             { "name", user.Name },
             { "role", user.Role.ToString() }
-        });
+        }, "system", ct);
 
         return new AuthResponse
         {
@@ -169,7 +171,7 @@ public class AuthService : IAuthService
         };
     }
 
-    public async Task<AuthResponse> LoginAsync(LoginRequest request)
+    public async Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Email))
         {
@@ -177,7 +179,7 @@ public class AuthService : IAuthService
         }
 
         var email = request.Email.Trim().ToLower();
-        var users = await _userRepository.FindAsync(u => u.Email.ToLower() == email);
+        var users = await _userRepository.FindAsync(u => u.Email.ToLower() == email, ct);
         var user = users.FirstOrDefault();
 
         if (user == null || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
@@ -192,7 +194,7 @@ public class AuthService : IAuthService
             // NEW LOGIC: Generate a new OTP and resend email in background
             try 
             {
-                var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY");
+                var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY", ct);
                 
                 _ = Task.Run(async () => 
                 {
@@ -229,7 +231,7 @@ public class AuthService : IAuthService
 
         user.RefreshToken = refreshToken;
         user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
-        await _userRepository.UpdateAsync(user);
+        await _userRepository.UpdateAsync(user, ct);
         
         try 
         {
@@ -237,7 +239,8 @@ public class AuthService : IAuthService
                 ActivityConstants.USER_LOGIN, 
                 new Dictionary<string, string> { { "userName", user.Name } }, 
                 user.Id, 
-                user.Name
+                user.Name,
+                ct
             );
         }
         catch 
@@ -249,13 +252,13 @@ public class AuthService : IAuthService
         {
             Token = token,
             RefreshToken = refreshToken,
-            User = await MapUserWithTeamInfoAsync(user)
+            User = await MapUserWithTeamInfoAsync(user, ct)
         };
     }
 
-    public async Task<AuthResponse> RefreshTokenAsync(RefreshTokenRequest request)
+    public async Task<AuthResponse> RefreshTokenAsync(RefreshTokenRequest request, CancellationToken ct = default)
     {
-        var users = await _userRepository.FindAsync(u => u.RefreshToken == request.RefreshToken);
+        var users = await _userRepository.FindAsync(u => u.RefreshToken == request.RefreshToken, ct);
         var user = users.FirstOrDefault();
 
         if (user == null || user.RefreshTokenExpiryTime <= DateTime.UtcNow)
@@ -268,37 +271,37 @@ public class AuthService : IAuthService
 
         user.RefreshToken = newRefreshToken;
         user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
-        await _userRepository.UpdateAsync(user);
+        await _userRepository.UpdateAsync(user, ct);
 
         return new AuthResponse
         {
             Token = token,
             RefreshToken = newRefreshToken,
-            User = await MapUserWithTeamInfoAsync(user)
+            User = await MapUserWithTeamInfoAsync(user, ct)
         };
     }
-    public async Task VerifyEmailAsync(string email, string otp)
+    public async Task VerifyEmailAsync(string email, string otp, CancellationToken ct = default)
     {
-        var user = (await _userRepository.FindAsync(u => u.Email == email)).FirstOrDefault();
+        var user = (await _userRepository.FindAsync(u => u.Email == email, ct)).FirstOrDefault();
         if (user == null) throw new NotFoundException("User not found.");
 
         if (user.IsEmailVerified) return; // Already verified
 
-        var isValid = await _otpService.VerifyOtpAsync(user.Id, otp, "EMAIL_VERIFY");
+        var isValid = await _otpService.VerifyOtpAsync(user.Id, otp, "EMAIL_VERIFY", ct);
         if (!isValid) throw new BadRequestException("Invalid or expired OTP.");
 
         user.IsEmailVerified = true;
         
-        await _userRepository.UpdateAsync(user);
+        await _userRepository.UpdateAsync(user, ct);
 
         // NEW: Notify Admins that a new VERIFIED user joined
-        var mappedUser = await MapUserWithTeamInfoAsync(user);
-        await _notifier.SendUserCreatedAsync(mappedUser);
+        var mappedUser = await MapUserWithTeamInfoAsync(user, ct);
+        await _notifier.SendUserCreatedAsync(mappedUser, ct);
     }
 
-    public async Task ForgotPasswordAsync(string email)
+    public async Task ForgotPasswordAsync(string email, CancellationToken ct = default)
     {
-        var user = (await _userRepository.FindAsync(u => u.Email == email)).FirstOrDefault();
+        var user = (await _userRepository.FindAsync(u => u.Email == email, ct)).FirstOrDefault();
         if (user == null) throw new NotFoundException("عذراً، هذا البريد الإلكتروني غير مسجل لدينا.");
 
         if (user.Role == UserRole.Admin)
@@ -306,7 +309,7 @@ public class AuthService : IAuthService
             throw new ForbiddenException("لا يمكن استعادة كلمة المرور لحسابات الإدارة من هنا. يرجى التواصل مع الدعم الفني.");
         }
 
-        var otp = await _otpService.GenerateOtpAsync(user.Id, "PASSWORD_RESET");
+        var otp = await _otpService.GenerateOtpAsync(user.Id, "PASSWORD_RESET", ct);
 
         // FIRE-AND-FORGET Email: Move to background to make request instant
         _ = Task.Run(async () => 
@@ -331,39 +334,39 @@ public class AuthService : IAuthService
         });
     }
 
-    public async Task ResetPasswordAsync(string email, string otp, string newPassword)
+    public async Task ResetPasswordAsync(string email, string otp, string newPassword, CancellationToken ct = default)
     {
-        var user = (await _userRepository.FindAsync(u => u.Email == email)).FirstOrDefault();
+        var user = (await _userRepository.FindAsync(u => u.Email == email, ct)).FirstOrDefault();
         if (user == null) throw new NotFoundException("User not found.");
 
-        var isValid = await _otpService.VerifyOtpAsync(user.Id, otp, "PASSWORD_RESET");
+        var isValid = await _otpService.VerifyOtpAsync(user.Id, otp, "PASSWORD_RESET", ct);
         if (!isValid) throw new BadRequestException("كود التفعيل غير صحيح أو منتهي الصلاحية.");
 
         // Check if new password is same as current
         user.RefreshToken = null; 
         
-        await _userRepository.UpdateAsync(user);
+        await _userRepository.UpdateAsync(user, ct);
     }
 
-    public async Task LogoutAsync(Guid userId)
+    public async Task LogoutAsync(Guid userId, CancellationToken ct = default)
     {
-        var user = await _userRepository.GetByIdAsync(userId);
+        var user = await _userRepository.GetByIdAsync(userId, ct);
         if (user != null)
         {
             user.RefreshToken = null;
             user.TokenVersion++; // Invalidate all existing access tokens
-            await _userRepository.UpdateAsync(user);
+            await _userRepository.UpdateAsync(user, ct);
         }
     }
 
-    public async Task ResendOtpAsync(string email, string type)
+    public async Task ResendOtpAsync(string email, string type, CancellationToken ct = default)
     {
-        var user = (await _userRepository.FindAsync(u => u.Email == email)).FirstOrDefault();
+        var user = (await _userRepository.FindAsync(u => u.Email == email, ct)).FirstOrDefault();
         if (user == null) return; 
 
         if (type == "EMAIL_VERIFY" && user.IsEmailVerified) return;
 
-        var otp = await _otpService.GenerateOtpAsync(user.Id, type);
+        var otp = await _otpService.GenerateOtpAsync(user.Id, type, ct);
 
         try
         {
@@ -374,7 +377,7 @@ public class AuthService : IAuthService
                 : "لقد طلبت إعادة إرسال رمز استعادة الحساب. يرجى استخدامه لتعيين كلمة مرور جديدة.";
 
             var body = EmailTemplateHelper.CreateOtpTemplate(title, user.Name, message, otp, "10 دقائق");
-            await _emailService.SendEmailAsync(user.Email, $"{subject} – RAMADAN GANA", body);
+            await _emailService.SendEmailAsync(user.Email, $"{subject} – RAMADAN GANA", body, ct);
         }
         catch 
         {
@@ -383,16 +386,16 @@ public class AuthService : IAuthService
         }
     }
 
-    private async Task<UserDto> MapUserWithTeamInfoAsync(User user)
+    private async Task<UserDto> MapUserWithTeamInfoAsync(User user, CancellationToken ct = default)
     {
         var dto = _mapper.Map<UserDto>(user);
         if (user.TeamId.HasValue)
         {
-            var team = await _teamRepository.GetByIdAsync(user.TeamId.Value);
+            var team = await _teamRepository.GetByIdAsync(user.TeamId.Value, ct);
             if (team != null)
             {
                 dto.TeamName = team.Name;
-                var player = (await _playerRepository.FindAsync(p => p.TeamId == user.TeamId.Value && p.UserId == user.Id)).FirstOrDefault();
+                var player = (await _playerRepository.FindAsync(p => p.TeamId == user.TeamId.Value && p.UserId == user.Id, ct)).FirstOrDefault();
                 dto.TeamRole = player?.TeamRole.ToString();
             }
         }

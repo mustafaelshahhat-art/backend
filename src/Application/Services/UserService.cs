@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Application.DTOs.Users;
 using Application.Interfaces;
@@ -47,9 +48,9 @@ public class UserService : IUserService
         _systemSettingsService = systemSettingsService;
     }
 
-    public async Task<IEnumerable<UserDto>> GetAllAsync()
+    public async Task<IEnumerable<UserDto>> GetAllAsync(CancellationToken ct = default)
     {
-        var users = await _userRepository.FindAsync(u => u.IsEmailVerified);
+        var users = await _userRepository.FindAsync(u => u.IsEmailVerified, ct);
         return _mapper.Map<IEnumerable<UserDto>>(users);
     }
 
@@ -106,9 +107,9 @@ public class UserService : IUserService
         return dto;
     }
 
-    public async Task<UserDto> UpdateAsync(Guid id, UpdateUserRequest request)
+    public async Task<UserDto> UpdateAsync(Guid id, UpdateUserRequest request, CancellationToken ct = default)
     {
-        var user = await _userRepository.GetByIdAsync(id);
+        var user = await _userRepository.GetByIdAsync(id, ct);
         if (user == null) throw new NotFoundException(nameof(User), id);
 
         if (!string.IsNullOrEmpty(request.Name)) user.Name = request.Name!;
@@ -129,15 +130,15 @@ public class UserService : IUserService
         if (!string.IsNullOrEmpty(request.Neighborhood)) user.Neighborhood = request.Neighborhood;
         if (request.Age.HasValue) user.Age = request.Age;
 
-        await _userRepository.UpdateAsync(user);
+        await _userRepository.UpdateAsync(user, ct);
         var dto = _mapper.Map<UserDto>(user);
-        await _realTimeNotifier.SendUserUpdatedAsync(dto);
+        await _realTimeNotifier.SendUserUpdatedAsync(dto, ct);
         return dto;
     }
 
-    public async Task DeleteAsync(Guid id)
+    public async Task DeleteAsync(Guid id, CancellationToken ct = default)
     {
-        var user = await _userRepository.GetByIdAsync(id);
+        var user = await _userRepository.GetByIdAsync(id, ct);
         if (user == null) throw new NotFoundException(nameof(User), id);
 
         // CRITICAL SAFETY: Prevent deleting the last admin
@@ -150,14 +151,14 @@ public class UserService : IUserService
             }
         }
 
-        await _userRepository.DeleteAsync(id);
+        await _userRepository.DeleteAsync(id, ct);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, "Deleted");
         await _realTimeNotifier.SendUserDeletedAsync(id);
     }
 
-    public async Task SuspendAsync(Guid id)
+    public async Task SuspendAsync(Guid id, CancellationToken ct = default)
     {
-        var user = await _userRepository.GetByIdAsync(id);
+        var user = await _userRepository.GetByIdAsync(id, ct);
         if (user == null) throw new NotFoundException(nameof(User), id);
 
         // CRITICAL SAFETY: Prevent suspending the last admin
@@ -172,43 +173,43 @@ public class UserService : IUserService
 
         user.Status = UserStatus.Suspended;
         user.TokenVersion++; // Invalidate all existing tokens
-        await _userRepository.UpdateAsync(user);
+        await _userRepository.UpdateAsync(user, ct);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Suspended.ToString());
         
         // Persistent Notification
-        await _notificationService.SendNotificationByTemplateAsync(id, NotificationTemplates.ACCOUNT_SUSPENDED);
+        await _notificationService.SendNotificationByTemplateAsync(id, NotificationTemplates.ACCOUNT_SUSPENDED, new Dictionary<string, string>(), "all", ct);
         
         // Full Update for Lists
         var dto = _mapper.Map<UserDto>(user);
-        await _realTimeNotifier.SendUserUpdatedAsync(dto);
+        await _realTimeNotifier.SendUserUpdatedAsync(dto, ct);
         
         // Lightweight System Event
-        await _realTimeNotifier.SendSystemEventAsync("USER_BLOCKED", new { UserId = id }, $"user:{id}");
+        await _realTimeNotifier.SendSystemEventAsync("USER_BLOCKED", new { UserId = id }, $"user:{id}", ct);
     }
 
-    public async Task ActivateAsync(Guid id)
+    public async Task ActivateAsync(Guid id, CancellationToken ct = default)
     {
-        var user = await _userRepository.GetByIdAsync(id);
+        var user = await _userRepository.GetByIdAsync(id, ct);
         if (user == null) throw new NotFoundException(nameof(User), id);
 
         user.Status = UserStatus.Active;
-        await _userRepository.UpdateAsync(user);
+        await _userRepository.UpdateAsync(user, ct);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Active.ToString());
 
         // Persistent Notification
-        await _notificationService.SendNotificationByTemplateAsync(id, NotificationTemplates.ACCOUNT_APPROVED);
+        await _notificationService.SendNotificationByTemplateAsync(id, NotificationTemplates.ACCOUNT_APPROVED, new Dictionary<string, string>(), "all", ct);
 
         // Full Update for Lists
         var dto = _mapper.Map<UserDto>(user);
-        await _realTimeNotifier.SendUserUpdatedAsync(dto);
+        await _realTimeNotifier.SendUserUpdatedAsync(dto, ct);
 
         // Lightweight System Event
-        await _realTimeNotifier.SendSystemEventAsync("USER_APPROVED", new { UserId = id }, $"user:{id}");
+        await _realTimeNotifier.SendSystemEventAsync("USER_APPROVED", new { UserId = id }, $"user:{id}", ct);
     }
 
-    public async Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword)
+    public async Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken ct = default)
     {
-        var user = await _userRepository.GetByIdAsync(userId);
+        var user = await _userRepository.GetByIdAsync(userId, ct);
         if (user == null)
         {
             throw new NotFoundException(nameof(User), userId);
@@ -229,42 +230,42 @@ public class UserService : IUserService
         // Update password
         user.PasswordHash = _passwordHasher.HashPassword(newPassword);
         user.TokenVersion++; // Invalidate all existing tokens on password change
-        await _userRepository.UpdateAsync(user);
+        await _userRepository.UpdateAsync(user, ct);
         
         // Send notification or real-time update if needed
         await _realTimeNotifier.SendAccountStatusChangedAsync(userId, "PasswordChanged");
-        await _notificationService.SendNotificationByTemplateAsync(userId, NotificationTemplates.PASSWORD_CHANGED);
+        await _notificationService.SendNotificationByTemplateAsync(userId, NotificationTemplates.PASSWORD_CHANGED, new Dictionary<string, string>(), "all", ct);
     }
 
-    public async Task<IEnumerable<UserDto>> GetByRoleAsync(string role)
+    public async Task<IEnumerable<UserDto>> GetByRoleAsync(string role, CancellationToken ct = default)
     {
         if (Enum.TryParse<UserRole>(role, true, out var userRole))
         {
-            var users = await _userRepository.FindAsync(u => u.Role == userRole && u.IsEmailVerified);
+            var users = await _userRepository.FindAsync(u => u.Role == userRole && u.IsEmailVerified, ct);
             return _mapper.Map<IEnumerable<UserDto>>(users);
         }
         return new List<UserDto>();
     }
 
-    public async Task<IEnumerable<UserPublicDto>> GetPublicByRoleAsync(string role)
+    public async Task<IEnumerable<UserPublicDto>> GetPublicByRoleAsync(string role, CancellationToken ct = default)
     {
         if (Enum.TryParse<UserRole>(role, true, out var userRole))
         {
             if (userRole == UserRole.Admin) return new List<UserPublicDto>();
-            var users = await _userRepository.FindAsync(u => u.Role == userRole && u.IsEmailVerified);
+            var users = await _userRepository.FindAsync(u => u.Role == userRole && u.IsEmailVerified, ct);
             return _mapper.Map<IEnumerable<UserPublicDto>>(users);
         }
         return new List<UserPublicDto>();
     }
 
-    public async Task<UserPublicDto?> GetPublicByIdAsync(Guid id)
+    public async Task<UserPublicDto?> GetPublicByIdAsync(Guid id, CancellationToken ct = default)
     {
-        var user = await _userRepository.GetByIdAsync(id);
+        var user = await _userRepository.GetByIdAsync(id, ct);
         if (user == null) return null;
         var dto = _mapper.Map<UserPublicDto>(user);
         if (user.TeamId.HasValue)
         {
-            var team = await _teamRepository.GetByIdAsync(user.TeamId.Value, t => t.Players);
+            var team = await _teamRepository.GetByIdAsync(user.TeamId.Value, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
             if (team != null)
             {
                 var player = team.Players.FirstOrDefault(p => p.UserId == id);
@@ -279,10 +280,10 @@ public class UserService : IUserService
     /// <summary>
     /// Creates a new admin user. Role is always forced to Admin.
     /// </summary>
-    public async Task<UserDto> CreateAdminAsync(CreateAdminRequest request, Guid createdByAdminId)
+    public async Task<UserDto> CreateAdminAsync(CreateAdminRequest request, Guid createdByAdminId, CancellationToken ct = default)
     {
         // SYSTEM SETTING CHECK: Block admin creation during maintenance
-        if (await _systemSettingsService.IsMaintenanceModeEnabledAsync())
+        if (await _systemSettingsService.IsMaintenanceModeEnabledAsync(ct))
         {
             throw new BadRequestException("لا يمكن إنشاء مشرفين جدد أثناء وضع الصيانة");
         }
@@ -305,7 +306,7 @@ public class UserService : IUserService
         var email = request.Email.Trim().ToLower();
 
         // Check email uniqueness (including soft-deleted)
-        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email, true);
+        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email, true, ct);
         if (existingUser != null && existingUser.Any())
         {
             throw new ConflictException("البريد الإلكتروني مستخدم بالفعل");
@@ -322,7 +323,7 @@ public class UserService : IUserService
             DisplayId = "ADM-" + new Random().Next(1000, 9999)
         };
 
-        await _userRepository.AddAsync(newAdmin);
+        await _userRepository.AddAsync(newAdmin, ct);
 
         // Log activity
         try
@@ -332,7 +333,7 @@ public class UserService : IUserService
                 new Dictionary<string, string> { { "adminName", newAdmin.Name } }, 
                 createdByAdminId, 
                 "إدارة"
-            );
+            , ct);
         }
         catch
         {
@@ -340,17 +341,17 @@ public class UserService : IUserService
         }
 
         var dto = _mapper.Map<UserDto>(newAdmin);
-        await _realTimeNotifier.SendUserCreatedAsync(dto);
+        await _realTimeNotifier.SendUserCreatedAsync(dto, ct);
         return dto;
     }
 
     /// <summary>
     /// Creates a new tournament creator user. Role is always forced to TournamentCreator.
     /// </summary>
-    public async Task<UserDto> CreateTournamentCreatorAsync(CreateAdminRequest request, Guid createdByAdminId)
+    public async Task<UserDto> CreateTournamentCreatorAsync(CreateAdminRequest request, Guid createdByAdminId, CancellationToken ct = default)
     {
         // SYSTEM SETTING CHECK: Block creation during maintenance
-        if (await _systemSettingsService.IsMaintenanceModeEnabledAsync())
+        if (await _systemSettingsService.IsMaintenanceModeEnabledAsync(ct))
         {
             throw new BadRequestException("لا يمكن إنشاء مستخدمين جدد أثناء وضع الصيانة");
         }
@@ -373,7 +374,7 @@ public class UserService : IUserService
         var email = request.Email.Trim().ToLower();
 
         // Check email uniqueness (including soft-deleted)
-        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email, true);
+        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email, true, ct);
         if (existingUser != null && existingUser.Any())
         {
             throw new ConflictException("البريد الإلكتروني مستخدم بالفعل");
@@ -390,7 +391,7 @@ public class UserService : IUserService
             DisplayId = "CRT-" + new Random().Next(1000, 9999)
         };
 
-        await _userRepository.AddAsync(newCreator);
+        await _userRepository.AddAsync(newCreator, ct);
 
         // Log activity
         try
@@ -400,12 +401,12 @@ public class UserService : IUserService
                 new Dictionary<string, string> { { "userName", newCreator.Name }, { "role", "منشئ بطولة" } }, 
                 createdByAdminId, 
                 "إدارة"
-            );
+            , ct);
         }
         catch { }
 
         var dto = _mapper.Map<UserDto>(newCreator);
-        await _realTimeNotifier.SendUserCreatedAsync(dto);
+        await _realTimeNotifier.SendUserCreatedAsync(dto, ct);
         return dto;
     }
 
@@ -414,12 +415,12 @@ public class UserService : IUserService
     /// <summary>
     /// Gets the count of active admin users and checks if a specific user is the last admin.
     /// </summary>
-    public async Task<AdminCountDto> GetAdminCountAsync(Guid? userId = null)
+    public async Task<AdminCountDto> GetAdminCountAsync(Guid? userId = null, CancellationToken ct = default)
     {
         var admins = await _userRepository.FindAsync(u => 
             u.Role == UserRole.Admin && 
             u.Status != UserStatus.Suspended &&
-            u.IsEmailVerified);
+            u.IsEmailVerified, ct);
         
         var adminList = admins.ToList();
         var totalAdmins = adminList.Count;
@@ -437,24 +438,24 @@ public class UserService : IUserService
         };
     }
 
-    public async Task<IEnumerable<string>> GetGovernoratesAsync()
+    public async Task<IEnumerable<string>> GetGovernoratesAsync(CancellationToken ct = default)
     {
         return await _userRepository.GetDistinctAsync(_ => true, u => u.Governorate);
     }
 
-    public async Task<IEnumerable<string>> GetCitiesAsync(string governorate)
+    public async Task<IEnumerable<string>> GetCitiesAsync(string governorate, CancellationToken ct = default)
     {
         return await _userRepository.GetDistinctAsync(u => u.Governorate == governorate, u => u.City);
     }
 
-    public async Task<IEnumerable<string>> GetDistrictsAsync(string city)
+    public async Task<IEnumerable<string>> GetDistrictsAsync(string city, CancellationToken ct = default)
     {
         return await _userRepository.GetDistinctAsync(u => u.City == city, u => u.Neighborhood);
     }
 
-    public async Task<string> UploadAvatarAsync(Guid userId, UploadAvatarRequest request)
+    public async Task<string> UploadAvatarAsync(Guid userId, UploadAvatarRequest request, CancellationToken ct = default)
     {
-        var user = await _userRepository.GetByIdAsync(userId);
+        var user = await _userRepository.GetByIdAsync(userId, ct);
         if (user == null)
         {
             throw new NotFoundException(nameof(User), userId);
@@ -501,7 +502,7 @@ public class UserService : IUserService
 
         // Update user avatar
         user.Avatar = avatarUrl;
-        await _userRepository.UpdateAsync(user);
+        await _userRepository.UpdateAsync(user, ct);
 
         // Log activity
         try
@@ -510,7 +511,8 @@ public class UserService : IUserService
                 "AVATAR_UPDATED", 
                 new Dictionary<string, string>(), 
                 userId, 
-                "مستخدم"
+                "مستخدم",
+                ct
             );
         }
         catch

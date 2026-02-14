@@ -1,3 +1,4 @@
+using System.Threading;
 using Application.DTOs.Settings;
 using Application.Interfaces;
 using Domain.Entities;
@@ -23,9 +24,9 @@ public class SystemSettingsService : ISystemSettingsService
         _cache = cache;
     }
 
-    public async Task<SystemSettingsDto> GetSettingsAsync()
+    public async Task<SystemSettingsDto> GetSettingsAsync(CancellationToken ct = default)
     {
-        var settings = await GetCachedSettingsAsync();
+        var settings = await GetCachedSettingsAsync(ct);
         return new SystemSettingsDto
         {
             AllowTeamCreation = settings.AllowTeamCreation,
@@ -34,16 +35,16 @@ public class SystemSettingsService : ISystemSettingsService
         };
     }
 
-    public async Task<SystemSettingsDto> UpdateSettingsAsync(SystemSettingsDto dto, Guid adminId)
+    public async Task<SystemSettingsDto> UpdateSettingsAsync(SystemSettingsDto dto, Guid adminId, CancellationToken ct = default)
     {
-        var settings = await GetOrCreateSettingsAsync();
+        var settings = await GetOrCreateSettingsAsync(ct);
 
         settings.AllowTeamCreation = dto.AllowTeamCreation;
         settings.MaintenanceMode = dto.MaintenanceMode;
         settings.UpdatedAt = DateTime.UtcNow;
         settings.UpdatedByAdminId = adminId;
 
-        await _settingsRepository.UpdateAsync(settings);
+        await _settingsRepository.UpdateAsync(settings, ct);
         
         // Invalidate Cache
         _cache.Remove(CacheKey);
@@ -56,23 +57,23 @@ public class SystemSettingsService : ISystemSettingsService
         };
     }
 
-    public async Task<bool> IsTeamCreationAllowedAsync()
+    public async Task<bool> IsTeamCreationAllowedAsync(CancellationToken ct = default)
     {
-        var settings = await GetCachedSettingsAsync();
+        var settings = await GetCachedSettingsAsync(ct);
         return settings.AllowTeamCreation;
     }
 
-    public async Task<bool> IsMaintenanceModeEnabledAsync()
+    public async Task<bool> IsMaintenanceModeEnabledAsync(CancellationToken ct = default)
     {
-        var settings = await GetCachedSettingsAsync();
+        var settings = await GetCachedSettingsAsync(ct);
         return settings.MaintenanceMode;
     }
 
-    private async Task<SystemSetting> GetCachedSettingsAsync()
+    private async Task<SystemSetting> GetCachedSettingsAsync(CancellationToken ct = default)
     {
         if (!_cache.TryGetValue(CacheKey, out SystemSetting settings))
         {
-            settings = await GetOrCreateSettingsAsync();
+            settings = await GetOrCreateSettingsAsync(ct);
             var options = new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions()
                 .SetSlidingExpiration(TimeSpan.FromMinutes(5))
                 .SetAbsoluteExpiration(TimeSpan.FromHours(1));
@@ -85,9 +86,9 @@ public class SystemSettingsService : ISystemSettingsService
     /// <summary>
     /// Gets the settings or creates default settings if none exist.
     /// </summary>
-    private async Task<SystemSetting> GetOrCreateSettingsAsync()
+    private async Task<SystemSetting> GetOrCreateSettingsAsync(CancellationToken ct = default)
     {
-        var allSettings = (await _settingsRepository.GetAllAsync())
+        var allSettings = (await _settingsRepository.GetAllAsync(ct))
             .OrderBy(s => s.CreatedAt)
             .ToList();
             
@@ -97,7 +98,7 @@ public class SystemSettingsService : ISystemSettingsService
             Console.Out.WriteLine($"[WARNING] Multiple SystemSettings detected ({allSettings.Count}). Cleaning up...");
             for (int i = 1; i < allSettings.Count; i++)
             {
-                await _settingsRepository.DeleteAsync(allSettings[i]);
+                await _settingsRepository.DeleteAsync(allSettings[i], ct);
             }
         }
 
@@ -112,7 +113,7 @@ public class SystemSettingsService : ISystemSettingsService
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
-            await _settingsRepository.AddAsync(settings);
+            await _settingsRepository.AddAsync(settings, ct);
         }
 
         return settings;

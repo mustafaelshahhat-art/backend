@@ -19,47 +19,47 @@ public class TeamRequestsController : ControllerBase
     }
 
     [HttpGet("my-invitations")]
-    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetMyInvitations()
+    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetMyInvitations(CancellationToken cancellationToken)
     {
         var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
-        var invitations = await _teamService.GetUserInvitationsAsync(userId);
+        var invitations = await _teamService.GetUserInvitationsAsync(userId, cancellationToken);
         return Ok(invitations);
     }
 
     [HttpGet("for-my-team")]
-    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetForMyTeam()
+    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetForMyTeam(CancellationToken cancellationToken)
     {
         var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
         // Find teams where user is captain
-        var requests = await _teamService.GetRequestsForCaptainAsync(userId);
+        var requests = await _teamService.GetRequestsForCaptainAsync(userId, cancellationToken);
         return Ok(requests);
     }
 
     [HttpPost("{id}/accept")]
-    public async Task<ActionResult<JoinRequestDto>> Accept(Guid id)
+    public async Task<ActionResult<JoinRequestDto>> Accept(Guid id, CancellationToken cancellationToken)
     {
         var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
-        var response = await _teamService.AcceptInviteAsync(id, userId);
+        var response = await _teamService.AcceptInviteAsync(id, userId, cancellationToken);
         return Ok(response);
     }
 
     [HttpPost("{id}/reject")]
-    public async Task<ActionResult<JoinRequestDto>> Reject(Guid id)
+    public async Task<ActionResult<JoinRequestDto>> Reject(Guid id, CancellationToken cancellationToken)
     {
         var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
-        var response = await _teamService.RejectInviteAsync(id, userId);
+        var response = await _teamService.RejectInviteAsync(id, userId, cancellationToken);
         return Ok(response);
     }
 }

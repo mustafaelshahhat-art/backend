@@ -18,7 +18,7 @@ public class SearchController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> Search([FromQuery] string q)
+    public async Task<IActionResult> Search([FromQuery] string q, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
         {
@@ -28,7 +28,7 @@ public class SearchController : ControllerBase
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var role = User.FindFirst(ClaimTypes.Role)?.Value ?? "Player";
 
-        var results = await _searchService.SearchAsync(q, userId, role);
+        var results = await _searchService.SearchAsync(q, userId, role, cancellationToken);
         return Ok(results);
     }
 }

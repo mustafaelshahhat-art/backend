@@ -22,30 +22,30 @@ public class NotificationsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Notification>>> GetMyNotifications()
+    public async Task<ActionResult<IEnumerable<Notification>>> GetMyNotifications(CancellationToken cancellationToken)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var notifications = await _notificationService.GetUserNotificationsAsync(Guid.Parse(userId));
+        var notifications = await _notificationService.GetUserNotificationsAsync(Guid.Parse(userId), cancellationToken);
         return Ok(notifications);
     }
 
     [HttpPost("{id}/read")]
-    public async Task<IActionResult> MarkAsRead(Guid id)
+    public async Task<IActionResult> MarkAsRead(Guid id, CancellationToken cancellationToken)
     {
         // Ideally verify ownership
-        await _notificationService.MarkAsReadAsync(id);
+        await _notificationService.MarkAsReadAsync(id, cancellationToken);
         return NoContent();
     }
 
     [HttpPost("read-all")]
-    public async Task<IActionResult> MarkAllAsRead()
+    public async Task<IActionResult> MarkAllAsRead(CancellationToken cancellationToken)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        await _notificationService.MarkAllAsReadAsync(Guid.Parse(userId));
+        await _notificationService.MarkAllAsReadAsync(Guid.Parse(userId), cancellationToken);
         return NoContent();
     }
 }

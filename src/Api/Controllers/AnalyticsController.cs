@@ -30,15 +30,15 @@ public class AnalyticsController : ControllerBase
 
     [HttpPost("migrate-logs")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<ActionResult> MigrateLogs()
+    public async Task<ActionResult> MigrateLogs(CancellationToken cancellationToken)
     {
-        await _migrationService.MigrateLegacyLogsAsync();
+        await _migrationService.MigrateLegacyLogsAsync(cancellationToken);
         return Ok(new { message = "تمت عملية تحديث سجلات النشاط بنجاح" });
     }
 
     [HttpGet("overview")]
     [Authorize]
-    public async Task<ActionResult> GetOverview([FromQuery] Guid? teamId = null)
+    public async Task<ActionResult> GetOverview([FromQuery] Guid? teamId = null, CancellationToken cancellationToken = default)
     {
         var (userId, userRole) = GetUserContext();
         var isAdmin = userRole == UserRole.Admin.ToString();
@@ -48,7 +48,7 @@ public class AnalyticsController : ControllerBase
             // Security Check: If not admin, must own the team
             if (!isAdmin)
             {
-                var team = await _teamService.GetByIdAsync(teamId.Value);
+                var team = await _teamService.GetByIdAsync(teamId.Value, cancellationToken);
                 if (team == null) return NotFound();
                 
                 // Check if user is the captain within the Players list
@@ -58,7 +58,7 @@ public class AnalyticsController : ControllerBase
                 }
             }
             
-            var teamAnalytics = await _analyticsService.GetTeamAnalyticsAsync(teamId.Value);
+            var teamAnalytics = await _analyticsService.GetTeamAnalyticsAsync(teamId.Value, cancellationToken);
             return Ok(teamAnalytics);
         }
         
@@ -66,13 +66,13 @@ public class AnalyticsController : ControllerBase
         if (!isAdmin && !isCreator) return Forbid();
 
         Guid? creatorId = isCreator ? userId : null;
-        var overview = await _analyticsService.GetOverviewAsync(creatorId);
+        var overview = await _analyticsService.GetOverviewAsync(creatorId, cancellationToken);
         return Ok(overview);
     }
 
     [HttpGet("activities")]
     [Authorize]
-    public async Task<ActionResult<IEnumerable<ActivityDto>>> GetRecentActivity()
+    public async Task<ActionResult<IEnumerable<ActivityDto>>> GetRecentActivity(CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
         var isAdmin = userRole == UserRole.Admin.ToString();
@@ -81,7 +81,7 @@ public class AnalyticsController : ControllerBase
         if (!isAdmin && !isCreator) return Forbid();
 
         Guid? creatorId = isCreator ? userId : null;
-        var activity = await _analyticsService.GetRecentActivitiesAsync(creatorId);
+        var activity = await _analyticsService.GetRecentActivitiesAsync(creatorId, cancellationToken);
         return Ok(activity);
     }
 

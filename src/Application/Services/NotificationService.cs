@@ -1,32 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Application.Interfaces;
 using Application.Common;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
-// WAIT. Application Layer cannot depend on Api Layer (Clean Architecture).
-// BAD ARCHITECTURE: Api.Hubs is in Api Layer.
-// FIX: Hubs should remain in Api. Services in Application cannot reference Hubs directly if they are in Api.
-// Pattern: Application defines IClientNotifier interface. Api implements it using HubContext.
-// OR: Put Hub interface in Application?
-// Simplest Fix for this task:
-// 1. We need IHubContext<NotificationHub> to send messages.
-// 2. Application layer should not reference SignalR or Api.Hubs.
-// Solution:
-// Define INotificationClient interface in Application/Interfaces? No, SignalR is specific.
-// Standard clean arch:
-// Application has INotifierService.
-// Infrastructure implementation uses SignalR? Or Api implementation?
-// Usually Infrastructure or a dedicated "Presentation" layer logic.
-// But Hubs are typically ASP.NET Core specific.
-// I will create 'NotificationService' in Application, but it needs to call something to push real-time.
-// I will define 'IRealTimeNotifier' interface in Application.Interfaces.
-// And implement it in Api or Infrastructure.
-// Ideally, NotificationService just saves to DB, then calls IRealTimeNotifier.
-// Let's create IRealTimeNotifier in Application.
-// Then implement RealTimeNotifier in Api/Services/RealTimeNotifier.cs and inject it.
 
 namespace Application.Services;
 
@@ -46,56 +26,56 @@ public class NotificationService : INotificationService
         _userRepository = userRepository;
     }
 
-    public async Task SendNotificationAsync(Guid userId, string title, string message, string type = "system")
+    public async Task SendNotificationAsync(Guid userId, string title, string message, string type = "system", CancellationToken ct = default)
     {
         // Broadcast to all active admins (used by admin_broadcast notifications).
         if (userId == Guid.Empty)
         {
-            var admins = await _userRepository.FindAsync(u => u.Role == UserRole.Admin && u.Status == UserStatus.Active);
+            var admins = await _userRepository.FindAsync(u => u.Role == UserRole.Admin && u.Status == UserStatus.Active, ct);
             foreach (var admin in admins)
             {
                 var adminNotification = CreateNotification(admin.Id, title, message, type);
-                await _repository.AddAsync(adminNotification);
-                await _notifier.SafeSendNotificationAsync(admin.Id, adminNotification);
+                await _repository.AddAsync(adminNotification, ct);
+                await _notifier.SafeSendNotificationAsync(admin.Id, adminNotification, ct);
                 
                 // Lightweight System Event
-                await _notifier.SendSystemEventAsync("NOTIFICATION_CREATED", new { UserId = admin.Id, NotificationId = adminNotification.Id }, $"user:{admin.Id}");
+                await _notifier.SendSystemEventAsync("NOTIFICATION_CREATED", new { UserId = admin.Id, NotificationId = adminNotification.Id }, $"user:{admin.Id}", ct);
             }
             return;
         }
 
         var notification = CreateNotification(userId, title, message, type);
-        await _repository.AddAsync(notification);
-        await _notifier.SafeSendNotificationAsync(userId, notification);
+        await _repository.AddAsync(notification, ct);
+        await _notifier.SafeSendNotificationAsync(userId, notification, ct);
         
         // Lightweight System Event
-        await _notifier.SendSystemEventAsync("NOTIFICATION_CREATED", new { UserId = userId, NotificationId = notification.Id }, $"user:{userId}");
+        await _notifier.SendSystemEventAsync("NOTIFICATION_CREATED", new { UserId = userId, NotificationId = notification.Id }, $"user:{userId}", ct);
     }
 
-    public async Task SendNotificationByTemplateAsync(Guid userId, string templateKey, Dictionary<string, string>? placeholders = null, string type = "system")
+    public async Task SendNotificationByTemplateAsync(Guid userId, string templateKey, Dictionary<string, string>? placeholders = null, string type = "system", CancellationToken ct = default)
     {
         var (title, message) = NotificationTemplates.GetTemplate(templateKey, placeholders);
-        await SendNotificationAsync(userId, title, message, type);
+        await SendNotificationAsync(userId, title, message, type, ct);
     }
 
-    public async Task<IEnumerable<Notification>> GetUserNotificationsAsync(Guid userId)
+    public async Task<IEnumerable<Notification>> GetUserNotificationsAsync(Guid userId, CancellationToken ct = default)
     {
-        return await _repository.GetByUserIdAsync(userId);
+        return await _repository.GetByUserIdAsync(userId, ct);
     }
 
-    public async Task MarkAsReadAsync(Guid id)
+    public async Task MarkAsReadAsync(Guid id, CancellationToken ct = default)
     {
-        var notification = await _repository.GetByIdAsync(id);
+        var notification = await _repository.GetByIdAsync(id, ct);
         if (notification != null)
         {
             notification.IsRead = true;
-            await _repository.UpdateAsync(notification);
+            await _repository.UpdateAsync(notification, ct);
         }
     }
 
-    public async Task MarkAllAsReadAsync(Guid userId)
+    public async Task MarkAllAsReadAsync(Guid userId, CancellationToken ct = default)
     {
-        await _repository.MarkAllAsReadAsync(userId);
+        await _repository.MarkAllAsReadAsync(userId, ct);
     }
 
     private static Notification CreateNotification(Guid userId, string title, string message, string type)

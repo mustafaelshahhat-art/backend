@@ -17,6 +17,6 @@ public class ApproveRegistrationCommandHandler : IRequestHandler<ApproveRegistra
 
     public async Task<TeamRegistrationDto> Handle(ApproveRegistrationCommand request, CancellationToken cancellationToken)
     {
-        return await _tournamentService.ApproveRegistrationAsync(request.TournamentId, request.TeamId, request.UserId, request.UserRole);
+        return await _tournamentService.ApproveRegistrationAsync(request.TournamentId, request.TeamId, request.UserId, request.UserRole, cancellationToken);
     }
 }

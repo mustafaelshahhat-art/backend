@@ -58,7 +58,7 @@ public class TournamentServiceTests
             AllowLateRegistration = false
         };
 
-        _tournamentRepoMock.Setup(r => r.GetByIdAsync(tournamentId, It.IsAny<string[]>()))
+        _tournamentRepoMock.Setup(r => r.GetByIdAsync(tournamentId, It.IsAny<string[]>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(tournament);
 
         var request = new RegisterTeamRequest { TeamId = Guid.NewGuid() };
@@ -83,7 +83,7 @@ public class TournamentServiceTests
             Registrations = new List<TeamRegistration> { new(), new() }
         };
 
-        _tournamentRepoMock.Setup(r => r.GetByIdAsync(tournamentId, It.IsAny<string[]>()))
+        _tournamentRepoMock.Setup(r => r.GetByIdAsync(tournamentId, It.IsAny<string[]>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(tournament);
 
         var request = new RegisterTeamRequest { TeamId = Guid.NewGuid() };

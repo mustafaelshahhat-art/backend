@@ -114,7 +114,7 @@ public class IdempotencyMiddleware
 
             // Update with completed status and response
             responseBodyMemoryStream.Seek(0, SeekOrigin.Begin);
-            var responseBody = await new StreamReader(responseBodyMemoryStream).ReadToEndAsync();
+            var responseBody = await new StreamReader(responseBodyMemoryStream).ReadToEndAsync(cancellationToken);
             responseBodyMemoryStream.Seek(0, SeekOrigin.Begin);
 
             newRequest.Status = IdempotencyStatus.Completed;
@@ -124,7 +124,7 @@ public class IdempotencyMiddleware
 
             await dbContext.SaveChangesAsync(cancellationToken);
             
-            await responseBodyMemoryStream.CopyToAsync(originalResponseBody);
+            await responseBodyMemoryStream.CopyToAsync(originalResponseBody, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -144,7 +144,7 @@ public class IdempotencyMiddleware
     {
         request.EnableBuffering();
         using var reader = new StreamReader(request.Body, Encoding.UTF8, leaveOpen: true);
-        var body = await reader.ReadToEndAsync();
+        var body = await reader.ReadToEndAsync(request.HttpContext.RequestAborted);
         request.Body.Position = 0;
 
         using var sha256 = SHA256.Create();

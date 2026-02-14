@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Threading.Tasks;
 using Application.Interfaces;
 using Infrastructure.Data;
@@ -14,44 +15,44 @@ public class TransactionManager : ITransactionManager
         _context = context;
     }
 
-    public async Task<TResult> ExecuteInTransactionAsync<TResult>(Func<Task<TResult>> operation)
+    public async Task<TResult> ExecuteInTransactionAsync<TResult>(Func<Task<TResult>> operation, CancellationToken ct = default)
     {
         var strategy = _context.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteAsync(async () =>
+        return await strategy.ExecuteAsync(async (cancellation) =>
         {
-            await using var transaction = await _context.Database.BeginTransactionAsync();
+            await using var transaction = await _context.Database.BeginTransactionAsync(cancellation);
             try
             {
                 var result = await operation();
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
+                await _context.SaveChangesAsync(cancellation);
+                await transaction.CommitAsync(cancellation);
                 return result;
             }
             catch
             {
-                await transaction.RollbackAsync();
+                await transaction.RollbackAsync(cancellation);
                 throw;
             }
-        });
+        }, ct);
     }
 
-    public async Task ExecuteInTransactionAsync(Func<Task> operation)
+    public async Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken ct = default)
     {
         var strategy = _context.Database.CreateExecutionStrategy();
-        await strategy.ExecuteAsync(async () =>
+        await strategy.ExecuteAsync(async (cancellation) =>
         {
-            await using var transaction = await _context.Database.BeginTransactionAsync();
+            await using var transaction = await _context.Database.BeginTransactionAsync(cancellation);
             try
             {
                 await operation();
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
+                await _context.SaveChangesAsync(cancellation);
+                await transaction.CommitAsync(cancellation);
             }
             catch
             {
-                await transaction.RollbackAsync();
+                await transaction.RollbackAsync(cancellation);
                 throw;
             }
-        });
+        }, ct);
     }
 }

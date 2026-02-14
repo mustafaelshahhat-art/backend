@@ -31,7 +31,8 @@ public class TournamentRegistrationRejectedEventHandler : INotificationHandler<T
                 { "tournamentName", notification.TournamentName },
                 { "reason", notification.Reason }
             },
-            "registration_rejected"
+            "registration_rejected",
+            cancellationToken
         );
     }
 }

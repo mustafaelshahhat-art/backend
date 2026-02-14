@@ -24,6 +24,6 @@ public class TransactionBehavior<TRequest, TResponse> : IPipelineBehavior<TReque
         return await _transactionManager.ExecuteInTransactionAsync(async () => 
         {
             return await next();
-        });
+        }, cancellationToken);
     }
 }

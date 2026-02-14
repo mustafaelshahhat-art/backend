@@ -22,9 +22,9 @@ public class SystemSettingsController : ControllerBase
     /// Gets the current system settings.
     /// </summary>
     [HttpGet]
-    public async Task<ActionResult<SystemSettingsDto>> GetSettings()
+    public async Task<ActionResult<SystemSettingsDto>> GetSettings(CancellationToken cancellationToken)
     {
-        var settings = await _settingsService.GetSettingsAsync();
+        var settings = await _settingsService.GetSettingsAsync(cancellationToken);
         return Ok(settings);
     }
 
@@ -32,7 +32,7 @@ public class SystemSettingsController : ControllerBase
     /// Updates the system settings.
     /// </summary>
     [HttpPost]
-    public async Task<ActionResult<SystemSettingsDto>> UpdateSettings(SystemSettingsDto request)
+    public async Task<ActionResult<SystemSettingsDto>> UpdateSettings(SystemSettingsDto request, CancellationToken cancellationToken)
     {
         var adminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(adminId) || !Guid.TryParse(adminId, out var adminGuid))
@@ -40,7 +40,7 @@ public class SystemSettingsController : ControllerBase
             return Unauthorized();
         }
 
-        var settings = await _settingsService.UpdateSettingsAsync(request, adminGuid);
+        var settings = await _settingsService.UpdateSettingsAsync(request, adminGuid, cancellationToken);
         return Ok(settings);
     }
 
@@ -50,9 +50,9 @@ public class SystemSettingsController : ControllerBase
     /// </summary>
     [HttpGet("maintenance-status")]
     [AllowAnonymous]
-    public async Task<ActionResult<object>> GetMaintenanceStatus()
+    public async Task<ActionResult<object>> GetMaintenanceStatus(CancellationToken cancellationToken)
     {
-        var isMaintenanceMode = await _settingsService.IsMaintenanceModeEnabledAsync();
+        var isMaintenanceMode = await _settingsService.IsMaintenanceModeEnabledAsync(cancellationToken);
         return Ok(new { maintenanceMode = isMaintenanceMode });
     }
 }

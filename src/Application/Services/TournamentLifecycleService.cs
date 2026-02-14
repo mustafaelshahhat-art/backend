@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Application.DTOs.Tournaments;
 using Application.DTOs.Matches; // Imported
@@ -43,12 +44,12 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         _mapper = mapper;
     }
 
-    public async Task CheckAndFinalizeTournamentAsync(Guid tournamentId)
+    public async Task CheckAndFinalizeTournamentAsync(Guid tournamentId, CancellationToken ct = default)
     {
-        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
         if (tournament == null || tournament.Status == TournamentStatus.Completed) return;
 
-        var allMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+        var allMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, ct);
         if (!allMatches.Any()) return;
 
         // Check format
@@ -63,9 +64,9 @@ public class TournamentLifecycleService : ITournamentLifecycleService
                 if (tournament.Status != TournamentStatus.WaitingForOpeningMatchSelection)
                 {
                     tournament.Status = TournamentStatus.WaitingForOpeningMatchSelection;
-                    await _tournamentRepository.UpdateAsync(tournament);
+                    await _tournamentRepository.UpdateAsync(tournament, ct);
                     
-                    await _analyticsService.LogActivityByTemplateAsync("GROUPS_FINISHED", new Dictionary<string, string> { { "tournamentName", tournament.Name } }, null, "System");
+                    await _analyticsService.LogActivityByTemplateAsync("GROUPS_FINISHED", new Dictionary<string, string> { { "tournamentName", tournament.Name } }, null, "System", ct);
                     await _notifier.SendTournamentUpdatedAsync(_mapper.Map<TournamentDto>(tournament));
                     
                     // Note: GenerateKnockoutR1Async should now be called by Admin action (SetOpeningMatch or similar)
@@ -77,7 +78,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         }
 
         // Check for specific stage completion (Knockout progression or Final)
-        var latestRoundMatches = GetLatestRoundMatches(allMatches);
+        var latestRoundMatches = GetLatestRoundMatches(allMatches, ct);
         if (latestRoundMatches.Any() && latestRoundMatches.First().StageName != "League" && latestRoundMatches.All(m => m.Status == MatchStatus.Finished))
         {
             // If it was the final, complete tournament
@@ -94,7 +95,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         }
     }
 
-    private List<Match> GetLatestRoundMatches(IEnumerable<Match> matches)
+    private List<Match> GetLatestRoundMatches(IEnumerable<Match> matches, CancellationToken ct)
     {
         var actionableMatches = matches.Where(m => m.StageName != "League").ToList();
         if (!actionableMatches.Any()) return new List<Match>();
@@ -109,15 +110,15 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         return actionableMatches.Where(m => m.RoundNumber == maxRound).ToList();
     }
 
-    public async Task GenerateKnockoutR1Async(Guid tournamentId)
+    public async Task GenerateKnockoutR1Async(Guid tournamentId, CancellationToken ct = default)
     {
-        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId);
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
         if (tournament == null) return;
 
-        var allMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId);
+        var allMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, ct);
         
         // 1. Calculate Standings per Group
-        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournament.Id && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.Withdrawn));
+        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournament.Id && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.Withdrawn), ct);
         
         var teamStats = CalculateStandings(allMatches, registrations);
         
@@ -174,12 +175,12 @@ public class TournamentLifecycleService : ITournamentLifecycleService
             // Ensure they are qualified
             if (qualifiedTeams.Any(t => t.TeamId == homeId) && qualifiedTeams.Any(t => t.TeamId == awayId))
             {
-                var openingMatch = CreateMatch(tournament, homeId, awayId, matchDate, null, round, "Knockout");
+                var openingMatch = CreateMatch(tournament, homeId, awayId, matchDate, null, round, "Knockout", ct);
                 openingMatch.StageName = "Opening Match";
                 newMatches.Add(openingMatch);
 
                 if (isDoubleLeg)
-                    newMatches.Add(CreateMatch(tournament, awayId, homeId, matchDate.AddDays(3), null, round, "Knockout"));
+                    newMatches.Add(CreateMatch(tournament, awayId, homeId, matchDate.AddDays(3), null, round, "Knockout", ct));
 
                 qualifiedTeams.RemoveAll(t => t.TeamId == homeId || t.TeamId == awayId);
                 matchDate = matchDate.AddHours(2);
@@ -208,21 +209,21 @@ public class TournamentLifecycleService : ITournamentLifecycleService
 
         foreach(var pair in pairings)
         {
-             newMatches.Add(CreateMatch(tournament, pair.Home, pair.Away, matchDate, null, round, "Knockout"));
+             newMatches.Add(CreateMatch(tournament, pair.Home, pair.Away, matchDate, null, round, "Knockout", ct));
              if (isDoubleLeg)
-                 newMatches.Add(CreateMatch(tournament, pair.Away, pair.Home, matchDate.AddDays(3), null, round, "Knockout"));
+                 newMatches.Add(CreateMatch(tournament, pair.Away, pair.Home, matchDate.AddDays(3), null, round, "Knockout", ct));
              
              matchDate = matchDate.AddHours(2);
         }
         
-        foreach(var m in newMatches) await _matchRepository.AddAsync(m);
+        foreach(var m in newMatches) await _matchRepository.AddAsync(m, ct);
         
         tournament.Status = TournamentStatus.Active;
-        await _tournamentRepository.UpdateAsync(tournament);
+        await _tournamentRepository.UpdateAsync(tournament, ct);
 
         // Notify
-        await _analyticsService.LogActivityByTemplateAsync("KNOCKOUT_STARTED", new Dictionary<string, string> { { "tournamentName", tournament.Name } }, null, "System");
-        await _notificationService.SendNotificationAsync(Guid.Empty, "بدء الأدوار الإقصائية", $"تأهلت الفرق وبدأت الأدوار الإقصائية لبطولة {tournament.Name}", "all");
+        await _analyticsService.LogActivityByTemplateAsync("KNOCKOUT_STARTED", new Dictionary<string, string> { { "tournamentName", tournament.Name } }, null, "System", ct);
+        await _notificationService.SendNotificationAsync(Guid.Empty, "بدء الأدوار الإقصائية", $"تأهلت الفرق وبدأت الأدوار الإقصائية لبطولة {tournament.Name}", "all", ct);
         
         // Notify Real-Time
         await _notifier.SendMatchesGeneratedAsync(_mapper.Map<IEnumerable<MatchDto>>(newMatches));
@@ -250,7 +251,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         return 64; // reasonable upper limit for tournaments
     }
 
-    private async Task GenerateNextKnockoutRoundAsync(Tournament tournament, List<Match> previousRoundMatches)
+    private async Task GenerateNextKnockoutRoundAsync(Tournament tournament, List<Match> previousRoundMatches, CancellationToken ct = default)
     {
         // Identify winners
         var winners = new List<Guid>();
@@ -294,22 +295,22 @@ public class TournamentLifecycleService : ITournamentLifecycleService
              if (i+1 < winners.Count)
              {
                   string stage = winners.Count == 2 ? "Final" : "Knockout";
-                  newMatches.Add(CreateMatch(tournament, winners[i], winners[i+1], matchDate, null, round, stage));
+                  newMatches.Add(CreateMatch(tournament, winners[i], winners[i+1], matchDate, null, round, stage, ct));
                   
                   if (isDoubleLeg && stage != "Final")
                   {
-                       newMatches.Add(CreateMatch(tournament, winners[i+1], winners[i], matchDate.AddDays(3), null, round, stage));
+                       newMatches.Add(CreateMatch(tournament, winners[i+1], winners[i], matchDate.AddDays(3), null, round, stage, ct));
                   }
              }
         }
         
-        foreach(var m in newMatches) await _matchRepository.AddAsync(m);
+        foreach(var m in newMatches) await _matchRepository.AddAsync(m, ct);
         
         // Notify Real-Time
         await _notifier.SendMatchesGeneratedAsync(_mapper.Map<IEnumerable<MatchDto>>(newMatches));
     }
 
-    private async Task FinalizeTournamentAsync(Tournament tournament, List<Match> finalMatches, IEnumerable<Match> allMatches)
+    private async Task FinalizeTournamentAsync(Tournament tournament, List<Match> finalMatches, IEnumerable<Match> allMatches, CancellationToken ct = default)
     {
          // Determine winner
          Guid winnerId;
@@ -330,13 +331,13 @@ public class TournamentLifecycleService : ITournamentLifecycleService
          
          tournament.Status = TournamentStatus.Completed;
          tournament.WinnerTeamId = winnerId;
-         await _tournamentRepository.UpdateAsync(tournament);
+         await _tournamentRepository.UpdateAsync(tournament, ct);
          
-         var winnerTeam = await _teamRepository.GetByIdAsync(winnerId);
+         var winnerTeam = await _teamRepository.GetByIdAsync(winnerId, ct);
          
-         await _analyticsService.LogActivityByTemplateAsync("TOURNAMENT_FINALIZED", new Dictionary<string, string> { { "tournamentName", tournament.Name }, { "winnerName", winnerTeam?.Name ?? "Unknown" } }, null, "نظام");
+         await _analyticsService.LogActivityByTemplateAsync("TOURNAMENT_FINALIZED", new Dictionary<string, string> { { "tournamentName", tournament.Name }, { "winnerName", winnerTeam?.Name ?? "Unknown" } }, null, "نظام", ct);
          
-         await _notificationService.SendNotificationAsync(Guid.Empty, "القمة انتهت!", $"انتهت بطولة {tournament.Name} رسمياً وتوج فريق {winnerTeam?.Name} باللقب!", "admin_broadcast");
+         await _notificationService.SendNotificationAsync(Guid.Empty, "القمة انتهت!", $"انتهت بطولة {tournament.Name} رسمياً وتوج فريق {winnerTeam?.Name} باللقب!", "admin_broadcast", ct);
          
          await _notifier.SendTournamentUpdatedAsync(_mapper.Map<TournamentDto>(tournament));
     }
@@ -412,7 +413,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         return null;
     }
 
-    private Match CreateMatch(Tournament t, Guid home, Guid away, DateTime date, int? group, int? round, string stage)
+    private Match CreateMatch(Tournament t, Guid home, Guid away, DateTime date, int? group, int? round, string stage, CancellationToken ct)
     {
         return new Match
         {

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
 
@@ -8,7 +9,7 @@ namespace Domain.Interfaces;
 public interface IMatchRepository : IRepository<Match>
 {
     // Returns lightweight projection of match outcomes for stats calculation
-    Task<IEnumerable<MatchOutcomeDto>> GetFinishedMatchOutcomesAsync();
+    Task<IEnumerable<MatchOutcomeDto>> GetFinishedMatchOutcomesAsync(CancellationToken ct = default);
 }
 
 public class MatchOutcomeDto

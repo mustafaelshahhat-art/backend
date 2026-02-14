@@ -21,102 +21,102 @@ public class TeamsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<TeamDto>>> GetAll([FromQuery] Guid? captainId, [FromQuery] Guid? playerId)
+    public async Task<ActionResult<IEnumerable<TeamDto>>> GetAll([FromQuery] Guid? captainId, [FromQuery] Guid? playerId, CancellationToken cancellationToken)
     {
-        var teams = await _teamService.GetAllAsync(captainId, playerId);
+        var teams = await _teamService.GetAllAsync(captainId, playerId, cancellationToken);
         return Ok(teams);
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<TeamDto>> GetById(Guid id)
+    public async Task<ActionResult<TeamDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var team = await _teamService.GetByIdAsync(id);
+        var team = await _teamService.GetByIdAsync(id, cancellationToken);
         if (team == null) return NotFound();
         return Ok(team);
     }
 
     [HttpPost]
-    public async Task<ActionResult<TeamDto>> Create(CreateTeamRequest request)
+    public async Task<ActionResult<TeamDto>> Create(CreateTeamRequest request, CancellationToken cancellationToken)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var team = await _teamService.CreateAsync(request, Guid.Parse(userId));
+        var team = await _teamService.CreateAsync(request, Guid.Parse(userId), cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = team.Id }, team);
     }
 
     [HttpPatch("{id}")]
     [Authorize(Policy = "RequireTeamCaptain")]
-    public async Task<ActionResult<TeamDto>> Update(Guid id, UpdateTeamRequest request)
+    public async Task<ActionResult<TeamDto>> Update(Guid id, UpdateTeamRequest request, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        var updatedTeam = await _teamService.UpdateAsync(id, request, userId, userRole);
+        var updatedTeam = await _teamService.UpdateAsync(id, request, userId, userRole, cancellationToken);
         return Ok(updatedTeam);
     }
 
     [HttpPost("{id}/join")]
-    public async Task<ActionResult<JoinRequestDto>> RequestJoin(Guid id) 
+    public async Task<ActionResult<JoinRequestDto>> RequestJoin(Guid id, CancellationToken cancellationToken) 
     {
         // Body might be empty or specific. Contract says POST /{id}/join.
         // Assuming user ID from token.
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var request = await _teamService.RequestJoinAsync(id, Guid.Parse(userId));
+        var request = await _teamService.RequestJoinAsync(id, Guid.Parse(userId), cancellationToken);
         return Ok(request);
     }
 
     [HttpGet("{id}/join-requests")]
     [Authorize(Policy = "RequireTeamCaptain")]
-    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetJoinRequests(Guid id)
+    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetJoinRequests(Guid id, CancellationToken cancellationToken)
     {
-        var requests = await _teamService.GetJoinRequestsAsync(id);
+        var requests = await _teamService.GetJoinRequestsAsync(id, cancellationToken);
         return Ok(requests);
     }
 
     [HttpPost("{id}/join-requests/{requestId}/respond")]
     [Authorize(Policy = "RequireTeamCaptain")]
-    public async Task<ActionResult<JoinRequestDto>> RespondJoinRequest(Guid id, Guid requestId, [FromBody] RespondJoinRequest request)
+    public async Task<ActionResult<JoinRequestDto>> RespondJoinRequest(Guid id, Guid requestId, [FromBody] RespondJoinRequest request, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        var response = await _teamService.RespondJoinRequestAsync(id, requestId, request.Approve, userId, userRole);
+        var response = await _teamService.RespondJoinRequestAsync(id, requestId, request.Approve, userId, userRole, cancellationToken);
         return Ok(response);
     }
 
     [HttpPost("{id}/invite")]
     [Authorize(Policy = "RequireTeamCaptain")]
-    public async Task<ActionResult<JoinRequestDto>> Invite(Guid id, AddPlayerRequest request)
+    public async Task<ActionResult<JoinRequestDto>> Invite(Guid id, AddPlayerRequest request, CancellationToken cancellationToken)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var joinRequest = await _teamService.InvitePlayerAsync(id, Guid.Parse(userId), request);
+        var joinRequest = await _teamService.InvitePlayerAsync(id, Guid.Parse(userId), request, cancellationToken);
         return Ok(joinRequest);
     }
 
     [HttpGet("{id}/requests")]
     [Authorize(Policy = "RequireTeamCaptain")]
-    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetRequests(Guid id)
+    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetRequests(Guid id, CancellationToken cancellationToken)
     {
-        var requests = await _teamService.GetJoinRequestsAsync(id);
+        var requests = await _teamService.GetJoinRequestsAsync(id, cancellationToken);
         return Ok(requests);
     }
 
     [HttpDelete("{id}/players/{playerId}")]
     [Authorize(Policy = "RequireTeamCaptain")]
-    public async Task<ActionResult<object>> RemovePlayer(Guid id, Guid playerId)
+    public async Task<ActionResult<object>> RemovePlayer(Guid id, Guid playerId, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        await _teamService.RemovePlayerAsync(id, playerId, userId, userRole);
+        await _teamService.RemovePlayerAsync(id, playerId, userId, userRole, cancellationToken);
         return Ok(new { teamRemoved = true, playerId = playerId, teamId = id });
     }
 
     [HttpDelete("{id}")]
     [Authorize(Policy = "RequireTeamCaptain")]
-    public async Task<IActionResult> Delete(Guid id)
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        await _teamService.DeleteAsync(id, userId, userRole);
+        await _teamService.DeleteAsync(id, userId, userRole, cancellationToken);
         return NoContent();
     }
 
@@ -129,39 +129,39 @@ public class TeamsController : ControllerBase
 
     [HttpPost("{id}/disable")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<IActionResult> Disable(Guid id)
+    public async Task<IActionResult> Disable(Guid id, CancellationToken cancellationToken)
     {
-        await _teamService.DisableTeamAsync(id);
+        await _teamService.DisableTeamAsync(id, cancellationToken);
         return Ok(new { message = "Team disabled and withdrawn from all active tournaments." });
     }
 
     [HttpPost("{id}/activate")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<IActionResult> Activate(Guid id)
+    public async Task<IActionResult> Activate(Guid id, CancellationToken cancellationToken)
     {
-        await _teamService.ActivateTeamAsync(id);
+        await _teamService.ActivateTeamAsync(id, cancellationToken);
         return Ok(new { message = "Team activated successfully." });
     }
 
     [HttpGet("{id}/players")]
-    public async Task<ActionResult<IEnumerable<PlayerDto>>> GetTeamPlayers(Guid id)
+    public async Task<ActionResult<IEnumerable<PlayerDto>>> GetTeamPlayers(Guid id, CancellationToken cancellationToken)
     {
-        var players = await _teamService.GetTeamPlayersAsync(id);
+        var players = await _teamService.GetTeamPlayersAsync(id, cancellationToken);
         return Ok(players);
     }
 
     [HttpGet("{id}/matches")]
-    public async Task<ActionResult<IEnumerable<Application.DTOs.Matches.MatchDto>>> GetTeamMatches(Guid id)
+    public async Task<ActionResult<IEnumerable<Application.DTOs.Matches.MatchDto>>> GetTeamMatches(Guid id, CancellationToken cancellationToken)
     {
-        var matches = await _teamService.GetTeamMatchesAsync(id);
+        var matches = await _teamService.GetTeamMatchesAsync(id, cancellationToken);
         return Ok(matches);
     }
 
     [HttpGet("{id}/financials")]
     [Authorize(Policy = "RequireTeamCaptain")]
-    public async Task<ActionResult<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>>> GetTeamFinancials(Guid id)
+    public async Task<ActionResult<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>>> GetTeamFinancials(Guid id, CancellationToken cancellationToken)
     {
-        var financials = await _teamService.GetTeamFinancialsAsync(id);
+        var financials = await _teamService.GetTeamFinancialsAsync(id, cancellationToken);
         return Ok(financials);
     }
 }

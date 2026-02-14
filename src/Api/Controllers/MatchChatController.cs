@@ -21,9 +21,9 @@ public class MatchChatController : ControllerBase
 
     [HttpGet("{id}/chat")]
     [Authorize] // Check if user part of match? Skipping strict check for now as purely chat history
-    public async Task<ActionResult<IEnumerable<MatchMessage>>> GetChatHistory(Guid id)
+    public async Task<ActionResult<IEnumerable<MatchMessage>>> GetChatHistory(Guid id, CancellationToken cancellationToken)
     {
-        var messages = await _messageRepository.GetByMatchIdAsync(id);
+        var messages = await _messageRepository.GetByMatchIdAsync(id, cancellationToken);
         return Ok(messages);
     }
 }

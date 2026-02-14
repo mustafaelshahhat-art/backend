@@ -1,5 +1,6 @@
 using System;
 using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 using Application.Common; // For hashing
 using Application.Interfaces;
@@ -22,14 +23,14 @@ public class OtpService : IOtpService
         _logger = logger;
     }
 
-    public async Task<string> GenerateOtpAsync(Guid userId, string type)
+    public async Task<string> GenerateOtpAsync(Guid userId, string type, CancellationToken ct = default)
     {
         // 1. Invalidate any existing active OTPs for this user and type
-        var existingOtps = await _otpRepository.FindAsync(o => o.UserId == userId && o.Type == type && !o.IsUsed && o.ExpiresAt > DateTime.UtcNow);
+        var existingOtps = await _otpRepository.FindAsync(o => o.UserId == userId && o.Type == type && !o.IsUsed && o.ExpiresAt > DateTime.UtcNow, ct);
         foreach (var existing in existingOtps)
         {
             existing.IsUsed = true; // Effectively cancel them
-            await _otpRepository.UpdateAsync(existing);
+            await _otpRepository.UpdateAsync(existing, ct);
         }
 
         // 2. Generate 6-digit numeric OTP
@@ -49,17 +50,15 @@ public class OtpService : IOtpService
             Attempts = 0
         };
 
-        await _otpRepository.AddAsync(otpEntity);
+        await _otpRepository.AddAsync(otpEntity, ct);
 
         return otp; // Return clear text OTP to be sent via email
     }
 
-    public async Task<bool> VerifyOtpAsync(Guid userId, string otp, string type)
+    public async Task<bool> VerifyOtpAsync(Guid userId, string otp, string type, CancellationToken ct = default)
     {
         // 1. Find valid OTP
-        // We might have multiple if race condition, but we fetch the latest valid one usually.
-        // Actually, logic above cleared old ones. So usually just one.
-        var otps = await _otpRepository.FindAsync(o => o.UserId == userId && o.Type == type && !o.IsUsed && o.ExpiresAt > DateTime.UtcNow);
+        var otps = await _otpRepository.FindAsync(o => o.UserId == userId && o.Type == type && !o.IsUsed && o.ExpiresAt > DateTime.UtcNow, ct);
         
         // Sort by CreatedAt desc
         var validOtp = otps.OrderByDescending(o => o.CreatedAt).FirstOrDefault();
@@ -75,7 +74,7 @@ public class OtpService : IOtpService
         {
             _logger.LogWarning($"OTP attempts exceeded for user {userId}");
             validOtp.IsUsed = true; // Invalidate
-            await _otpRepository.UpdateAsync(validOtp);
+            await _otpRepository.UpdateAsync(validOtp, ct);
             return false;
         }
 
@@ -85,13 +84,13 @@ public class OtpService : IOtpService
         if (isValid)
         {
             validOtp.IsUsed = true;
-            await _otpRepository.UpdateAsync(validOtp);
+            await _otpRepository.UpdateAsync(validOtp, ct);
             return true;
         }
         else
         {
             validOtp.Attempts++;
-            await _otpRepository.UpdateAsync(validOtp);
+            await _otpRepository.UpdateAsync(validOtp, ct);
             return false;
         }
     }

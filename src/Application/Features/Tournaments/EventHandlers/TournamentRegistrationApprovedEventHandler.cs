@@ -40,15 +40,17 @@ public class TournamentRegistrationApprovedEventHandler : INotificationHandler<T
                 { "teamName", notification.TeamName },
                 { "tournamentName", notification.TournamentName }
             },
-            "registration_approved"
+
+            "registration_approved",
+            cancellationToken
         );
 
         // 2. Notify Real-Time (Best effort, since it's now in the outbox processor)
-        var tournament = await _tournamentRepository.GetByIdNoTrackingAsync(notification.TournamentId, new[] { "Registrations", "WinnerTeam" });
+        var tournament = await _tournamentRepository.GetByIdNoTrackingAsync(notification.TournamentId, new[] { "Registrations", "WinnerTeam" }, cancellationToken);
         if (tournament != null)
         {
             var dto = _mapper.Map<Application.DTOs.Tournaments.TournamentDto>(tournament);
-            await _notifier.SendTournamentUpdatedAsync(dto);
+            await _notifier.SendTournamentUpdatedAsync(dto, cancellationToken);
         }
     }
 }

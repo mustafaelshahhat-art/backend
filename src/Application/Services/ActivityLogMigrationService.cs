@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Application.Common;
 using Domain.Entities;
@@ -31,19 +32,17 @@ public class ActivityLogMigrationService
         _logger = logger;
     }
 
-    public async Task MigrateLegacyLogsAsync()
+    public async Task MigrateLegacyLogsAsync(CancellationToken ct = default)
     {
         _logger.LogInformation("Starting Activity Log Migration...");
 
-        var activities = (await _activityRepository.GetAllAsync()).ToList();
+        var activities = (await _activityRepository.GetAllAsync(ct)).ToList();
         bool anyUpdated = false;
 
         // Cache lookups for performance (assuming reasonable dataset size)
-        var teams = (await _teamRepository.GetAllAsync()).ToDictionary(t => t.Id, t => t.Name);
-        var tournaments = (await _tournamentRepository.GetAllAsync()).ToDictionary(t => t.Id, t => t.Name);
-        // Matches are too many? Maybe fetch only if needed or just cache recent ones. For now, fetch all IDs is safer if count is low.
-        // Or fetch on demand. Let's fetch properly.
-        var matchesInfo = (await _matchRepository.GetAllAsync(new[] { "HomeTeam", "AwayTeam" }))
+        var teams = (await _teamRepository.GetAllAsync(ct)).ToDictionary(t => t.Id, t => t.Name);
+        var tournaments = (await _tournamentRepository.GetAllAsync(ct)).ToDictionary(t => t.Id, t => t.Name);
+        var matchesInfo = (await _matchRepository.GetAllAsync(new[] { "HomeTeam", "AwayTeam" }, ct))
             .ToDictionary(m => m.Id, m => $"{m.HomeTeam?.Name ?? "فريق"} vs {m.AwayTeam?.Name ?? "فريق"}");
 
         foreach (var activity in activities)
@@ -175,7 +174,6 @@ public class ActivityLogMigrationService
             }
 
             // GUID Replacement
-            // Regex for GUID
             var guidMatches = System.Text.RegularExpressions.Regex.Matches(msg, @"[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}");
             
             foreach (System.Text.RegularExpressions.Match m in guidMatches)
@@ -208,7 +206,7 @@ public class ActivityLogMigrationService
 
             if (updated)
             {
-                await _activityRepository.UpdateAsync(activity);
+                await _activityRepository.UpdateAsync(activity, ct);
                 anyUpdated = true;
             }
         }

@@ -1,8 +1,10 @@
+using System.Threading;
+
 namespace Application.Interfaces;
 
 public interface ISearchService
 {
-    Task<SearchResponse> SearchAsync(string query, string? userId, string role);
+    Task<SearchResponse> SearchAsync(string query, string? userId, string role, CancellationToken ct = default);
 }
 
 public class SearchResponse

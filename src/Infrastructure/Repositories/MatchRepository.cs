@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
 using Domain.Interfaces;
@@ -14,7 +15,7 @@ public class MatchRepository : GenericRepository<Match>, IMatchRepository
     {
     }
 
-    public async Task<IEnumerable<MatchOutcomeDto>> GetFinishedMatchOutcomesAsync()
+    public async Task<IEnumerable<MatchOutcomeDto>> GetFinishedMatchOutcomesAsync(CancellationToken ct = default)
     {
         return await _context.Matches
             .Where(m => m.Status == Domain.Enums.MatchStatus.Finished)
@@ -25,6 +26,6 @@ public class MatchRepository : GenericRepository<Match>, IMatchRepository
                 HomeScore = m.HomeScore,
                 AwayScore = m.AwayScore
             })
-            .ToListAsync();
+            .ToListAsync(ct);
     }
 }

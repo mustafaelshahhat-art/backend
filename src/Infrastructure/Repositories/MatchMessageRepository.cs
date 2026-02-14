@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Application.Interfaces;
 using Domain.Entities;
@@ -18,18 +19,18 @@ public class MatchMessageRepository : IMatchMessageRepository
         _context = context;
     }
 
-    public async Task<MatchMessage> AddAsync(MatchMessage message)
+    public async Task<MatchMessage> AddAsync(MatchMessage message, CancellationToken ct = default)
     {
-        await _context.MatchMessages.AddAsync(message);
-        await _context.SaveChangesAsync();
+        await _context.MatchMessages.AddAsync(message, ct);
+        await _context.SaveChangesAsync(ct);
         return message;
     }
 
-    public async Task<IEnumerable<MatchMessage>> GetByMatchIdAsync(Guid matchId)
+    public async Task<IEnumerable<MatchMessage>> GetByMatchIdAsync(Guid matchId, CancellationToken ct = default)
     {
         return await _context.MatchMessages
             .Where(m => m.MatchId == matchId)
             .OrderBy(m => m.Timestamp) // Oldest first for chat history
-            .ToListAsync();
+            .ToListAsync(ct);
     }
 }

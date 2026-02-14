@@ -19,6 +19,6 @@ public class RegisterTeamCommandHandler : IRequestHandler<RegisterTeamCommand, T
         // The TransactionBehavior pipeline handles the transaction for this Command.
         
         var registrationRequest = new RegisterTeamRequest { TeamId = request.TeamId };
-        return await _tournamentService.RegisterTeamAsync(request.TournamentId, registrationRequest, request.UserId);
+        return await _tournamentService.RegisterTeamAsync(request.TournamentId, registrationRequest, request.UserId, cancellationToken);
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Mail;
+using System.Threading;
 using System.Threading.Tasks;
 using Application.Interfaces;
 using Microsoft.Extensions.Configuration;
@@ -19,7 +20,7 @@ public class EmailService : IEmailService
         _logger = logger;
     }
 
-    public async Task SendEmailAsync(string to, string subject, string body)
+    public async Task SendEmailAsync(string to, string subject, string body, CancellationToken ct = default)
     {
         // 1. HARDENING: Read ONLY from Environment Variables
         var gmailUser = Environment.GetEnvironmentVariable("GMAIL_USER");
@@ -55,9 +56,9 @@ public class EmailService : IEmailService
                     client.UseDefaultCredentials = false;
                     client.Credentials = new NetworkCredential(gmailUser, gmailPass);
 
-                    await Task.Delay(Random.Shared.Next(500, 1000));
+                    await Task.Delay(Random.Shared.Next(500, 1000), ct);
 
-                    await client.SendMailAsync(message);
+                    await client.SendMailAsync(message, ct);
                     _logger.LogInformation($"[EMAIL_SUCCESS] Template sent to {to} | Subject: {subject}");
                 }
             }

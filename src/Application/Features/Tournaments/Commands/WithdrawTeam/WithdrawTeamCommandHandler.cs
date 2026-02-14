@@ -16,7 +16,7 @@ public class WithdrawTeamCommandHandler : IRequestHandler<WithdrawTeamCommand, U
 
     public async Task<Unit> Handle(WithdrawTeamCommand request, CancellationToken cancellationToken)
     {
-        await _tournamentService.WithdrawTeamAsync(request.TournamentId, request.TeamId, request.UserId);
+        await _tournamentService.WithdrawTeamAsync(request.TournamentId, request.TeamId, request.UserId, cancellationToken);
         return Unit.Value;
     }
 }

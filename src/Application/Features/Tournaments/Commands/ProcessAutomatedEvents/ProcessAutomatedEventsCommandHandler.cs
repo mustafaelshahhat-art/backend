@@ -14,7 +14,7 @@ public class ProcessAutomatedEventsCommandHandler : IRequestHandler<ProcessAutom
 
     public async Task<Unit> Handle(ProcessAutomatedEventsCommand request, CancellationToken cancellationToken)
     {
-        await _tournamentService.ProcessAutomatedStateTransitionsAsync();
+        await _tournamentService.ProcessAutomatedStateTransitionsAsync(cancellationToken);
         return Unit.Value;
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Application.DTOs.Analytics;
 using Application.DTOs.Notifications;
@@ -42,7 +43,7 @@ public class AnalyticsService : IAnalyticsService
         _mapper = mapper;
     }
 
-    public async Task<AnalyticsOverview> GetOverviewAsync(Guid? creatorId = null)
+    public async Task<AnalyticsOverview> GetOverviewAsync(Guid? creatorId = null, CancellationToken ct = default)
     {
         int totalUsers = 0, totalTeams = 0, activeTournaments = 0, matchesToday = 0, loginsToday = 0, totalGoals = 0;
         var today = DateTime.UtcNow.Date;
@@ -52,35 +53,35 @@ public class AnalyticsService : IAnalyticsService
             // Scoped counts for creators
             activeTournaments = await _tournamentRepository.CountAsync(t => 
                 t.CreatorUserId == creatorId.Value && 
-                (t.Status == Domain.Enums.TournamentStatus.RegistrationOpen || t.Status == Domain.Enums.TournamentStatus.Active));
+                (t.Status == Domain.Enums.TournamentStatus.RegistrationOpen || t.Status == Domain.Enums.TournamentStatus.Active), ct);
             
             // Count distinct teams across all tournaments of this creator
-            var registrations = await _registrationRepository.FindAsync(r => r.Tournament != null && r.Tournament.CreatorUserId == creatorId.Value);
+            var registrations = await _registrationRepository.FindAsync(r => r.Tournament != null && r.Tournament.CreatorUserId == creatorId.Value, ct);
             totalTeams = registrations.Select(r => r.TeamId).Distinct().Count(); // Still a bit in-memory but better than downloading tournaments
             
             matchesToday = await _matchRepository.CountAsync(m => 
                 m.Date.HasValue && m.Date.Value.Date == today && 
-                m.Tournament != null && m.Tournament.CreatorUserId == creatorId.Value);
+                m.Tournament != null && m.Tournament.CreatorUserId == creatorId.Value, ct);
             
             var homeGoals = await _matchRepository.SumAsync(m => 
                 m.Status == Domain.Enums.MatchStatus.Finished && m.Tournament != null && m.Tournament.CreatorUserId == creatorId.Value, 
-                m => m.HomeScore);
+                m => m.HomeScore, ct);
             var awayGoals = await _matchRepository.SumAsync(m => 
                 m.Status == Domain.Enums.MatchStatus.Finished && m.Tournament != null && m.Tournament.CreatorUserId == creatorId.Value, 
-                m => m.AwayScore);
+                m => m.AwayScore, ct);
             totalGoals = (int)(homeGoals + awayGoals);
         }
         else
         {
             // Global counts for admins
-            totalUsers = await _userRepository.CountAsync(u => u.IsEmailVerified);
-            totalTeams = await _teamRepository.CountAsync(_ => true);
-            activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == Domain.Enums.TournamentStatus.RegistrationOpen || t.Status == Domain.Enums.TournamentStatus.Active);
-            matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today);
-            loginsToday = await _activityRepository.CountAsync(a => a.Type == Common.ActivityConstants.USER_LOGIN && a.CreatedAt.Date == today);
+            totalUsers = await _userRepository.CountAsync(u => u.IsEmailVerified, ct);
+            totalTeams = await _teamRepository.CountAsync(_ => true, ct);
+            activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == Domain.Enums.TournamentStatus.RegistrationOpen || t.Status == Domain.Enums.TournamentStatus.Active, ct);
+            matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today, ct);
+            loginsToday = await _activityRepository.CountAsync(a => a.Type == Common.ActivityConstants.USER_LOGIN && a.CreatedAt.Date == today, ct);
             
-            var homeGoals = await _matchRepository.SumAsync(m => m.Status == Domain.Enums.MatchStatus.Finished, m => m.HomeScore);
-            var awayGoals = await _matchRepository.SumAsync(m => m.Status == Domain.Enums.MatchStatus.Finished, m => m.AwayScore);
+            var homeGoals = await _matchRepository.SumAsync(m => m.Status == Domain.Enums.MatchStatus.Finished, m => m.HomeScore, ct);
+            var awayGoals = await _matchRepository.SumAsync(m => m.Status == Domain.Enums.MatchStatus.Finished, m => m.AwayScore, ct);
             totalGoals = (int)(homeGoals + awayGoals);
         }
 
@@ -95,17 +96,17 @@ public class AnalyticsService : IAnalyticsService
         };
     }
 
-    public async Task<TeamAnalyticsDto> GetTeamAnalyticsAsync(Guid teamId)
+    public async Task<TeamAnalyticsDto> GetTeamAnalyticsAsync(Guid teamId, CancellationToken ct = default)
     {
-        var playerCountTask = _playerRepository.CountAsync(p => p.TeamId == teamId);
+        var playerCountTask = _playerRepository.CountAsync(p => p.TeamId == teamId, ct);
         var matchCountTask = _matchRepository.CountAsync(m => 
             (m.HomeTeamId == teamId || m.AwayTeamId == teamId) && 
-            m.Status == Domain.Enums.MatchStatus.Scheduled);
+            m.Status == Domain.Enums.MatchStatus.Scheduled, ct);
         
         var tournamentCountTask = _registrationRepository.CountAsync(r => 
             r.TeamId == teamId && 
             r.Status == Domain.Enums.RegistrationStatus.Approved &&
-            (r.Tournament != null && (r.Tournament.Status == Domain.Enums.TournamentStatus.Active || r.Tournament.Status == Domain.Enums.TournamentStatus.RegistrationOpen)));
+            (r.Tournament != null && (r.Tournament.Status == Domain.Enums.TournamentStatus.Active || r.Tournament.Status == Domain.Enums.TournamentStatus.RegistrationOpen)), ct);
 
         await Task.WhenAll(playerCountTask, matchCountTask, tournamentCountTask);
 
@@ -118,18 +119,18 @@ public class AnalyticsService : IAnalyticsService
         };
     }
 
-    public async Task<IEnumerable<ActivityDto>> GetRecentActivitiesAsync(Guid? creatorId = null)
+    public async Task<IEnumerable<ActivityDto>> GetRecentActivitiesAsync(Guid? creatorId = null, CancellationToken ct = default)
     {
         IEnumerable<Activity> activities;
         
         if (creatorId.HasValue)
         {
-            activities = await _activityRepository.GetNoTrackingAsync(a => a.UserId == creatorId.Value);
+            activities = await _activityRepository.GetNoTrackingAsync(a => a.UserId == creatorId.Value, ct);
         }
         else
         {
             // Limit to top 100 to avoid performance hit on large logs
-            var allActivities = await _activityRepository.GetAllNoTrackingAsync(Array.Empty<string>());
+            var allActivities = await _activityRepository.GetAllNoTrackingAsync(Array.Empty<string>(), ct);
             activities = allActivities.OrderByDescending(a => a.CreatedAt).Take(100);
         }
         
@@ -149,7 +150,7 @@ public class AnalyticsService : IAnalyticsService
         });
     }
 
-    public async Task LogActivityAsync(string type, string message, Guid? userId = null, string? userName = null)
+    public async Task LogActivityAsync(string type, string message, Guid? userId = null, string? userName = null, CancellationToken ct = default)
     {
         var activity = new Activity
         {
@@ -158,20 +159,12 @@ public class AnalyticsService : IAnalyticsService
             UserId = userId,
             UserName = userName
         };
-        await _activityRepository.AddAsync(activity);
+        await _activityRepository.AddAsync(activity, ct);
     }
 
-    public async Task LogActivityByTemplateAsync(string code, Dictionary<string, string> placeholders, Guid? userId = null, string? userName = null)
+    public async Task LogActivityByTemplateAsync(string code, Dictionary<string, string> placeholders, Guid? userId = null, string? userName = null, CancellationToken ct = default)
     {
         var localized = Application.Common.ActivityConstants.GetLocalized(code, placeholders);
-        
-        // We store "Category" in Type (for Badge/Filter) 
-        // We store "Title: Message" in Message (for readability)
-        // Or better: Just message, and let Frontend map Code if we stored Code.
-        // But user asked to keep compatibility. 
-        // Previously Type was "بدء مباراة" (Title).
-        // Let's stick to storing the Internal Code in Type as requested by "Activity Type Normalization" rule 1.
-        // Frontend will be updated to map Code -> Category.
         
         var activity = new Activity
         {
@@ -180,7 +173,8 @@ public class AnalyticsService : IAnalyticsService
             UserId = userId,
             UserName = userName
         };
-        await _activityRepository.AddAsync(activity);
+        await _activityRepository.AddAsync(activity, ct);
     }
 }
+
 

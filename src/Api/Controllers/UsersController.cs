@@ -21,49 +21,49 @@ public class UsersController : ControllerBase
 
     [HttpGet]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<ActionResult<IEnumerable<UserDto>>> GetAll()
+    public async Task<ActionResult<IEnumerable<UserDto>>> GetAll(CancellationToken cancellationToken)
     {
-        var users = await _userService.GetAllAsync();
+        var users = await _userService.GetAllAsync(cancellationToken);
         return Ok(users);
     }
 
     [HttpGet("role/{role}")]
     [Authorize]
-    public async Task<ActionResult> GetByRole(string role)
+    public async Task<ActionResult> GetByRole(string role, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
         
         if (userRole == UserRole.Admin.ToString())
         {
-            var users = await _userService.GetByRoleAsync(role);
+            var users = await _userService.GetByRoleAsync(role, cancellationToken);
             return Ok(users);
         }
         
         // Non-admins get public/restricted view
-        var publicUsers = await _userService.GetPublicByRoleAsync(role);
+        var publicUsers = await _userService.GetPublicByRoleAsync(role, cancellationToken);
         return Ok(publicUsers);
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult> GetById(Guid id)
+    public async Task<ActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
 
         if (userId == id || userRole == UserRole.Admin.ToString())
         {
-            var user = await _userService.GetByIdAsync(id);
+            var user = await _userService.GetByIdAsync(id, cancellationToken);
             if (user == null) return NotFound();
             return Ok(user);
         }
 
         // Public view
-        var publicUser = await _userService.GetPublicByIdAsync(id);
+        var publicUser = await _userService.GetPublicByIdAsync(id, cancellationToken);
         if (publicUser == null) return NotFound();
         return Ok(publicUser);
     }
 
     [HttpPatch("{id}")]
-    public async Task<ActionResult<UserDto>> Update(Guid id, UpdateUserRequest request)
+    public async Task<ActionResult<UserDto>> Update(Guid id, UpdateUserRequest request, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
 
@@ -72,31 +72,31 @@ public class UsersController : ControllerBase
             return Forbid();
         }
 
-        var updatedUser = await _userService.UpdateAsync(id, request);
+        var updatedUser = await _userService.UpdateAsync(id, request, cancellationToken);
         return Ok(updatedUser);
     }
 
     [HttpDelete("{id}")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<IActionResult> Delete(Guid id)
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        await _userService.DeleteAsync(id);
+        await _userService.DeleteAsync(id, cancellationToken);
         return NoContent();
     }
 
     [HttpPost("{id}/suspend")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<IActionResult> Suspend(Guid id)
+    public async Task<IActionResult> Suspend(Guid id, CancellationToken cancellationToken)
     {
-        await _userService.SuspendAsync(id);
+        await _userService.SuspendAsync(id, cancellationToken);
         return NoContent();
     }
 
     [HttpPost("{id}/activate")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<IActionResult> Activate(Guid id)
+    public async Task<IActionResult> Activate(Guid id, CancellationToken cancellationToken)
     {
-        await _userService.ActivateAsync(id);
+        await _userService.ActivateAsync(id, cancellationToken);
         return NoContent();
     }
 
@@ -106,7 +106,7 @@ public class UsersController : ControllerBase
     /// </summary>
     [HttpPost("create-admin")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<ActionResult<UserDto>> CreateAdmin(CreateAdminRequest request)
+    public async Task<ActionResult<UserDto>> CreateAdmin(CreateAdminRequest request, CancellationToken cancellationToken)
     {
         var creatorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(creatorId) || !Guid.TryParse(creatorId, out var adminId))
@@ -114,7 +114,7 @@ public class UsersController : ControllerBase
             return Unauthorized();
         }
 
-        var newAdmin = await _userService.CreateAdminAsync(request, adminId);
+        var newAdmin = await _userService.CreateAdminAsync(request, adminId, cancellationToken);
         return Ok(newAdmin);
     }
 
@@ -124,7 +124,7 @@ public class UsersController : ControllerBase
     /// </summary>
     [HttpPost("create-tournament-creator")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<ActionResult<UserDto>> CreateTournamentCreator(CreateAdminRequest request)
+    public async Task<ActionResult<UserDto>> CreateTournamentCreator(CreateAdminRequest request, CancellationToken cancellationToken)
     {
         var creatorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(creatorId) || !Guid.TryParse(creatorId, out var adminId))
@@ -132,7 +132,7 @@ public class UsersController : ControllerBase
             return Unauthorized();
         }
 
-        var newCreator = await _userService.CreateTournamentCreatorAsync(request, adminId);
+        var newCreator = await _userService.CreateTournamentCreatorAsync(request, adminId, cancellationToken);
         return Ok(newCreator);
     }
 
@@ -143,9 +143,9 @@ public class UsersController : ControllerBase
     /// </summary>
     [HttpGet("admin-count")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<ActionResult<AdminCountDto>> GetAdminCount([FromQuery] Guid? userId = null)
+    public async Task<ActionResult<AdminCountDto>> GetAdminCount([FromQuery] Guid? userId = null, CancellationToken cancellationToken = default)
     {
-        var result = await _userService.GetAdminCountAsync(userId);
+        var result = await _userService.GetAdminCountAsync(userId, cancellationToken);
         return Ok(result);
     }
 
@@ -153,7 +153,7 @@ public class UsersController : ControllerBase
     /// Changes the password for the current authenticated user.
     /// </summary>
     [HttpPost("change-password")]
-    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken cancellationToken)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out var id))
@@ -163,7 +163,7 @@ public class UsersController : ControllerBase
 
         try
         {
-            await _userService.ChangePasswordAsync(id, request.CurrentPassword, request.NewPassword);
+            await _userService.ChangePasswordAsync(id, request.CurrentPassword, request.NewPassword, cancellationToken);
             return NoContent();
         }
         catch (Exception ex)
@@ -176,7 +176,7 @@ public class UsersController : ControllerBase
     /// Uploads and updates the avatar for the current authenticated user.
     /// </summary>
     [HttpPost("upload-avatar")]
-    public async Task<ActionResult<string>> UploadAvatar(UploadAvatarRequest request)
+    public async Task<ActionResult<string>> UploadAvatar(UploadAvatarRequest request, CancellationToken cancellationToken)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out var id))
@@ -213,7 +213,7 @@ public class UsersController : ControllerBase
 
         try
         {
-            var avatarUrl = await _userService.UploadAvatarAsync(id, request);
+            var avatarUrl = await _userService.UploadAvatarAsync(id, request, cancellationToken);
             return Ok(new { avatarUrl });
         }
         catch (Exception ex)

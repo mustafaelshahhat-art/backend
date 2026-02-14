@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Data;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Infrastructure.Services;
@@ -25,12 +26,12 @@ public class SqlDistributedLockService : IDistributedLock
         _logger = logger;
     }
 
-    public async Task<bool> AcquireLockAsync(string key, TimeSpan expiry)
+    public async Task<bool> AcquireLockAsync(string key, TimeSpan expiry, CancellationToken ct = default)
     {
         try
         {
             var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync(ct);
 
             var command = connection.CreateCommand();
             command.CommandText = "sp_getapplock";
@@ -44,7 +45,7 @@ public class SqlDistributedLockService : IDistributedLock
             var resultParam = new SqlParameter("@ReturnVal", SqlDbType.Int) { Direction = ParameterDirection.ReturnValue };
             command.Parameters.Add(resultParam);
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(ct);
             var result = (int)resultParam.Value;
 
             var success = result >= 0;
@@ -75,7 +76,7 @@ public class SqlDistributedLockService : IDistributedLock
         }
     }
 
-    public async Task ReleaseLockAsync(string key)
+    public async Task ReleaseLockAsync(string key, CancellationToken ct = default)
     {
         if (_activeConnections.TryRemove(key, out var connection))
         {
@@ -90,7 +91,7 @@ public class SqlDistributedLockService : IDistributedLock
                     command.Parameters.Add(new SqlParameter("@Resource", key));
                     command.Parameters.Add(new SqlParameter("@LockOwner", "Session"));
 
-                    await command.ExecuteNonQueryAsync();
+                    await command.ExecuteNonQueryAsync(ct);
                     _logger.LogInformation("Released SQL distributed lock for key: {Key}", key);
                 }
             }

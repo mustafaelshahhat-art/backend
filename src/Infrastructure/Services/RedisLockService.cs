@@ -2,6 +2,7 @@ using Application.Interfaces;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Infrastructure.Services;
@@ -18,7 +19,7 @@ public class RedisLockService : IDistributedLock
         _logger = logger;
     }
 
-    public async Task<bool> AcquireLockAsync(string key, TimeSpan expiry)
+    public async Task<bool> AcquireLockAsync(string key, TimeSpan expiry, CancellationToken ct = default)
     {
         try
         {
@@ -47,7 +48,7 @@ public class RedisLockService : IDistributedLock
         }
     }
 
-    public async Task ReleaseLockAsync(string key)
+    public async Task ReleaseLockAsync(string key, CancellationToken ct = default)
     {
         var db = _redis.GetDatabase();
         var fullKey = _lockPrefix + key;

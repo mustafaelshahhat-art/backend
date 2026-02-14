@@ -1,3 +1,4 @@
+using System.Threading;
 using Application.Interfaces;
 using Domain.Entities;
 using Domain.Interfaces;
@@ -23,7 +24,7 @@ public class SearchService : ISearchService
         _userRepository = userRepository;
     }
 
-    public async Task<SearchResponse> SearchAsync(string query, string? userId, string role)
+    public async Task<SearchResponse> SearchAsync(string query, string? userId, string role, CancellationToken ct = default)
     {
         var results = new List<SearchResultItem>();
         var normalizedQuery = query.ToLower().Trim();
@@ -31,7 +32,7 @@ public class SearchService : ISearchService
         // Search tournaments (all roles can see)
         var tournaments = await _tournamentRepository.FindAsync(t =>
             t.Name.ToLower().Contains(normalizedQuery) ||
-            (t.Description != null && t.Description.ToLower().Contains(normalizedQuery)));
+            (t.Description != null && t.Description.ToLower().Contains(normalizedQuery)), ct);
 
         foreach (var t in tournaments.Take(5))
         {
@@ -48,7 +49,7 @@ public class SearchService : ISearchService
         }
 
         // Search matches (filter by role)
-        var matches = await GetMatchesForRole(normalizedQuery, userId, role);
+        var matches = await GetMatchesForRole(normalizedQuery, userId, role, ct);
         foreach (var m in matches.Take(5))
         {
             var routePrefix = GetRoutePrefix(role);
@@ -65,7 +66,7 @@ public class SearchService : ISearchService
 
         // Search teams (all roles can see)
         var teams = await _teamRepository.FindAsync(t =>
-            t.Name.ToLower().Contains(normalizedQuery));
+            t.Name.ToLower().Contains(normalizedQuery), ct);
 
         foreach (var t in teams.Take(5))
         {
@@ -86,7 +87,7 @@ public class SearchService : ISearchService
         {
             var users = await _userRepository.FindAsync(u =>
                 u.Name.ToLower().Contains(normalizedQuery) ||
-                u.Email.ToLower().Contains(normalizedQuery));
+                u.Email.ToLower().Contains(normalizedQuery), ct);
 
             foreach (var u in users.Take(5))
             {
@@ -109,19 +110,17 @@ public class SearchService : ISearchService
         };
     }
 
-    private async Task<IEnumerable<Match>> GetMatchesForRole(string query, string? userId, string role)
+    private async Task<IEnumerable<Match>> GetMatchesForRole(string query, string? userId, string role, CancellationToken ct = default)
     {
         var matches = await _matchRepository.FindAsync(m =>
             (m.HomeTeam != null && m.HomeTeam.Name.ToLower().Contains(query)) ||
             (m.AwayTeam != null && m.AwayTeam.Name.ToLower().Contains(query)),
-            new[] { "HomeTeam", "AwayTeam" });
+            new[] { "HomeTeam", "AwayTeam" }, ct);
 
         if (role == "Admin")
         {
             return matches;
         }
-
-
 
         // Player: return all matches they might be interested in
         return matches;

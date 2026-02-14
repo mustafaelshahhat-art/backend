@@ -17,23 +17,23 @@ public class LocationsController : ControllerBase
     }
 
     [HttpGet("governorates")]
-    public async Task<ActionResult<IEnumerable<string>>> GetGovernorates()
+    public async Task<ActionResult<IEnumerable<string>>> GetGovernorates(CancellationToken cancellationToken)
     {
-        var result = await _userService.GetGovernoratesAsync();
+        var result = await _userService.GetGovernoratesAsync(cancellationToken);
         return Ok(result);
     }
 
     [HttpGet("cities")]
-    public async Task<ActionResult<IEnumerable<string>>> GetCities([FromQuery] string governorateId)
+    public async Task<ActionResult<IEnumerable<string>>> GetCities([FromQuery] string governorateId, CancellationToken cancellationToken)
     {
-        var result = await _userService.GetCitiesAsync(governorateId);
+        var result = await _userService.GetCitiesAsync(governorateId, cancellationToken);
         return Ok(result);
     }
 
     [HttpGet("districts")]
-    public async Task<ActionResult<IEnumerable<string>>> GetDistricts([FromQuery] string cityId)
+    public async Task<ActionResult<IEnumerable<string>>> GetDistricts([FromQuery] string cityId, CancellationToken cancellationToken)
     {
-        var result = await _userService.GetDistrictsAsync(cityId);
+        var result = await _userService.GetDistrictsAsync(cityId, cancellationToken);
         return Ok(result);
     }
 }

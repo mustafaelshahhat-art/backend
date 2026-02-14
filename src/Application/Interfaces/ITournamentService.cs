@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Application.DTOs.Tournaments;
 using Application.DTOs.Matches;
@@ -8,33 +9,33 @@ namespace Application.Interfaces;
 
 public interface ITournamentService
 {
-    Task<IEnumerable<TournamentDto>> GetAllAsync(Guid? creatorId = null);
-    Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? creatorId = null);
-    Task<TournamentDto?> GetByIdAsync(Guid id);
-    Task<TournamentDto> CreateAsync(CreateTournamentRequest request, Guid? creatorId = null);
-    Task<TournamentDto> UpdateAsync(Guid id, UpdateTournamentRequest request, Guid userId, string userRole);
-    Task DeleteAsync(Guid id, Guid userId, string userRole);
+    Task<IEnumerable<TournamentDto>> GetAllAsync(Guid? creatorId = null, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? creatorId = null, CancellationToken ct = default);
+    Task<TournamentDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<TournamentDto> CreateAsync(CreateTournamentRequest request, Guid? creatorId = null, CancellationToken ct = default);
+    Task<TournamentDto> UpdateAsync(Guid id, UpdateTournamentRequest request, Guid userId, string userRole, CancellationToken ct = default);
+    Task DeleteAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default);
     
-    Task<TeamRegistrationDto> RegisterTeamAsync(Guid tournamentId, RegisterTeamRequest request, Guid userId);
-    Task<IEnumerable<TeamRegistrationDto>> GetRegistrationsAsync(Guid tournamentId);
-    Task<TeamRegistrationDto> SubmitPaymentAsync(Guid tournamentId, Guid teamId, SubmitPaymentRequest request, Guid userId);
-    Task<TeamRegistrationDto> ApproveRegistrationAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole);
-    Task<TeamRegistrationDto> RejectRegistrationAsync(Guid tournamentId, Guid teamId, RejectRegistrationRequest request, Guid userId, string userRole);
-    Task WithdrawTeamAsync(Guid tournamentId, Guid teamId, Guid userId);
-    Task<TeamRegistrationDto> PromoteWaitingTeamAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole);
+    Task<TeamRegistrationDto> RegisterTeamAsync(Guid tournamentId, RegisterTeamRequest request, Guid userId, CancellationToken ct = default);
+    Task<IEnumerable<TeamRegistrationDto>> GetRegistrationsAsync(Guid tournamentId, CancellationToken ct = default);
+    Task<TeamRegistrationDto> SubmitPaymentAsync(Guid tournamentId, Guid teamId, SubmitPaymentRequest request, Guid userId, CancellationToken ct = default);
+    Task<TeamRegistrationDto> ApproveRegistrationAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole, CancellationToken ct = default);
+    Task<TeamRegistrationDto> RejectRegistrationAsync(Guid tournamentId, Guid teamId, RejectRegistrationRequest request, Guid userId, string userRole, CancellationToken ct = default);
+    Task WithdrawTeamAsync(Guid tournamentId, Guid teamId, Guid userId, CancellationToken ct = default);
+    Task<TeamRegistrationDto> PromoteWaitingTeamAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole, CancellationToken ct = default);
     
-    Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync(Guid? creatorId = null);
-    Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync(Guid? creatorId = null);
-    Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId, Guid userId, string userRole);
-    Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId, int? groupId = null);
-    Task<IEnumerable<GroupDto>> GetGroupsAsync(Guid tournamentId);
-    Task<BracketDto> GetBracketAsync(Guid tournamentId);
-    Task<TournamentDto> CloseRegistrationAsync(Guid id, Guid userId, string userRole);
-    Task ProcessAutomatedStateTransitionsAsync();
-    Task EliminateTeamAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole);
-    Task<TournamentDto> EmergencyStartAsync(Guid id, Guid userId, string userRole);
-    Task<TournamentDto> EmergencyEndAsync(Guid id, Guid userId, string userRole);
+    Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync(Guid? creatorId = null, CancellationToken ct = default);
+    Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync(Guid? creatorId = null, CancellationToken ct = default);
+    Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId, Guid userId, string userRole, CancellationToken ct = default);
+    Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId, int? groupId = null, CancellationToken ct = default);
+    Task<IEnumerable<GroupDto>> GetGroupsAsync(Guid tournamentId, CancellationToken ct = default);
+    Task<BracketDto> GetBracketAsync(Guid tournamentId, CancellationToken ct = default);
+    Task<TournamentDto> CloseRegistrationAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default);
+    Task ProcessAutomatedStateTransitionsAsync(CancellationToken ct = default);
+    Task EliminateTeamAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole, CancellationToken ct = default);
+    Task<TournamentDto> EmergencyStartAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default);
+    Task<TournamentDto> EmergencyEndAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default);
     
-    Task<IEnumerable<MatchDto>> SetOpeningMatchAsync(Guid tournamentId, Guid homeTeamId, Guid awayTeamId, Guid userId, string userRole);
-    Task<IEnumerable<MatchDto>> GenerateManualMatchesAsync(Guid tournamentId, ManualDrawRequest request, Guid userId, string userRole);
+    Task<IEnumerable<MatchDto>> SetOpeningMatchAsync(Guid tournamentId, Guid homeTeamId, Guid awayTeamId, Guid userId, string userRole, CancellationToken ct = default);
+    Task<IEnumerable<MatchDto>> GenerateManualMatchesAsync(Guid tournamentId, ManualDrawRequest request, Guid userId, string userRole, CancellationToken ct = default);
 }

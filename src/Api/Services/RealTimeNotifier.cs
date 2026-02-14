@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Application.Interfaces;
 using Domain.Entities;
@@ -21,12 +22,12 @@ public class RealTimeNotifier : IRealTimeNotifier
         _logger = logger;
     }
 
-    public async Task SafeSendNotificationAsync(Guid userId, Notification notification)
+    public async Task SafeSendNotificationAsync(Guid userId, Notification notification, CancellationToken ct = default)
     {
         try
         {
              // Assumes UserId is mapped to SignalR User Identifier
-            await _hubContext.Clients.User(userId.ToString()).SendAsync("ReceiveNotification", notification);
+            await _hubContext.Clients.User(userId.ToString()).SendAsync("ReceiveNotification", notification, ct);
         }
         catch (Exception ex)
         {
@@ -35,11 +36,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendAccountStatusChangedAsync(Guid userId, string newStatus)
+    public async Task SendAccountStatusChangedAsync(Guid userId, string newStatus, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.User(userId.ToString()).SendAsync("AccountStatusChanged", new { UserId = userId, Status = newStatus });
+            await _hubContext.Clients.User(userId.ToString()).SendAsync("AccountStatusChanged", new { UserId = userId, Status = newStatus }, ct);
         }
         catch (Exception ex)
         {
@@ -47,11 +48,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendRemovedFromTeamAsync(Guid userId, Guid teamId, Guid playerId)
+    public async Task SendRemovedFromTeamAsync(Guid userId, Guid teamId, Guid playerId, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.User(userId.ToString()).SendAsync("RemovedFromTeam", new { PlayerId = playerId, TeamId = teamId });
+            await _hubContext.Clients.User(userId.ToString()).SendAsync("RemovedFromTeam", new { PlayerId = playerId, TeamId = teamId }, ct);
         }
         catch (Exception ex)
         {
@@ -59,12 +60,12 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendTeamDeletedAsync(Guid teamId, System.Collections.Generic.IEnumerable<Guid> userIds)
+    public async Task SendTeamDeletedAsync(Guid teamId, System.Collections.Generic.IEnumerable<Guid> userIds, CancellationToken ct = default)
     {
         try
         {
             var userStringIds = System.Linq.Enumerable.Select(userIds, id => id.ToString());
-            await _hubContext.Clients.Users(userStringIds.ToList()).SendAsync("TeamDeleted", new { TeamId = teamId });
+            await _hubContext.Clients.Users(userStringIds.ToList()).SendAsync("TeamDeleted", new { TeamId = teamId }, ct);
         }
         catch (Exception ex)
         {
@@ -72,11 +73,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendMatchUpdatedAsync(Application.DTOs.Matches.MatchDto match)
+    public async Task SendMatchUpdatedAsync(Application.DTOs.Matches.MatchDto match, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("MatchUpdated", match);
+            await _hubContext.Clients.All.SendAsync("MatchUpdated", match, ct);
         }
         catch (Exception ex)
         {
@@ -84,11 +85,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendMatchCreatedAsync(Application.DTOs.Matches.MatchDto match)
+    public async Task SendMatchCreatedAsync(Application.DTOs.Matches.MatchDto match, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("MatchCreated", match);
+            await _hubContext.Clients.All.SendAsync("MatchCreated", match, ct);
         }
         catch (Exception ex)
         {
@@ -96,11 +97,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendMatchesGeneratedAsync(System.Collections.Generic.IEnumerable<Application.DTOs.Matches.MatchDto> matches)
+    public async Task SendMatchesGeneratedAsync(System.Collections.Generic.IEnumerable<Application.DTOs.Matches.MatchDto> matches, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("MatchesGenerated", matches);
+            await _hubContext.Clients.All.SendAsync("MatchesGenerated", matches, ct);
         }
         catch (Exception ex)
         {
@@ -108,11 +109,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendMatchDeletedAsync(Guid matchId)
+    public async Task SendMatchDeletedAsync(Guid matchId, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("MatchDeleted", matchId);
+            await _hubContext.Clients.All.SendAsync("MatchDeleted", matchId, ct);
         }
         catch (Exception ex)
         {
@@ -120,11 +121,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendTournamentUpdatedAsync(Application.DTOs.Tournaments.TournamentDto tournament)
+    public async Task SendTournamentUpdatedAsync(Application.DTOs.Tournaments.TournamentDto tournament, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("TournamentUpdated", tournament);
+            await _hubContext.Clients.All.SendAsync("TournamentUpdated", tournament, ct);
         }
         catch (Exception ex)
         {
@@ -132,11 +133,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendTournamentCreatedAsync(Application.DTOs.Tournaments.TournamentDto tournament)
+    public async Task SendTournamentCreatedAsync(Application.DTOs.Tournaments.TournamentDto tournament, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("TournamentCreated", tournament);
+            await _hubContext.Clients.All.SendAsync("TournamentCreated", tournament, ct);
         }
         catch (Exception ex)
         {
@@ -144,11 +145,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendTournamentDeletedAsync(Guid tournamentId)
+    public async Task SendTournamentDeletedAsync(Guid tournamentId, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("TournamentDeleted", tournamentId);
+            await _hubContext.Clients.All.SendAsync("TournamentDeleted", tournamentId, ct);
         }
         catch (Exception ex)
         {
@@ -156,7 +157,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendUserUpdatedAsync(Application.DTOs.Users.UserDto user)
+    public async Task SendUserUpdatedAsync(Application.DTOs.Users.UserDto user, CancellationToken ct = default)
     {
         try
         {
@@ -174,7 +175,7 @@ public class RealTimeNotifier : IRealTimeNotifier
                 user.TeamRole,
                 user.Status
             };
-            await _hubContext.Clients.All.SendAsync("UserUpdated", publicView);
+            await _hubContext.Clients.All.SendAsync("UserUpdated", publicView, ct);
         }
         catch (Exception ex)
         {
@@ -182,7 +183,7 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendUserCreatedAsync(Application.DTOs.Users.UserDto user)
+    public async Task SendUserCreatedAsync(Application.DTOs.Users.UserDto user, CancellationToken ct = default)
     {
         try
         {
@@ -199,7 +200,7 @@ public class RealTimeNotifier : IRealTimeNotifier
                 user.TeamRole,
                 user.Status
             };
-            await _hubContext.Clients.All.SendAsync("UserCreated", publicView);
+            await _hubContext.Clients.All.SendAsync("UserCreated", publicView, ct);
         }
         catch (Exception ex)
         {
@@ -207,11 +208,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendUserDeletedAsync(Guid userId)
+    public async Task SendUserDeletedAsync(Guid userId, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("UserDeleted", userId);
+            await _hubContext.Clients.All.SendAsync("UserDeleted", userId, ct);
         }
         catch (Exception ex)
         {
@@ -219,11 +220,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendTeamCreatedAsync(Application.DTOs.Teams.TeamDto team)
+    public async Task SendTeamCreatedAsync(Application.DTOs.Teams.TeamDto team, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("TeamCreated", team);
+            await _hubContext.Clients.All.SendAsync("TeamCreated", team, ct);
         }
         catch (Exception ex)
         {
@@ -231,11 +232,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendTeamUpdatedAsync(Application.DTOs.Teams.TeamDto team)
+    public async Task SendTeamUpdatedAsync(Application.DTOs.Teams.TeamDto team, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("TeamUpdated", team);
+            await _hubContext.Clients.All.SendAsync("TeamUpdated", team, ct);
         }
         catch (Exception ex)
         {
@@ -244,11 +245,11 @@ public class RealTimeNotifier : IRealTimeNotifier
     }
     
     // New global delete method overload
-    public async Task SendTeamDeletedAsync(Guid teamId)
+    public async Task SendTeamDeletedAsync(Guid teamId, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("TeamDeleted", teamId);
+            await _hubContext.Clients.All.SendAsync("TeamDeleted", teamId, ct);
         }
         catch (Exception ex)
         {
@@ -256,11 +257,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendRegistrationUpdatedAsync(Application.DTOs.Tournaments.TeamRegistrationDto registration)
+    public async Task SendRegistrationUpdatedAsync(Application.DTOs.Tournaments.TeamRegistrationDto registration, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("RegistrationUpdated", registration);
+            await _hubContext.Clients.All.SendAsync("RegistrationUpdated", registration, ct);
         }
         catch (Exception ex)
         {
@@ -268,11 +269,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendRegistrationApprovedAsync(Application.DTOs.Tournaments.TournamentDto tournament)
+    public async Task SendRegistrationApprovedAsync(Application.DTOs.Tournaments.TournamentDto tournament, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("RegistrationApproved", tournament);
+            await _hubContext.Clients.All.SendAsync("RegistrationApproved", tournament, ct);
         }
         catch (Exception ex)
         {
@@ -280,11 +281,11 @@ public class RealTimeNotifier : IRealTimeNotifier
         }
     }
 
-    public async Task SendRegistrationRejectedAsync(Application.DTOs.Tournaments.TournamentDto tournament)
+    public async Task SendRegistrationRejectedAsync(Application.DTOs.Tournaments.TournamentDto tournament, CancellationToken ct = default)
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("RegistrationRejected", tournament);
+            await _hubContext.Clients.All.SendAsync("RegistrationRejected", tournament, ct);
         }
         catch (Exception ex)
         {
@@ -294,18 +295,18 @@ public class RealTimeNotifier : IRealTimeNotifier
 
 
 
-    public async Task SendSystemEventAsync(string type, object metadata, string? group = null)
+    public async Task SendSystemEventAsync(string type, object metadata, string? group = null, CancellationToken ct = default)
     {
         try
         {
             var payload = new { Type = type, Metadata = metadata, Timestamp = DateTime.UtcNow };
             if (!string.IsNullOrEmpty(group))
             {
-                await _hubContext.Clients.Group(group).SendAsync("SystemEvent", payload);
+                await _hubContext.Clients.Group(group).SendAsync("SystemEvent", payload, ct);
             }
             else
             {
-                await _hubContext.Clients.All.SendAsync("SystemEvent", payload);
+                await _hubContext.Clients.All.SendAsync("SystemEvent", payload, ct);
             }
         }
         catch (Exception ex)

@@ -19,16 +19,16 @@ public class AuthController : ControllerBase
 
     [HttpPost("register")]
     [Api.Infrastructure.Filters.FileValidation]
-    public async Task<ActionResult<AuthResponse>> Register([FromForm] RegisterRequest request, IFormFile? idFront, IFormFile? idBack)
+    public async Task<ActionResult<AuthResponse>> Register([FromForm] RegisterRequest request, IFormFile? idFront, IFormFile? idBack, CancellationToken cancellationToken)
     {
-        if (idFront != null) request.IdFrontUrl = await SaveFile(idFront);
-        if (idBack != null) request.IdBackUrl = await SaveFile(idBack);
+        if (idFront != null) request.IdFrontUrl = await SaveFile(idFront, cancellationToken);
+        if (idBack != null) request.IdBackUrl = await SaveFile(idBack, cancellationToken);
 
-        var response = await _authService.RegisterAsync(request);
+        var response = await _authService.RegisterAsync(request, cancellationToken);
         return Ok(response);
     }
 
-    private async Task<string> SaveFile(IFormFile file)
+    private async Task<string> SaveFile(IFormFile file, CancellationToken cancellationToken)
     {
         var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
         if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
@@ -38,62 +38,62 @@ public class AuthController : ControllerBase
 
         using (var stream = new FileStream(filePath, FileMode.Create))
         {
-            await file.CopyToAsync(stream);
+            await file.CopyToAsync(stream, cancellationToken);
         }
 
         return $"/uploads/{fileName}";
     }
 
     [HttpPost("login")]
-    public async Task<ActionResult<AuthResponse>> Login(LoginRequest request)
+    public async Task<ActionResult<AuthResponse>> Login(LoginRequest request, CancellationToken cancellationToken)
     {
-        var response = await _authService.LoginAsync(request);
+        var response = await _authService.LoginAsync(request, cancellationToken);
         return Ok(response);
     }
 
     [HttpPost("refresh-token")]
-    public async Task<ActionResult<AuthResponse>> RefreshToken(RefreshTokenRequest request)
+    public async Task<ActionResult<AuthResponse>> RefreshToken(RefreshTokenRequest request, CancellationToken cancellationToken)
     {
-        var response = await _authService.RefreshTokenAsync(request);
+        var response = await _authService.RefreshTokenAsync(request, cancellationToken);
         return Ok(response);
     }
 
     [HttpPost("verify-email")]
-    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
+    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request, CancellationToken cancellationToken)
     {
-        await _authService.VerifyEmailAsync(request.Email, request.Otp);
+        await _authService.VerifyEmailAsync(request.Email, request.Otp, cancellationToken);
         return Ok(new { message = "Email verified successfully." });
     }
 
     [HttpPost("forgot-password")]
-    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request, CancellationToken cancellationToken)
     {
-        await _authService.ForgotPasswordAsync(request.Email);
+        await _authService.ForgotPasswordAsync(request.Email, cancellationToken);
         return Ok(new { message = "If the email exists, a reset code has been sent." });
     }
 
     [HttpPost("reset-password")]
-    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request, CancellationToken cancellationToken)
     {
-        await _authService.ResetPasswordAsync(request.Email, request.Otp, request.NewPassword);
+        await _authService.ResetPasswordAsync(request.Email, request.Otp, request.NewPassword, cancellationToken);
         return Ok(new { message = "Password reset successfully." });
     }
 
     [HttpPost("resend-otp")]
-    public async Task<IActionResult> ResendOtp([FromBody] ResendOtpRequest request)
+    public async Task<IActionResult> ResendOtp([FromBody] ResendOtpRequest request, CancellationToken cancellationToken)
     {
-        await _authService.ResendOtpAsync(request.Email, request.Type);
+        await _authService.ResendOtpAsync(request.Email, request.Type, cancellationToken);
         return Ok(new { message = "OTP resent successfully." });
     }
 
     [Authorize]
     [HttpPost("logout")]
-    public async Task<IActionResult> Logout()
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
         var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (Guid.TryParse(userIdStr, out var userId))
         {
-            await _authService.LogoutAsync(userId);
+            await _authService.LogoutAsync(userId, cancellationToken);
         }
         return NoContent();
     }

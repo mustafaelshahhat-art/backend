@@ -21,12 +21,12 @@ public class MeController : ControllerBase
     }
 
     [HttpGet("teams-overview")]
-    public async Task<ActionResult<TeamsOverviewDto>> GetTeamsOverview()
+    public async Task<ActionResult<TeamsOverviewDto>> GetTeamsOverview(CancellationToken cancellationToken)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var overview = await _teamService.GetTeamsOverviewAsync(Guid.Parse(userId));
+        var overview = await _teamService.GetTeamsOverviewAsync(Guid.Parse(userId), cancellationToken);
         return Ok(overview);
     }
 }
