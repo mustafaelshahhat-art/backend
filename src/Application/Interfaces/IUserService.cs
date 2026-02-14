@@ -9,7 +9,7 @@ namespace Application.Interfaces;
 public interface IUserService
 {
     Task<IEnumerable<UserDto>> GetAllAsync();
-    Task<UserDto?> GetByIdAsync(Guid id);
+    Task<UserDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<UserPublicDto?> GetPublicByIdAsync(Guid id);
     Task<UserDto> UpdateAsync(Guid id, UpdateUserRequest request);
     Task DeleteAsync(Guid id);

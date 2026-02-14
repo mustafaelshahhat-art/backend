@@ -1,0 +1,676 @@
+2026-02-14 03:41:07.316 +02:00 [INF] Executed DbCommand (8ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT 1
+2026-02-14 03:41:07.342 +02:00 [INF] Acquiring an exclusive lock for migration application. See https://aka.ms/efcore-docs-migrations-lock for more information if this takes too long.
+2026-02-14 03:41:07.359 +02:00 [INF] Executed DbCommand (14ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+DECLARE @result int;
+EXEC @result = sp_getapplock @Resource = '__EFMigrationsLock', @LockOwner = 'Session', @LockMode = 'Exclusive';
+SELECT @result
+2026-02-14 03:41:07.388 +02:00 [INF] Executed DbCommand (1ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+IF OBJECT_ID(N'[__EFMigrationsHistory]') IS NULL
+BEGIN
+    CREATE TABLE [__EFMigrationsHistory] (
+        [MigrationId] nvarchar(150) NOT NULL,
+        [ProductVersion] nvarchar(32) NOT NULL,
+        CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY ([MigrationId])
+    );
+END;
+2026-02-14 03:41:07.395 +02:00 [INF] Executed DbCommand (1ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT 1
+2026-02-14 03:41:07.398 +02:00 [INF] Executed DbCommand (1ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT OBJECT_ID(N'[__EFMigrationsHistory]');
+2026-02-14 03:41:07.408 +02:00 [INF] Executed DbCommand (8ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT [MigrationId], [ProductVersion]
+FROM [__EFMigrationsHistory]
+ORDER BY [MigrationId];
+2026-02-14 03:41:07.415 +02:00 [INF] No migrations were applied. The database is already up to date.
+2026-02-14 03:41:07.421 +02:00 [INF] Executed DbCommand (3ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+DECLARE @result int;
+EXEC @result = sp_releaseapplock @Resource = '__EFMigrationsLock', @LockOwner = 'Session';
+SELECT @result
+2026-02-14 03:41:07.547 +02:00 [INF] Executed DbCommand (5ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Email] = N'admin@test.com'
+2026-02-14 03:41:07.625 +02:00 [INF] User profile is available. Using 'C:\Users\musta\AppData\Local\ASP.NET\DataProtection-Keys' as key repository and Windows DPAPI to encrypt keys at rest.
+2026-02-14 03:41:07.632 +02:00 [INF] Tournament Background Service is starting.
+2026-02-14 03:41:07.645 +02:00 [INF] Successfully acquired SQL distributed lock for key: outbox_processor_lock
+2026-02-14 03:41:07.645 +02:00 [INF] Successfully acquired SQL distributed lock for key: tournament_events_processor
+2026-02-14 03:41:07.647 +02:00 [INF] Processing automated tournament events...
+2026-02-14 03:41:07.666 +02:00 [INF] Now listening on: http://0.0.0.0:5125
+2026-02-14 03:41:07.667 +02:00 [INF] Application started. Press Ctrl+C to shut down.
+2026-02-14 03:41:07.668 +02:00 [INF] Hosting environment: Development
+2026-02-14 03:41:07.669 +02:00 [INF] Content root path: D:\ramadan\backend\src\api
+2026-02-14 03:41:07.698 +02:00 [INF] Executed DbCommand (10ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(@__p_0) [o].[Id], [o].[Content], [o].[CreatedAt], [o].[Error], [o].[ErrorCount], [o].[OccurredOn], [o].[ProcessedOn], [o].[RowVersion], [o].[Status], [o].[Type], [o].[UpdatedAt]
+FROM [OutboxMessages] AS [o]
+WHERE [o].[Status] IN (0, 3) AND [o].[ErrorCount] < 3
+ORDER BY [o].[OccurredOn]
+2026-02-14 03:41:07.706 +02:00 [INF] Released SQL distributed lock for key: outbox_processor_lock
+2026-02-14 03:41:07.738 +02:00 [INF] Executed DbCommand (6ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT [t].[Id], [t].[AllowLateRegistration], [t].[CreatedAt], [t].[CreatorUserId], [t].[CurrentTeams], [t].[Description], [t].[EndDate], [t].[EntryFee], [t].[Format], [t].[InstaPayNumber], [t].[IsHomeAwayEnabled], [t].[LateRegistrationMode], [t].[Location], [t].[MatchType], [t].[MaxTeams], [t].[Mode], [t].[Name], [t].[NumberOfGroups], [t].[OpeningMatchAwayTeamId], [t].[OpeningMatchHomeTeamId], [t].[OpeningMatchId], [t].[PaymentMethodsJson], [t].[Prizes], [t].[QualifiedTeamsPerGroup], [t].[RegistrationDeadline], [t].[RowVersion], [t].[Rules], [t].[SeedingMode], [t].[StartDate], [t].[Status], [t].[UpdatedAt], [t].[WalletNumber], [t].[WinnerTeamId]
+FROM [Tournaments] AS [t]
+WHERE [t].[Status] = 1 AND [t].[RegistrationDeadline] < GETUTCDATE()
+2026-02-14 03:41:07.749 +02:00 [INF] Executed DbCommand (4ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT [t].[Id], [t].[AllowLateRegistration], [t].[CreatedAt], [t].[CreatorUserId], [t].[CurrentTeams], [t].[Description], [t].[EndDate], [t].[EntryFee], [t].[Format], [t].[InstaPayNumber], [t].[IsHomeAwayEnabled], [t].[LateRegistrationMode], [t].[Location], [t].[MatchType], [t].[MaxTeams], [t].[Mode], [t].[Name], [t].[NumberOfGroups], [t].[OpeningMatchAwayTeamId], [t].[OpeningMatchHomeTeamId], [t].[OpeningMatchId], [t].[PaymentMethodsJson], [t].[Prizes], [t].[QualifiedTeamsPerGroup], [t].[RegistrationDeadline], [t].[RowVersion], [t].[Rules], [t].[SeedingMode], [t].[StartDate], [t].[Status], [t].[UpdatedAt], [t].[WalletNumber], [t].[WinnerTeamId]
+FROM [Tournaments] AS [t]
+WHERE [t].[Status] = 2 AND [t].[StartDate] <= GETUTCDATE()
+2026-02-14 03:41:07.758 +02:00 [INF] Automated tournament events processed successfully.
+2026-02-14 03:41:07.760 +02:00 [INF] Released SQL distributed lock for key: tournament_events_processor
+2026-02-14 03:41:11.857 +02:00 [INF] Request starting HTTP/1.1 OPTIONS http://localhost:5125/api/v1/auth/login - null null
+2026-02-14 03:41:11.880 +02:00 [WRN] Failed to determine the https port for redirect.
+2026-02-14 03:41:11.892 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:11.897 +02:00 [INF] HTTP OPTIONS /api/v1/auth/login responded 204 in 4.4924 ms
+2026-02-14 03:41:11.902 +02:00 [INF] Request finished HTTP/1.1 OPTIONS http://localhost:5125/api/v1/auth/login - 204 null null 45.7344ms
+2026-02-14 03:41:11.906 +02:00 [INF] Request starting HTTP/1.1 POST http://localhost:5125/api/v1/auth/login - application/json 48
+2026-02-14 03:41:11.910 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:11.961 +02:00 [INF] Executed DbCommand (3ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT [s].[Id], [s].[AllowTeamCreation], [s].[CreatedAt], [s].[MaintenanceMode], [s].[RowVersion], [s].[UpdatedAt], [s].[UpdatedByAdminId]
+FROM [SystemSettings] AS [s]
+2026-02-14 03:41:11.976 +02:00 [INF] Executing endpoint 'Api.Controllers.AuthController.Login (Api)'
+2026-02-14 03:41:12.012 +02:00 [INF] Route matched with {action = "Login", controller = "Auth"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult`1[Application.DTOs.Auth.AuthResponse]] Login(Application.DTOs.Auth.LoginRequest) on controller Api.Controllers.AuthController (Api).
+2026-02-14 03:41:12.072 +02:00 [INF] Executed DbCommand (3ms) [Parameters=[@__email_0='?' (Size = 450)], CommandType='"Text"', CommandTimeout='30']
+SELECT [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE LOWER([u].[Email]) = @__email_0
+2026-02-14 03:41:12.320 +02:00 [INF] Executed DbCommand (9ms) [Parameters=[@p22='?' (DbType = Guid), @p0='?' (DbType = Int32), @p1='?' (Size = 4000), @p2='?' (Size = 450), @p3='?' (DbType = DateTime2), @p4='?' (Size = 4000), @p5='?' (Size = 450), @p6='?' (Size = 450), @p7='?' (Size = 4000), @p8='?' (Size = 4000), @p9='?' (DbType = Boolean), @p10='?' (Size = 4000), @p11='?' (Size = 4000), @p12='?' (Size = 450), @p13='?' (Size = 4000), @p14='?' (Size = 4000), @p15='?' (Size = 4000), @p16='?' (DbType = DateTime2), @p17='?' (DbType = Int32), @p23='?' (Size = 8) (DbType = Binary), @p18='?' (DbType = Int32), @p19='?' (DbType = Guid), @p20='?' (DbType = Int32), @p21='?' (DbType = DateTime2)], CommandType='"Text"', CommandTimeout='30']
+SET IMPLICIT_TRANSACTIONS OFF;
+SET NOCOUNT ON;
+UPDATE [Users] SET [Age] = @p0, [Avatar] = @p1, [City] = @p2, [CreatedAt] = @p3, [DisplayId] = @p4, [Email] = @p5, [Governorate] = @p6, [IdBackUrl] = @p7, [IdFrontUrl] = @p8, [IsEmailVerified] = @p9, [Name] = @p10, [NationalId] = @p11, [Neighborhood] = @p12, [PasswordHash] = @p13, [Phone] = @p14, [RefreshToken] = @p15, [RefreshTokenExpiryTime] = @p16, [Role] = @p17, [Status] = @p18, [TeamId] = @p19, [TokenVersion] = @p20, [UpdatedAt] = @p21
+OUTPUT INSERTED.[RowVersion]
+WHERE [Id] = @p22 AND [RowVersion] = @p23;
+2026-02-14 03:41:12.369 +02:00 [INF] Executed DbCommand (5ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime2), @p2='?' (Size = 4000), @p3='?' (Size = 450), @p4='?' (DbType = DateTime2), @p5='?' (DbType = Guid), @p6='?' (Size = 4000)], CommandType='"Text"', CommandTimeout='30']
+SET IMPLICIT_TRANSACTIONS OFF;
+SET NOCOUNT ON;
+INSERT INTO [Activities] ([Id], [CreatedAt], [Message], [Type], [UpdatedAt], [UserId], [UserName])
+OUTPUT INSERTED.[RowVersion]
+VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6);
+2026-02-14 03:41:12.380 +02:00 [INF] Executing OkObjectResult, writing value of type 'Application.DTOs.Auth.AuthResponse'.
+2026-02-14 03:41:12.402 +02:00 [INF] Executed action Api.Controllers.AuthController.Login (Api) in 383.8683ms
+2026-02-14 03:41:12.403 +02:00 [INF] Executed endpoint 'Api.Controllers.AuthController.Login (Api)'
+2026-02-14 03:41:12.404 +02:00 [INF] HTTP POST /api/v1/auth/login responded 200 in 493.9235 ms
+2026-02-14 03:41:12.407 +02:00 [INF] Request finished HTTP/1.1 POST http://localhost:5125/api/v1/auth/login - 200 null application/json; charset=utf-8 501.2677ms
+2026-02-14 03:41:12.417 +02:00 [INF] Request starting HTTP/1.1 OPTIONS http://localhost:5125/api/v1/notifications - null null
+2026-02-14 03:41:12.419 +02:00 [INF] Request starting HTTP/1.1 OPTIONS http://localhost:5125/api/v1/Analytics/overview - null null
+2026-02-14 03:41:12.420 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:12.421 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:12.422 +02:00 [INF] HTTP OPTIONS /api/v1/notifications responded 204 in 1.7186 ms
+2026-02-14 03:41:12.422 +02:00 [INF] HTTP OPTIONS /api/v1/Analytics/overview responded 204 in 0.8578 ms
+2026-02-14 03:41:12.423 +02:00 [INF] Request finished HTTP/1.1 OPTIONS http://localhost:5125/api/v1/notifications - 204 null null 6.4183ms
+2026-02-14 03:41:12.424 +02:00 [INF] Request finished HTTP/1.1 OPTIONS http://localhost:5125/api/v1/Analytics/overview - 204 null null 5.1562ms
+2026-02-14 03:41:12.427 +02:00 [INF] Request starting HTTP/1.1 OPTIONS http://localhost:5125/api/v1/Analytics/activities - null null
+2026-02-14 03:41:12.428 +02:00 [INF] Request starting HTTP/1.1 OPTIONS http://localhost:5125/api/v1/matches - null null
+2026-02-14 03:41:12.430 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:12.432 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:12.433 +02:00 [INF] HTTP OPTIONS /api/v1/Analytics/activities responded 204 in 3.3188 ms
+2026-02-14 03:41:12.434 +02:00 [INF] HTTP OPTIONS /api/v1/matches responded 204 in 1.2464 ms
+2026-02-14 03:41:12.435 +02:00 [INF] Request finished HTTP/1.1 OPTIONS http://localhost:5125/api/v1/Analytics/activities - 204 null null 8.6203ms
+2026-02-14 03:41:12.437 +02:00 [INF] Request finished HTTP/1.1 OPTIONS http://localhost:5125/api/v1/matches - 204 null null 9.0664ms
+2026-02-14 03:41:12.440 +02:00 [INF] Request starting HTTP/1.1 OPTIONS http://localhost:5125/hubs/notifications/negotiate?negotiateVersion=1 - null null
+2026-02-14 03:41:12.443 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/api/v1/notifications - null null
+2026-02-14 03:41:12.445 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:12.448 +02:00 [INF] HTTP OPTIONS /hubs/notifications/negotiate responded 204 in 2.7430 ms
+2026-02-14 03:41:12.450 +02:00 [INF] Request finished HTTP/1.1 OPTIONS http://localhost:5125/hubs/notifications/negotiate?negotiateVersion=1 - 204 null null 9.3755ms
+2026-02-14 03:41:12.451 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:12.453 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/api/v1/Analytics/overview - null null
+2026-02-14 03:41:12.456 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:12.500 +02:00 [INF] Executed DbCommand (3ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:12.500 +02:00 [INF] Executed DbCommand (3ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:12.509 +02:00 [INF] Executing endpoint 'Api.Controllers.NotificationsController.GetMyNotifications (Api)'
+2026-02-14 03:41:12.509 +02:00 [INF] Executing endpoint 'Api.Controllers.AnalyticsController.GetOverview (Api)'
+2026-02-14 03:41:12.513 +02:00 [INF] Route matched with {action = "GetMyNotifications", controller = "Notifications"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult`1[System.Collections.Generic.IEnumerable`1[Domain.Entities.Notification]]] GetMyNotifications() on controller Api.Controllers.NotificationsController (Api).
+2026-02-14 03:41:12.513 +02:00 [INF] Route matched with {action = "GetOverview", controller = "Analytics"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult] GetOverview(System.Nullable`1[System.Guid]) on controller Api.Controllers.AnalyticsController (Api).
+2026-02-14 03:41:12.531 +02:00 [INF] Executed DbCommand (4ms) [Parameters=[@__userId_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT [n].[Id], [n].[CreatedAt], [n].[IsRead], [n].[Message], [n].[RowVersion], [n].[Title], [n].[Type], [n].[UpdatedAt], [n].[UserId]
+FROM [Notifications] AS [n]
+WHERE [n].[UserId] = @__userId_0
+ORDER BY [n].[CreatedAt] DESC
+2026-02-14 03:41:12.545 +02:00 [INF] Executing OkObjectResult, writing value of type 'System.Collections.Generic.List`1[[Domain.Entities.Notification, Domain, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]'.
+2026-02-14 03:41:12.547 +02:00 [INF] Executed DbCommand (2ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*)
+FROM [Users] AS [u]
+WHERE [u].[IsEmailVerified] = CAST(1 AS bit)
+2026-02-14 03:41:12.562 +02:00 [INF] Executed DbCommand (4ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*)
+FROM [Teams] AS [t]
+WHERE [t].[IsDeleted] = CAST(0 AS bit)
+2026-02-14 03:41:12.564 +02:00 [INF] Executed action Api.Controllers.NotificationsController.GetMyNotifications (Api) in 49.0529ms
+2026-02-14 03:41:12.566 +02:00 [INF] Executed endpoint 'Api.Controllers.NotificationsController.GetMyNotifications (Api)'
+2026-02-14 03:41:12.567 +02:00 [INF] HTTP GET /api/v1/notifications responded 200 in 116.5212 ms
+2026-02-14 03:41:12.569 +02:00 [INF] Executed DbCommand (2ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*)
+FROM [Tournaments] AS [t]
+WHERE [t].[Status] IN (1, 3)
+2026-02-14 03:41:12.569 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/api/v1/notifications - 200 null application/json; charset=utf-8 125.9313ms
+2026-02-14 03:41:12.574 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/api/v1/Analytics/activities - null null
+2026-02-14 03:41:12.577 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:12.581 +02:00 [INF] Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:12.587 +02:00 [INF] Executing endpoint 'Api.Controllers.AnalyticsController.GetRecentActivity (Api)'
+2026-02-14 03:41:12.592 +02:00 [INF] Route matched with {action = "GetRecentActivity", controller = "Analytics"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult`1[System.Collections.Generic.IEnumerable`1[Application.DTOs.Analytics.ActivityDto]]] GetRecentActivity() on controller Api.Controllers.AnalyticsController (Api).
+2026-02-14 03:41:12.604 +02:00 [INF] Executed DbCommand (8ms) [Parameters=[@__today_0='?' (DbType = DateTime2)], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*)
+FROM [Matches] AS [m]
+INNER JOIN (
+    SELECT [t].[Id], [t].[IsDeleted]
+    FROM [Teams] AS [t]
+    WHERE [t].[IsDeleted] = CAST(0 AS bit)
+) AS [t0] ON [m].[HomeTeamId] = [t0].[Id]
+INNER JOIN (
+    SELECT [t1].[Id], [t1].[IsDeleted]
+    FROM [Teams] AS [t1]
+    WHERE [t1].[IsDeleted] = CAST(0 AS bit)
+) AS [t2] ON [m].[AwayTeamId] = [t2].[Id]
+WHERE [t0].[IsDeleted] = CAST(0 AS bit) AND [t2].[IsDeleted] = CAST(0 AS bit) AND [m].[Date] IS NOT NULL AND CONVERT(date, [m].[Date]) = @__today_0
+2026-02-14 03:41:12.606 +02:00 [INF] Executed DbCommand (2ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT [a].[Id], [a].[CreatedAt], [a].[Message], [a].[RowVersion], [a].[Type], [a].[UpdatedAt], [a].[UserId], [a].[UserName]
+FROM [Activities] AS [a]
+2026-02-14 03:41:12.614 +02:00 [INF] Executing OkObjectResult, writing value of type 'System.Linq.Enumerable+IteratorSelectIterator`2[[Domain.Entities.Activity, Domain, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null],[Application.DTOs.Analytics.ActivityDto, Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]'.
+2026-02-14 03:41:12.617 +02:00 [INF] Executed DbCommand (6ms) [Parameters=[@__today_0='?' (DbType = DateTime2)], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*)
+FROM [Activities] AS [a]
+WHERE [a].[Type] = N'USER_LOGIN' AND CONVERT(date, [a].[CreatedAt]) = @__today_0
+2026-02-14 03:41:12.618 +02:00 [INF] Executed action Api.Controllers.AnalyticsController.GetRecentActivity (Api) in 24.5688ms
+2026-02-14 03:41:12.620 +02:00 [INF] Executed endpoint 'Api.Controllers.AnalyticsController.GetRecentActivity (Api)'
+2026-02-14 03:41:12.622 +02:00 [INF] HTTP GET /api/v1/Analytics/activities responded 200 in 45.0508 ms
+2026-02-14 03:41:12.624 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/api/v1/Analytics/activities - 200 null application/json; charset=utf-8 49.3043ms
+2026-02-14 03:41:12.627 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/api/v1/matches - null null
+2026-02-14 03:41:12.630 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:12.633 +02:00 [INF] Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:12.636 +02:00 [INF] Executing endpoint 'Api.Controllers.MatchesController.GetAll (Api)'
+2026-02-14 03:41:12.636 +02:00 [INF] Executed DbCommand (8ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT COALESCE(SUM([m].[HomeScore]), 0)
+FROM [Matches] AS [m]
+INNER JOIN (
+    SELECT [t].[Id], [t].[IsDeleted]
+    FROM [Teams] AS [t]
+    WHERE [t].[IsDeleted] = CAST(0 AS bit)
+) AS [t0] ON [m].[HomeTeamId] = [t0].[Id]
+INNER JOIN (
+    SELECT [t1].[Id], [t1].[IsDeleted]
+    FROM [Teams] AS [t1]
+    WHERE [t1].[IsDeleted] = CAST(0 AS bit)
+) AS [t2] ON [m].[AwayTeamId] = [t2].[Id]
+WHERE [t0].[IsDeleted] = CAST(0 AS bit) AND [t2].[IsDeleted] = CAST(0 AS bit) AND [m].[Status] = 3
+2026-02-14 03:41:12.639 +02:00 [INF] Route matched with {action = "GetAll", controller = "Matches"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult`1[System.Collections.Generic.IEnumerable`1[Application.DTOs.Matches.MatchDto]]] GetAll() on controller Api.Controllers.MatchesController (Api).
+2026-02-14 03:41:12.647 +02:00 [INF] Executed DbCommand (5ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT COALESCE(SUM([m].[AwayScore]), 0)
+FROM [Matches] AS [m]
+INNER JOIN (
+    SELECT [t].[Id], [t].[IsDeleted]
+    FROM [Teams] AS [t]
+    WHERE [t].[IsDeleted] = CAST(0 AS bit)
+) AS [t0] ON [m].[HomeTeamId] = [t0].[Id]
+INNER JOIN (
+    SELECT [t1].[Id], [t1].[IsDeleted]
+    FROM [Teams] AS [t1]
+    WHERE [t1].[IsDeleted] = CAST(0 AS bit)
+) AS [t2] ON [m].[AwayTeamId] = [t2].[Id]
+WHERE [t0].[IsDeleted] = CAST(0 AS bit) AND [t2].[IsDeleted] = CAST(0 AS bit) AND [m].[Status] = 3
+2026-02-14 03:41:12.650 +02:00 [INF] Executing OkObjectResult, writing value of type 'Application.DTOs.Analytics.AnalyticsOverview'.
+2026-02-14 03:41:12.654 +02:00 [INF] Executed action Api.Controllers.AnalyticsController.GetOverview (Api) in 136.713ms
+2026-02-14 03:41:12.655 +02:00 [INF] Executed endpoint 'Api.Controllers.AnalyticsController.GetOverview (Api)'
+2026-02-14 03:41:12.656 +02:00 [INF] HTTP GET /api/v1/Analytics/overview responded 200 in 200.2732 ms
+2026-02-14 03:41:12.658 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/api/v1/Analytics/overview - 200 null application/json; charset=utf-8 205.0135ms
+2026-02-14 03:41:12.714 +02:00 [INF] Successfully acquired SQL distributed lock for key: outbox_processor_lock
+2026-02-14 03:41:12.721 +02:00 [INF] Executed DbCommand (4ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(@__p_0) [o].[Id], [o].[Content], [o].[CreatedAt], [o].[Error], [o].[ErrorCount], [o].[OccurredOn], [o].[ProcessedOn], [o].[RowVersion], [o].[Status], [o].[Type], [o].[UpdatedAt]
+FROM [OutboxMessages] AS [o]
+WHERE [o].[Status] IN (0, 3) AND [o].[ErrorCount] < 3
+ORDER BY [o].[OccurredOn]
+2026-02-14 03:41:12.725 +02:00 [INF] Released SQL distributed lock for key: outbox_processor_lock
+2026-02-14 03:41:12.750 +02:00 [INF] Executed DbCommand (37ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT [m].[Id], [m].[AwayScore], [m].[AwayTeamId], [m].[CreatedAt], [m].[Date], [m].[Forfeit], [m].[GroupId], [m].[HomeScore], [m].[HomeTeamId], [m].[RoundNumber], [m].[RowVersion], [m].[StageName], [m].[Status], [m].[TournamentId], [m].[UpdatedAt], [t0].[Id], [t0].[City], [t0].[CreatedAt], [t0].[Founded], [t0].[IsActive], [t0].[IsDeleted], [t0].[Logo], [t0].[Name], [t0].[RowVersion], [t0].[UpdatedAt], [t2].[Id], [t2].[City], [t2].[CreatedAt], [t2].[Founded], [t2].[IsActive], [t2].[IsDeleted], [t2].[Logo], [t2].[Name], [t2].[RowVersion], [t2].[UpdatedAt], [s1].[Id], [s1].[CreatedAt], [s1].[Description], [s1].[MatchId], [s1].[Minute], [s1].[PlayerId], [s1].[RowVersion], [s1].[TeamId], [s1].[Type], [s1].[UpdatedAt], [s1].[Id0], [s1].[Assists], [s1].[CreatedAt0], [s1].[DisplayId], [s1].[Goals], [s1].[IsDeleted], [s1].[Name], [s1].[Number], [s1].[Position], [s1].[RedCards], [s1].[RowVersion0], [s1].[Status], [s1].[TeamId0], [s1].[TeamRole], [s1].[UpdatedAt0], [s1].[UserId], [s1].[YellowCards], [s1].[Id1], [s1].[Id00], [s1].[Id10], [s1].[Id01]
+FROM [Matches] AS [m]
+INNER JOIN (
+    SELECT [t].[Id], [t].[City], [t].[CreatedAt], [t].[Founded], [t].[IsActive], [t].[IsDeleted], [t].[Logo], [t].[Name], [t].[RowVersion], [t].[UpdatedAt]
+    FROM [Teams] AS [t]
+    WHERE [t].[IsDeleted] = CAST(0 AS bit)
+) AS [t0] ON [m].[HomeTeamId] = [t0].[Id]
+INNER JOIN (
+    SELECT [t1].[Id], [t1].[City], [t1].[CreatedAt], [t1].[Founded], [t1].[IsActive], [t1].[IsDeleted], [t1].[Logo], [t1].[Name], [t1].[RowVersion], [t1].[UpdatedAt]
+    FROM [Teams] AS [t1]
+    WHERE [t1].[IsDeleted] = CAST(0 AS bit)
+) AS [t2] ON [m].[AwayTeamId] = [t2].[Id]
+LEFT JOIN (
+    SELECT [m0].[Id], [m0].[CreatedAt], [m0].[Description], [m0].[MatchId], [m0].[Minute], [m0].[PlayerId], [m0].[RowVersion], [m0].[TeamId], [m0].[Type], [m0].[UpdatedAt], [s0].[Id] AS [Id0], [s0].[Assists], [s0].[CreatedAt] AS [CreatedAt0], [s0].[DisplayId], [s0].[Goals], [s0].[IsDeleted], [s0].[Name], [s0].[Number], [s0].[Position], [s0].[RedCards], [s0].[RowVersion] AS [RowVersion0], [s0].[Status], [s0].[TeamId] AS [TeamId0], [s0].[TeamRole], [s0].[UpdatedAt] AS [UpdatedAt0], [s0].[UserId], [s0].[YellowCards], [s].[Id] AS [Id1], [s].[Id0] AS [Id00], [s].[Id1] AS [Id10], [s0].[Id0] AS [Id01]
+    FROM [MatchEvents] AS [m0]
+    INNER JOIN (
+        SELECT [m1].[Id], [t4].[Id] AS [Id0], [t4].[IsDeleted], [t6].[Id] AS [Id1], [t6].[IsDeleted] AS [IsDeleted0]
+        FROM [Matches] AS [m1]
+        INNER JOIN (
+            SELECT [t3].[Id], [t3].[IsDeleted]
+            FROM [Teams] AS [t3]
+            WHERE [t3].[IsDeleted] = CAST(0 AS bit)
+        ) AS [t4] ON [m1].[HomeTeamId] = [t4].[Id]
+        INNER JOIN (
+            SELECT [t5].[Id], [t5].[IsDeleted]
+            FROM [Teams] AS [t5]
+            WHERE [t5].[IsDeleted] = CAST(0 AS bit)
+        ) AS [t6] ON [m1].[AwayTeamId] = [t6].[Id]
+        WHERE [t4].[IsDeleted] = CAST(0 AS bit) AND [t6].[IsDeleted] = CAST(0 AS bit)
+    ) AS [s] ON [m0].[MatchId] = [s].[Id]
+    LEFT JOIN (
+        SELECT [p].[Id], [p].[Assists], [p].[CreatedAt], [p].[DisplayId], [p].[Goals], [p].[IsDeleted], [p].[Name], [p].[Number], [p].[Position], [p].[RedCards], [p].[RowVersion], [p].[Status], [p].[TeamId], [p].[TeamRole], [p].[UpdatedAt], [p].[UserId], [p].[YellowCards], [t8].[Id] AS [Id0]
+        FROM [Players] AS [p]
+        INNER JOIN (
+            SELECT [t7].[Id], [t7].[IsDeleted]
+            FROM [Teams] AS [t7]
+            WHERE [t7].[IsDeleted] = CAST(0 AS bit)
+        ) AS [t8] ON [p].[TeamId] = [t8].[Id]
+        WHERE [p].[IsDeleted] = CAST(0 AS bit) AND [t8].[IsDeleted] = CAST(0 AS bit)
+    ) AS [s0] ON [m0].[PlayerId] = [s0].[Id]
+    WHERE [s].[IsDeleted] = CAST(0 AS bit) AND [s].[IsDeleted0] = CAST(0 AS bit)
+) AS [s1] ON [m].[Id] = [s1].[MatchId]
+WHERE [t0].[IsDeleted] = CAST(0 AS bit) AND [t2].[IsDeleted] = CAST(0 AS bit)
+ORDER BY [m].[Id], [t0].[Id], [t2].[Id], [s1].[Id], [s1].[Id1], [s1].[Id00], [s1].[Id10], [s1].[Id0]
+2026-02-14 03:41:12.758 +02:00 [INF] Request starting HTTP/1.1 POST http://localhost:5125/hubs/notifications/negotiate?negotiateVersion=1 - null 0
+2026-02-14 03:41:12.758 +02:00 [INF] Executing OkObjectResult, writing value of type 'System.Collections.Generic.List`1[[Application.DTOs.Matches.MatchDto, Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]'.
+2026-02-14 03:41:12.762 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:12.763 +02:00 [INF] Executed action Api.Controllers.MatchesController.GetAll (Api) in 122.106ms
+2026-02-14 03:41:12.765 +02:00 [INF] Executed endpoint 'Api.Controllers.MatchesController.GetAll (Api)'
+2026-02-14 03:41:12.766 +02:00 [INF] HTTP GET /api/v1/matches responded 200 in 135.8075 ms
+2026-02-14 03:41:12.766 +02:00 [INF] Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:12.767 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/api/v1/matches - 200 null application/json; charset=utf-8 139.5593ms
+2026-02-14 03:41:12.769 +02:00 [INF] Executing endpoint '/hubs/notifications/negotiate'
+2026-02-14 03:41:12.774 +02:00 [INF] Executed endpoint '/hubs/notifications/negotiate'
+2026-02-14 03:41:12.775 +02:00 [INF] HTTP POST /hubs/notifications/negotiate responded 200 in 13.0327 ms
+2026-02-14 03:41:12.777 +02:00 [INF] Request finished HTTP/1.1 POST http://localhost:5125/hubs/notifications/negotiate?negotiateVersion=1 - 200 316 application/json 18.1588ms
+2026-02-14 03:41:13.088 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/hubs/notifications?id=xZXTGxwBQz_dEsWWEqAZTw&access_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MDNmOWEwNS0xMDc5LTQxNDAtYTU1MC1kOTk2NmU4NTkzYjUiLCJlbWFpbCI6ImFkbWluQHRlc3QuY29tIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiQWRtaW4iLCJuYW1lIjoiQWRtaW4iLCJzdGF0dXMiOiJBY3RpdmUiLCJ0b2tlbl92ZXJzaW9uIjoiMSIsImp0aSI6IjliYjUzMjMzLTNjYWQtNDNiYy05YzA0LWFkMDg1MGQwYjZiMCIsImV4cCI6MTc3MTAzNjg3MiwiaXNzIjoiUmFtYWRhblRvdXJuYW1lbnRBcGkiLCJhdWQiOiJSYW1hZGFuVG91cm5hbWVudEFwcCJ9.SoigcT20VmDCBVjS-QZolDAwkztovUPIg6oMZXVu00M - null null
+2026-02-14 03:41:13.090 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:13.093 +02:00 [INF] Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:13.094 +02:00 [INF] Executing endpoint '/hubs/notifications'
+2026-02-14 03:41:15.185 +02:00 [INF] Request starting HTTP/1.1 OPTIONS http://localhost:5125/api/v1/me/teams-overview - null null
+2026-02-14 03:41:15.185 +02:00 [INF] Request starting HTTP/1.1 OPTIONS http://localhost:5125/api/v1/users/503f9a05-1079-4140-a550-d9966e8593b5 - null null
+2026-02-14 03:41:15.189 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:15.191 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:15.191 +02:00 [INF] HTTP OPTIONS /api/v1/me/teams-overview responded 204 in 2.7195 ms
+2026-02-14 03:41:15.192 +02:00 [INF] HTTP OPTIONS /api/v1/users/503f9a05-1079-4140-a550-d9966e8593b5 responded 204 in 1.4265 ms
+2026-02-14 03:41:15.194 +02:00 [INF] Request finished HTTP/1.1 OPTIONS http://localhost:5125/api/v1/me/teams-overview - 204 null null 8.2324ms
+2026-02-14 03:41:15.195 +02:00 [INF] Request finished HTTP/1.1 OPTIONS http://localhost:5125/api/v1/users/503f9a05-1079-4140-a550-d9966e8593b5 - 204 null null 9.7833ms
+2026-02-14 03:41:15.198 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/api/v1/me/teams-overview - null null
+2026-02-14 03:41:15.201 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/api/v1/users/503f9a05-1079-4140-a550-d9966e8593b5 - null null
+2026-02-14 03:41:15.203 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:15.206 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:15.208 +02:00 [INF] Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:15.209 +02:00 [INF] Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:15.211 +02:00 [INF] Executing endpoint 'Api.Controllers.MeController.GetTeamsOverview (Api)'
+2026-02-14 03:41:15.212 +02:00 [INF] Executing endpoint 'Api.Controllers.UsersController.GetById (Api)'
+2026-02-14 03:41:15.215 +02:00 [INF] Route matched with {action = "GetTeamsOverview", controller = "Me"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult`1[Application.DTOs.Teams.TeamsOverviewDto]] GetTeamsOverview() on controller Api.Controllers.MeController (Api).
+2026-02-14 03:41:15.215 +02:00 [INF] Route matched with {action = "GetById", controller = "Users"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult] GetById(System.Guid) on controller Api.Controllers.UsersController (Api).
+2026-02-14 03:41:15.240 +02:00 [INF] Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:15.285 +02:00 [INF] Executed DbCommand (30ms) [Parameters=[@__userId_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT [t].[Id], [t].[City], [t].[CreatedAt], [t].[Founded], [t].[IsActive], [t].[IsDeleted], [t].[Logo], [t].[Name], [t].[RowVersion], [t].[UpdatedAt], [s].[Id], [s].[Assists], [s].[CreatedAt], [s].[DisplayId], [s].[Goals], [s].[IsDeleted], [s].[Name], [s].[Number], [s].[Position], [s].[RedCards], [s].[RowVersion], [s].[Status], [s].[TeamId], [s].[TeamRole], [s].[UpdatedAt], [s].[UserId], [s].[YellowCards], [s].[Id0]
+FROM [Teams] AS [t]
+LEFT JOIN (
+    SELECT [p0].[Id], [p0].[Assists], [p0].[CreatedAt], [p0].[DisplayId], [p0].[Goals], [p0].[IsDeleted], [p0].[Name], [p0].[Number], [p0].[Position], [p0].[RedCards], [p0].[RowVersion], [p0].[Status], [p0].[TeamId], [p0].[TeamRole], [p0].[UpdatedAt], [p0].[UserId], [p0].[YellowCards], [t3].[Id] AS [Id0]
+    FROM [Players] AS [p0]
+    INNER JOIN (
+        SELECT [t2].[Id], [t2].[IsDeleted]
+        FROM [Teams] AS [t2]
+        WHERE [t2].[IsDeleted] = CAST(0 AS bit)
+    ) AS [t3] ON [p0].[TeamId] = [t3].[Id]
+    WHERE [p0].[IsDeleted] = CAST(0 AS bit) AND [t3].[IsDeleted] = CAST(0 AS bit)
+) AS [s] ON [t].[Id] = [s].[TeamId]
+WHERE [t].[IsDeleted] = CAST(0 AS bit) AND EXISTS (
+    SELECT 1
+    FROM [Players] AS [p]
+    INNER JOIN (
+        SELECT [t0].[Id], [t0].[IsDeleted]
+        FROM [Teams] AS [t0]
+        WHERE [t0].[IsDeleted] = CAST(0 AS bit)
+    ) AS [t1] ON [p].[TeamId] = [t1].[Id]
+    WHERE [p].[IsDeleted] = CAST(0 AS bit) AND [t1].[IsDeleted] = CAST(0 AS bit) AND [t].[Id] = [p].[TeamId] AND [p].[TeamRole] = 1 AND [p].[UserId] = @__userId_0)
+ORDER BY [t].[Id], [s].[Id]
+2026-02-14 03:41:15.293 +02:00 [INF] Executed DbCommand (33ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT [t4].[Id], [t4].[City], [t4].[CreatedAt], [t4].[Founded], [t4].[IsActive], [t4].[IsDeleted], [t4].[Logo], [t4].[Name], [t4].[RowVersion], [t4].[UpdatedAt], [s].[Id], [s].[Assists], [s].[CreatedAt], [s].[DisplayId], [s].[Goals], [s].[IsDeleted], [s].[Name], [s].[Number], [s].[Position], [s].[RedCards], [s].[RowVersion], [s].[Status], [s].[TeamId], [s].[TeamRole], [s].[UpdatedAt], [s].[UserId], [s].[YellowCards], [s].[Id0]
+FROM (
+    SELECT TOP(1) [t].[Id], [t].[City], [t].[CreatedAt], [t].[Founded], [t].[IsActive], [t].[IsDeleted], [t].[Logo], [t].[Name], [t].[RowVersion], [t].[UpdatedAt]
+    FROM [Teams] AS [t]
+    WHERE [t].[IsDeleted] = CAST(0 AS bit) AND EXISTS (
+        SELECT 1
+        FROM [Players] AS [p]
+        INNER JOIN (
+            SELECT [t0].[Id], [t0].[IsDeleted]
+            FROM [Teams] AS [t0]
+            WHERE [t0].[IsDeleted] = CAST(0 AS bit)
+        ) AS [t1] ON [p].[TeamId] = [t1].[Id]
+        WHERE [p].[IsDeleted] = CAST(0 AS bit) AND [t1].[IsDeleted] = CAST(0 AS bit) AND [t].[Id] = [p].[TeamId] AND [p].[UserId] = @__id_0 AND [p].[TeamRole] = 1)
+) AS [t4]
+LEFT JOIN (
+    SELECT [p0].[Id], [p0].[Assists], [p0].[CreatedAt], [p0].[DisplayId], [p0].[Goals], [p0].[IsDeleted], [p0].[Name], [p0].[Number], [p0].[Position], [p0].[RedCards], [p0].[RowVersion], [p0].[Status], [p0].[TeamId], [p0].[TeamRole], [p0].[UpdatedAt], [p0].[UserId], [p0].[YellowCards], [t3].[Id] AS [Id0]
+    FROM [Players] AS [p0]
+    INNER JOIN (
+        SELECT [t2].[Id], [t2].[IsDeleted]
+        FROM [Teams] AS [t2]
+        WHERE [t2].[IsDeleted] = CAST(0 AS bit)
+    ) AS [t3] ON [p0].[TeamId] = [t3].[Id]
+    WHERE [p0].[IsDeleted] = CAST(0 AS bit) AND [t3].[IsDeleted] = CAST(0 AS bit)
+) AS [s] ON [t4].[Id] = [s].[TeamId]
+ORDER BY [t4].[Id], [s].[Id]
+2026-02-14 03:41:15.305 +02:00 [INF] Executed DbCommand (4ms) [Parameters=[@__p_1='?' (DbType = Int32), @__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(@__p_1) [a].[Id], [a].[CreatedAt], [a].[Message], [a].[RowVersion], [a].[Type], [a].[UpdatedAt], [a].[UserId], [a].[UserName]
+FROM [Activities] AS [a]
+WHERE [a].[UserId] = @__id_0
+ORDER BY [a].[CreatedAt] DESC
+2026-02-14 03:41:15.309 +02:00 [INF] Executing OkObjectResult, writing value of type 'Application.DTOs.Users.UserDto'.
+2026-02-14 03:41:15.311 +02:00 [INF] Executed action Api.Controllers.UsersController.GetById (Api) in 92.9579ms
+2026-02-14 03:41:15.313 +02:00 [INF] Executed endpoint 'Api.Controllers.UsersController.GetById (Api)'
+2026-02-14 03:41:15.314 +02:00 [INF] HTTP GET /api/v1/users/503f9a05-1079-4140-a550-d9966e8593b5 responded 200 in 107.7416 ms
+2026-02-14 03:41:15.316 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/api/v1/users/503f9a05-1079-4140-a550-d9966e8593b5 - 200 null application/json; charset=utf-8 114.8593ms
+2026-02-14 03:41:15.318 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/api/v1/notifications - null null
+2026-02-14 03:41:15.319 +02:00 [INF] Request starting HTTP/1.1 OPTIONS http://localhost:5125/api/v1/tournaments - null null
+2026-02-14 03:41:15.322 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:15.323 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:15.325 +02:00 [INF] HTTP OPTIONS /api/v1/tournaments responded 204 in 1.3175 ms
+2026-02-14 03:41:15.326 +02:00 [INF] Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:15.327 +02:00 [INF] Request finished HTTP/1.1 OPTIONS http://localhost:5125/api/v1/tournaments - 204 null null 7.3131ms
+2026-02-14 03:41:15.328 +02:00 [INF] Executed DbCommand (25ms) [Parameters=[@__userId_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT [t].[Id], [t].[City], [t].[CreatedAt], [t].[Founded], [t].[IsActive], [t].[IsDeleted], [t].[Logo], [t].[Name], [t].[RowVersion], [t].[UpdatedAt], [s].[Id], [s].[Assists], [s].[CreatedAt], [s].[DisplayId], [s].[Goals], [s].[IsDeleted], [s].[Name], [s].[Number], [s].[Position], [s].[RedCards], [s].[RowVersion], [s].[Status], [s].[TeamId], [s].[TeamRole], [s].[UpdatedAt], [s].[UserId], [s].[YellowCards], [s].[Id0]
+FROM [Teams] AS [t]
+LEFT JOIN (
+    SELECT [p0].[Id], [p0].[Assists], [p0].[CreatedAt], [p0].[DisplayId], [p0].[Goals], [p0].[IsDeleted], [p0].[Name], [p0].[Number], [p0].[Position], [p0].[RedCards], [p0].[RowVersion], [p0].[Status], [p0].[TeamId], [p0].[TeamRole], [p0].[UpdatedAt], [p0].[UserId], [p0].[YellowCards], [t3].[Id] AS [Id0]
+    FROM [Players] AS [p0]
+    INNER JOIN (
+        SELECT [t2].[Id], [t2].[IsDeleted]
+        FROM [Teams] AS [t2]
+        WHERE [t2].[IsDeleted] = CAST(0 AS bit)
+    ) AS [t3] ON [p0].[TeamId] = [t3].[Id]
+    WHERE [p0].[IsDeleted] = CAST(0 AS bit) AND [t3].[IsDeleted] = CAST(0 AS bit)
+) AS [s] ON [t].[Id] = [s].[TeamId]
+WHERE [t].[IsDeleted] = CAST(0 AS bit) AND EXISTS (
+    SELECT 1
+    FROM [Players] AS [p]
+    INNER JOIN (
+        SELECT [t0].[Id], [t0].[IsDeleted]
+        FROM [Teams] AS [t0]
+        WHERE [t0].[IsDeleted] = CAST(0 AS bit)
+    ) AS [t1] ON [p].[TeamId] = [t1].[Id]
+    WHERE [p].[IsDeleted] = CAST(0 AS bit) AND [t1].[IsDeleted] = CAST(0 AS bit) AND [t].[Id] = [p].[TeamId] AND [p].[UserId] = @__userId_0)
+ORDER BY [t].[Id], [s].[Id]
+2026-02-14 03:41:15.329 +02:00 [INF] Executing endpoint 'Api.Controllers.NotificationsController.GetMyNotifications (Api)'
+2026-02-14 03:41:15.331 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/api/v1/tournaments - null null
+2026-02-14 03:41:15.334 +02:00 [INF] Route matched with {action = "GetMyNotifications", controller = "Notifications"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult`1[System.Collections.Generic.IEnumerable`1[Domain.Entities.Notification]]] GetMyNotifications() on controller Api.Controllers.NotificationsController (Api).
+2026-02-14 03:41:15.336 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:15.339 +02:00 [INF] Executed DbCommand (2ms) [Parameters=[@__userId_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT [n].[Id], [n].[CreatedAt], [n].[IsRead], [n].[Message], [n].[RowVersion], [n].[Title], [n].[Type], [n].[UpdatedAt], [n].[UserId]
+FROM [Notifications] AS [n]
+WHERE [n].[UserId] = @__userId_0
+ORDER BY [n].[CreatedAt] DESC
+2026-02-14 03:41:15.339 +02:00 [INF] Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:15.341 +02:00 [INF] Executing OkObjectResult, writing value of type 'System.Collections.Generic.List`1[[Domain.Entities.Notification, Domain, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]'.
+2026-02-14 03:41:15.343 +02:00 [INF] Executing endpoint 'Api.Controllers.TournamentsController.GetAll (Api)'
+2026-02-14 03:41:15.344 +02:00 [INF] Executed action Api.Controllers.NotificationsController.GetMyNotifications (Api) in 6.9092ms
+2026-02-14 03:41:15.346 +02:00 [INF] Executed endpoint 'Api.Controllers.NotificationsController.GetMyNotifications (Api)'
+2026-02-14 03:41:15.347 +02:00 [INF] HTTP GET /api/v1/notifications responded 200 in 24.9397 ms
+2026-02-14 03:41:15.347 +02:00 [INF] Route matched with {action = "GetAll", controller = "Tournaments"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult`1[System.Collections.Generic.IEnumerable`1[Application.DTOs.Tournaments.TournamentDto]]] GetAll() on controller Api.Controllers.TournamentsController (Api).
+2026-02-14 03:41:15.348 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/api/v1/notifications - 200 null application/json; charset=utf-8 29.9306ms
+2026-02-14 03:41:15.350 +02:00 [INF] Executed DbCommand (5ms) [Parameters=[@__userId_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT [t].[Id], [t].[CreatedAt], [t].[InitiatedByPlayer], [t].[RowVersion], [t].[Status], [t].[TeamId], [t].[UpdatedAt], [t].[UserId], [t1].[Id], [t1].[City], [t1].[CreatedAt], [t1].[Founded], [t1].[IsActive], [t1].[IsDeleted], [t1].[Logo], [t1].[Name], [t1].[RowVersion], [t1].[UpdatedAt]
+FROM [TeamJoinRequests] AS [t]
+INNER JOIN (
+    SELECT [t0].[Id], [t0].[City], [t0].[CreatedAt], [t0].[Founded], [t0].[IsActive], [t0].[IsDeleted], [t0].[Logo], [t0].[Name], [t0].[RowVersion], [t0].[UpdatedAt]
+    FROM [Teams] AS [t0]
+    WHERE [t0].[IsDeleted] = CAST(0 AS bit)
+) AS [t1] ON [t].[TeamId] = [t1].[Id]
+WHERE [t1].[IsDeleted] = CAST(0 AS bit) AND [t].[UserId] = @__userId_0 AND [t].[Status] = N'pending'
+2026-02-14 03:41:15.359 +02:00 [INF] Executing OkObjectResult, writing value of type 'Application.DTOs.Teams.TeamsOverviewDto'.
+2026-02-14 03:41:15.362 +02:00 [INF] Executed DbCommand (2ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*)
+FROM [Tournaments] AS [t]
+2026-02-14 03:41:15.367 +02:00 [INF] Executed action Api.Controllers.MeController.GetTeamsOverview (Api) in 150.8021ms
+2026-02-14 03:41:15.368 +02:00 [INF] Executed endpoint 'Api.Controllers.MeController.GetTeamsOverview (Api)'
+2026-02-14 03:41:15.369 +02:00 [INF] HTTP GET /api/v1/me/teams-overview responded 200 in 166.6901 ms
+2026-02-14 03:41:15.371 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/api/v1/me/teams-overview - 200 null application/json; charset=utf-8 173.0635ms
+2026-02-14 03:41:15.408 +02:00 [INF] Executed DbCommand (20ms) [Parameters=[@__p_0='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='"Text"', CommandTimeout='30']
+SELECT [t1].[Id], [t1].[AllowLateRegistration], [t1].[CreatedAt], [t1].[CreatorUserId], [t1].[CurrentTeams], [t1].[Description], [t1].[EndDate], [t1].[EntryFee], [t1].[Format], [t1].[InstaPayNumber], [t1].[IsHomeAwayEnabled], [t1].[LateRegistrationMode], [t1].[Location], [t1].[MatchType], [t1].[MaxTeams], [t1].[Mode], [t1].[Name], [t1].[NumberOfGroups], [t1].[OpeningMatchAwayTeamId], [t1].[OpeningMatchHomeTeamId], [t1].[OpeningMatchId], [t1].[PaymentMethodsJson], [t1].[Prizes], [t1].[QualifiedTeamsPerGroup], [t1].[RegistrationDeadline], [t1].[RowVersion], [t1].[Rules], [t1].[SeedingMode], [t1].[StartDate], [t1].[Status], [t1].[UpdatedAt], [t1].[WalletNumber], [t1].[WinnerTeamId], [t2].[Id], [s].[Id], [s].[CreatedAt], [s].[PaymentMethod], [s].[PaymentReceiptUrl], [s].[RejectionReason], [s].[RowVersion], [s].[SenderNumber], [s].[Status], [s].[TeamId], [s].[TournamentId], [s].[UpdatedAt], [s].[Id0], [t2].[City], [t2].[CreatedAt], [t2].[Founded], [t2].[IsActive], [t2].[IsDeleted], [t2].[Logo], [t2].[Name], [t2].[RowVersion], [t2].[UpdatedAt]
+FROM (
+    SELECT [t].[Id], [t].[AllowLateRegistration], [t].[CreatedAt], [t].[CreatorUserId], [t].[CurrentTeams], [t].[Description], [t].[EndDate], [t].[EntryFee], [t].[Format], [t].[InstaPayNumber], [t].[IsHomeAwayEnabled], [t].[LateRegistrationMode], [t].[Location], [t].[MatchType], [t].[MaxTeams], [t].[Mode], [t].[Name], [t].[NumberOfGroups], [t].[OpeningMatchAwayTeamId], [t].[OpeningMatchHomeTeamId], [t].[OpeningMatchId], [t].[PaymentMethodsJson], [t].[Prizes], [t].[QualifiedTeamsPerGroup], [t].[RegistrationDeadline], [t].[RowVersion], [t].[Rules], [t].[SeedingMode], [t].[StartDate], [t].[Status], [t].[UpdatedAt], [t].[WalletNumber], [t].[WinnerTeamId]
+    FROM [Tournaments] AS [t]
+    ORDER BY [t].[StartDate] DESC
+    OFFSET @__p_0 ROWS FETCH NEXT @__p_1 ROWS ONLY
+) AS [t1]
+LEFT JOIN (
+    SELECT [t0].[Id], [t0].[City], [t0].[CreatedAt], [t0].[Founded], [t0].[IsActive], [t0].[IsDeleted], [t0].[Logo], [t0].[Name], [t0].[RowVersion], [t0].[UpdatedAt]
+    FROM [Teams] AS [t0]
+    WHERE [t0].[IsDeleted] = CAST(0 AS bit)
+) AS [t2] ON [t1].[WinnerTeamId] = [t2].[Id]
+LEFT JOIN (
+    SELECT [t3].[Id], [t3].[CreatedAt], [t3].[PaymentMethod], [t3].[PaymentReceiptUrl], [t3].[RejectionReason], [t3].[RowVersion], [t3].[SenderNumber], [t3].[Status], [t3].[TeamId], [t3].[TournamentId], [t3].[UpdatedAt], [t5].[Id] AS [Id0]
+    FROM [TeamRegistrations] AS [t3]
+    INNER JOIN (
+        SELECT [t4].[Id], [t4].[IsDeleted]
+        FROM [Teams] AS [t4]
+        WHERE [t4].[IsDeleted] = CAST(0 AS bit)
+    ) AS [t5] ON [t3].[TeamId] = [t5].[Id]
+    WHERE [t5].[IsDeleted] = CAST(0 AS bit)
+) AS [s] ON [t1].[Id] = [s].[TournamentId]
+ORDER BY [t1].[StartDate] DESC, [t1].[Id], [t2].[Id], [s].[Id]
+2026-02-14 03:41:15.662 +02:00 [INF] Executed DbCommand (20ms) [Parameters=[@__ids_0='?' (Size = 4000)], CommandType='"Text"', CommandTimeout='30']
+SELECT [m].[TournamentId], COUNT(*) AS [TotalMatches], COUNT(CASE
+    WHEN [m].[Status] = 3 THEN 1
+END) AS [FinishedMatches]
+FROM [Matches] AS [m]
+INNER JOIN (
+    SELECT [t].[Id], [t].[IsDeleted]
+    FROM [Teams] AS [t]
+    WHERE [t].[IsDeleted] = CAST(0 AS bit)
+) AS [t0] ON [m].[HomeTeamId] = [t0].[Id]
+INNER JOIN (
+    SELECT [t1].[Id], [t1].[IsDeleted]
+    FROM [Teams] AS [t1]
+    WHERE [t1].[IsDeleted] = CAST(0 AS bit)
+) AS [t2] ON [m].[AwayTeamId] = [t2].[Id]
+WHERE [t0].[IsDeleted] = CAST(0 AS bit) AND [t2].[IsDeleted] = CAST(0 AS bit) AND [m].[TournamentId] IN (
+    SELECT [i].[value]
+    FROM OPENJSON(@__ids_0) WITH ([value] uniqueidentifier '$') AS [i]
+)
+GROUP BY [m].[TournamentId]
+2026-02-14 03:41:15.699 +02:00 [INF] Executed DbCommand (27ms) [Parameters=[@__ids_0='?' (Size = 4000)], CommandType='"Text"', CommandTimeout='30']
+SELECT [t].[TournamentId], COUNT(*) AS [TotalRegistrations], COUNT(CASE
+    WHEN [t].[Status] = 1 THEN 1
+END) AS [ApprovedRegistrations]
+FROM [TeamRegistrations] AS [t]
+INNER JOIN (
+    SELECT [t0].[Id], [t0].[IsDeleted]
+    FROM [Teams] AS [t0]
+    WHERE [t0].[IsDeleted] = CAST(0 AS bit)
+) AS [t1] ON [t].[TeamId] = [t1].[Id]
+WHERE [t1].[IsDeleted] = CAST(0 AS bit) AND [t].[TournamentId] IN (
+    SELECT [i].[value]
+    FROM OPENJSON(@__ids_0) WITH ([value] uniqueidentifier '$') AS [i]
+) AND [t].[Status] <> 2 AND [t].[Status] <> 3
+GROUP BY [t].[TournamentId]
+2026-02-14 03:41:15.710 +02:00 [INF] Executing OkObjectResult, writing value of type 'System.Collections.Generic.List`1[[Application.DTOs.Tournaments.TournamentDto, Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]'.
+2026-02-14 03:41:15.736 +02:00 [INF] Executed action Api.Controllers.TournamentsController.GetAll (Api) in 386.5215ms
+2026-02-14 03:41:15.737 +02:00 [INF] Executed endpoint 'Api.Controllers.TournamentsController.GetAll (Api)'
+2026-02-14 03:41:15.739 +02:00 [INF] HTTP GET /api/v1/tournaments responded 200 in 402.8984 ms
+2026-02-14 03:41:15.740 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/api/v1/tournaments - 200 null application/json; charset=utf-8 408.6261ms
+2026-02-14 03:41:16.785 +02:00 [INF] Request starting HTTP/1.1 OPTIONS http://localhost:5125/api/v1/Users - null null
+2026-02-14 03:41:16.787 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:16.787 +02:00 [INF] HTTP OPTIONS /api/v1/Users responded 204 in 0.4465 ms
+2026-02-14 03:41:16.789 +02:00 [INF] Request finished HTTP/1.1 OPTIONS http://localhost:5125/api/v1/Users - 204 null null 4.3018ms
+2026-02-14 03:41:16.792 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/api/v1/Users - null null
+2026-02-14 03:41:16.794 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:16.797 +02:00 [INF] Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:16.799 +02:00 [INF] Executing endpoint 'Api.Controllers.UsersController.GetAll (Api)'
+2026-02-14 03:41:16.802 +02:00 [INF] Route matched with {action = "GetAll", controller = "Users"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult`1[System.Collections.Generic.IEnumerable`1[Application.DTOs.Users.UserDto]]] GetAll() on controller Api.Controllers.UsersController (Api).
+2026-02-14 03:41:16.810 +02:00 [INF] Executed DbCommand (2ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[IsEmailVerified] = CAST(1 AS bit)
+2026-02-14 03:41:16.815 +02:00 [INF] Executing OkObjectResult, writing value of type 'System.Collections.Generic.List`1[[Application.DTOs.Users.UserDto, Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]'.
+2026-02-14 03:41:16.820 +02:00 [INF] Executed action Api.Controllers.UsersController.GetAll (Api) in 17.3131ms
+2026-02-14 03:41:16.822 +02:00 [INF] Executed endpoint 'Api.Controllers.UsersController.GetAll (Api)'
+2026-02-14 03:41:16.823 +02:00 [INF] HTTP GET /api/v1/Users responded 200 in 28.7427 ms
+2026-02-14 03:41:16.825 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/api/v1/Users - 200 null application/json; charset=utf-8 32.1981ms
+2026-02-14 03:41:17.751 +02:00 [INF] Successfully acquired SQL distributed lock for key: outbox_processor_lock
+2026-02-14 03:41:17.754 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/api/v1/tournaments - null null
+2026-02-14 03:41:17.756 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:17.759 +02:00 [INF] Executed DbCommand (6ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(@__p_0) [o].[Id], [o].[Content], [o].[CreatedAt], [o].[Error], [o].[ErrorCount], [o].[OccurredOn], [o].[ProcessedOn], [o].[RowVersion], [o].[Status], [o].[Type], [o].[UpdatedAt]
+FROM [OutboxMessages] AS [o]
+WHERE [o].[Status] IN (0, 3) AND [o].[ErrorCount] < 3
+ORDER BY [o].[OccurredOn]
+2026-02-14 03:41:17.761 +02:00 [INF] Executed DbCommand (3ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:17.762 +02:00 [INF] Executing endpoint 'Api.Controllers.TournamentsController.GetAll (Api)'
+2026-02-14 03:41:17.763 +02:00 [INF] Route matched with {action = "GetAll", controller = "Tournaments"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult`1[System.Collections.Generic.IEnumerable`1[Application.DTOs.Tournaments.TournamentDto]]] GetAll() on controller Api.Controllers.TournamentsController (Api).
+2026-02-14 03:41:17.763 +02:00 [INF] Released SQL distributed lock for key: outbox_processor_lock
+2026-02-14 03:41:17.767 +02:00 [INF] Executed DbCommand (3ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*)
+FROM [Tournaments] AS [t]
+2026-02-14 03:41:17.788 +02:00 [INF] Executed DbCommand (19ms) [Parameters=[@__p_0='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='"Text"', CommandTimeout='30']
+SELECT [t1].[Id], [t1].[AllowLateRegistration], [t1].[CreatedAt], [t1].[CreatorUserId], [t1].[CurrentTeams], [t1].[Description], [t1].[EndDate], [t1].[EntryFee], [t1].[Format], [t1].[InstaPayNumber], [t1].[IsHomeAwayEnabled], [t1].[LateRegistrationMode], [t1].[Location], [t1].[MatchType], [t1].[MaxTeams], [t1].[Mode], [t1].[Name], [t1].[NumberOfGroups], [t1].[OpeningMatchAwayTeamId], [t1].[OpeningMatchHomeTeamId], [t1].[OpeningMatchId], [t1].[PaymentMethodsJson], [t1].[Prizes], [t1].[QualifiedTeamsPerGroup], [t1].[RegistrationDeadline], [t1].[RowVersion], [t1].[Rules], [t1].[SeedingMode], [t1].[StartDate], [t1].[Status], [t1].[UpdatedAt], [t1].[WalletNumber], [t1].[WinnerTeamId], [t2].[Id], [s].[Id], [s].[CreatedAt], [s].[PaymentMethod], [s].[PaymentReceiptUrl], [s].[RejectionReason], [s].[RowVersion], [s].[SenderNumber], [s].[Status], [s].[TeamId], [s].[TournamentId], [s].[UpdatedAt], [s].[Id0], [t2].[City], [t2].[CreatedAt], [t2].[Founded], [t2].[IsActive], [t2].[IsDeleted], [t2].[Logo], [t2].[Name], [t2].[RowVersion], [t2].[UpdatedAt]
+FROM (
+    SELECT [t].[Id], [t].[AllowLateRegistration], [t].[CreatedAt], [t].[CreatorUserId], [t].[CurrentTeams], [t].[Description], [t].[EndDate], [t].[EntryFee], [t].[Format], [t].[InstaPayNumber], [t].[IsHomeAwayEnabled], [t].[LateRegistrationMode], [t].[Location], [t].[MatchType], [t].[MaxTeams], [t].[Mode], [t].[Name], [t].[NumberOfGroups], [t].[OpeningMatchAwayTeamId], [t].[OpeningMatchHomeTeamId], [t].[OpeningMatchId], [t].[PaymentMethodsJson], [t].[Prizes], [t].[QualifiedTeamsPerGroup], [t].[RegistrationDeadline], [t].[RowVersion], [t].[Rules], [t].[SeedingMode], [t].[StartDate], [t].[Status], [t].[UpdatedAt], [t].[WalletNumber], [t].[WinnerTeamId]
+    FROM [Tournaments] AS [t]
+    ORDER BY [t].[StartDate] DESC
+    OFFSET @__p_0 ROWS FETCH NEXT @__p_1 ROWS ONLY
+) AS [t1]
+LEFT JOIN (
+    SELECT [t0].[Id], [t0].[City], [t0].[CreatedAt], [t0].[Founded], [t0].[IsActive], [t0].[IsDeleted], [t0].[Logo], [t0].[Name], [t0].[RowVersion], [t0].[UpdatedAt]
+    FROM [Teams] AS [t0]
+    WHERE [t0].[IsDeleted] = CAST(0 AS bit)
+) AS [t2] ON [t1].[WinnerTeamId] = [t2].[Id]
+LEFT JOIN (
+    SELECT [t3].[Id], [t3].[CreatedAt], [t3].[PaymentMethod], [t3].[PaymentReceiptUrl], [t3].[RejectionReason], [t3].[RowVersion], [t3].[SenderNumber], [t3].[Status], [t3].[TeamId], [t3].[TournamentId], [t3].[UpdatedAt], [t5].[Id] AS [Id0]
+    FROM [TeamRegistrations] AS [t3]
+    INNER JOIN (
+        SELECT [t4].[Id], [t4].[IsDeleted]
+        FROM [Teams] AS [t4]
+        WHERE [t4].[IsDeleted] = CAST(0 AS bit)
+    ) AS [t5] ON [t3].[TeamId] = [t5].[Id]
+    WHERE [t5].[IsDeleted] = CAST(0 AS bit)
+) AS [s] ON [t1].[Id] = [s].[TournamentId]
+ORDER BY [t1].[StartDate] DESC, [t1].[Id], [t2].[Id], [s].[Id]
+2026-02-14 03:41:17.899 +02:00 [INF] Executed DbCommand (30ms) [Parameters=[@__ids_0='?' (Size = 4000)], CommandType='"Text"', CommandTimeout='30']
+SELECT [m].[TournamentId], COUNT(*) AS [TotalMatches], COUNT(CASE
+    WHEN [m].[Status] = 3 THEN 1
+END) AS [FinishedMatches]
+FROM [Matches] AS [m]
+INNER JOIN (
+    SELECT [t].[Id], [t].[IsDeleted]
+    FROM [Teams] AS [t]
+    WHERE [t].[IsDeleted] = CAST(0 AS bit)
+) AS [t0] ON [m].[HomeTeamId] = [t0].[Id]
+INNER JOIN (
+    SELECT [t1].[Id], [t1].[IsDeleted]
+    FROM [Teams] AS [t1]
+    WHERE [t1].[IsDeleted] = CAST(0 AS bit)
+) AS [t2] ON [m].[AwayTeamId] = [t2].[Id]
+WHERE [t0].[IsDeleted] = CAST(0 AS bit) AND [t2].[IsDeleted] = CAST(0 AS bit) AND [m].[TournamentId] IN (
+    SELECT [i].[value]
+    FROM OPENJSON(@__ids_0) WITH ([value] uniqueidentifier '$') AS [i]
+)
+GROUP BY [m].[TournamentId]
+2026-02-14 03:41:17.936 +02:00 [INF] Executed DbCommand (32ms) [Parameters=[@__ids_0='?' (Size = 4000)], CommandType='"Text"', CommandTimeout='30']
+SELECT [t].[TournamentId], COUNT(*) AS [TotalRegistrations], COUNT(CASE
+    WHEN [t].[Status] = 1 THEN 1
+END) AS [ApprovedRegistrations]
+FROM [TeamRegistrations] AS [t]
+INNER JOIN (
+    SELECT [t0].[Id], [t0].[IsDeleted]
+    FROM [Teams] AS [t0]
+    WHERE [t0].[IsDeleted] = CAST(0 AS bit)
+) AS [t1] ON [t].[TeamId] = [t1].[Id]
+WHERE [t1].[IsDeleted] = CAST(0 AS bit) AND [t].[TournamentId] IN (
+    SELECT [i].[value]
+    FROM OPENJSON(@__ids_0) WITH ([value] uniqueidentifier '$') AS [i]
+) AND [t].[Status] <> 2 AND [t].[Status] <> 3
+GROUP BY [t].[TournamentId]
+2026-02-14 03:41:17.940 +02:00 [INF] Executing OkObjectResult, writing value of type 'System.Collections.Generic.List`1[[Application.DTOs.Tournaments.TournamentDto, Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]'.
+2026-02-14 03:41:17.942 +02:00 [INF] Executed action Api.Controllers.TournamentsController.GetAll (Api) in 178.0709ms
+2026-02-14 03:41:17.943 +02:00 [INF] Executed endpoint 'Api.Controllers.TournamentsController.GetAll (Api)'
+2026-02-14 03:41:17.944 +02:00 [INF] HTTP GET /api/v1/tournaments responded 200 in 188.2220 ms
+2026-02-14 03:41:17.946 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/api/v1/tournaments - 200 null application/json; charset=utf-8 192.5512ms
+2026-02-14 03:41:22.783 +02:00 [INF] Successfully acquired SQL distributed lock for key: outbox_processor_lock
+2026-02-14 03:41:22.793 +02:00 [INF] Executed DbCommand (8ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(@__p_0) [o].[Id], [o].[Content], [o].[CreatedAt], [o].[Error], [o].[ErrorCount], [o].[OccurredOn], [o].[ProcessedOn], [o].[RowVersion], [o].[Status], [o].[Type], [o].[UpdatedAt]
+FROM [OutboxMessages] AS [o]
+WHERE [o].[Status] IN (0, 3) AND [o].[ErrorCount] < 3
+ORDER BY [o].[OccurredOn]
+2026-02-14 03:41:22.796 +02:00 [INF] Released SQL distributed lock for key: outbox_processor_lock
+2026-02-14 03:41:25.716 +02:00 [INF] Request starting HTTP/1.1 OPTIONS http://localhost:5125/api/v1/Analytics/activities - null null
+2026-02-14 03:41:25.718 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:25.719 +02:00 [INF] HTTP OPTIONS /api/v1/Analytics/activities responded 204 in 0.4172 ms
+2026-02-14 03:41:25.720 +02:00 [INF] Request finished HTTP/1.1 OPTIONS http://localhost:5125/api/v1/Analytics/activities - 204 null null 3.2758ms
+2026-02-14 03:41:25.722 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/api/v1/Analytics/activities - null null
+2026-02-14 03:41:25.723 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:25.729 +02:00 [INF] Executed DbCommand (5ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(1) [u].[Id], [u].[Age], [u].[Avatar], [u].[City], [u].[CreatedAt], [u].[DisplayId], [u].[Email], [u].[Governorate], [u].[IdBackUrl], [u].[IdFrontUrl], [u].[IsEmailVerified], [u].[Name], [u].[NationalId], [u].[Neighborhood], [u].[PasswordHash], [u].[Phone], [u].[RefreshToken], [u].[RefreshTokenExpiryTime], [u].[Role], [u].[RowVersion], [u].[Status], [u].[TeamId], [u].[TokenVersion], [u].[UpdatedAt]
+FROM [Users] AS [u]
+WHERE [u].[Id] = @__id_0
+2026-02-14 03:41:25.731 +02:00 [INF] Executing endpoint 'Api.Controllers.AnalyticsController.GetRecentActivity (Api)'
+2026-02-14 03:41:25.731 +02:00 [INF] Route matched with {action = "GetRecentActivity", controller = "Analytics"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult`1[System.Collections.Generic.IEnumerable`1[Application.DTOs.Analytics.ActivityDto]]] GetRecentActivity() on controller Api.Controllers.AnalyticsController (Api).
+2026-02-14 03:41:25.736 +02:00 [INF] Executed DbCommand (3ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT [a].[Id], [a].[CreatedAt], [a].[Message], [a].[RowVersion], [a].[Type], [a].[UpdatedAt], [a].[UserId], [a].[UserName]
+FROM [Activities] AS [a]
+2026-02-14 03:41:25.738 +02:00 [INF] Executing OkObjectResult, writing value of type 'System.Linq.Enumerable+IteratorSelectIterator`2[[Domain.Entities.Activity, Domain, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null],[Application.DTOs.Analytics.ActivityDto, Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]'.
+2026-02-14 03:41:25.739 +02:00 [INF] Executed action Api.Controllers.AnalyticsController.GetRecentActivity (Api) in 6.601ms
+2026-02-14 03:41:25.740 +02:00 [INF] Executed endpoint 'Api.Controllers.AnalyticsController.GetRecentActivity (Api)'
+2026-02-14 03:41:25.740 +02:00 [INF] HTTP GET /api/v1/Analytics/activities responded 200 in 16.7882 ms
+2026-02-14 03:41:25.741 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/api/v1/Analytics/activities - 200 null application/json; charset=utf-8 19.0341ms
+2026-02-14 03:41:27.800 +02:00 [INF] Successfully acquired SQL distributed lock for key: outbox_processor_lock
+2026-02-14 03:41:27.802 +02:00 [INF] Executed DbCommand (0ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(@__p_0) [o].[Id], [o].[Content], [o].[CreatedAt], [o].[Error], [o].[ErrorCount], [o].[OccurredOn], [o].[ProcessedOn], [o].[RowVersion], [o].[Status], [o].[Type], [o].[UpdatedAt]
+FROM [OutboxMessages] AS [o]
+WHERE [o].[Status] IN (0, 3) AND [o].[ErrorCount] < 3
+ORDER BY [o].[OccurredOn]
+2026-02-14 03:41:27.804 +02:00 [INF] Released SQL distributed lock for key: outbox_processor_lock
+2026-02-14 03:41:28.144 +02:00 [INF] Executed endpoint '/hubs/notifications'
+2026-02-14 03:41:28.145 +02:00 [INF] HTTP GET /hubs/notifications responded 101 in 15054.4256 ms
+2026-02-14 03:41:28.146 +02:00 [WRN] Slow Request Detected: GET /hubs/notifications took 15055ms
+2026-02-14 03:41:28.147 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/hubs/notifications?id=xZXTGxwBQz_dEsWWEqAZTw&access_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MDNmOWEwNS0xMDc5LTQxNDAtYTU1MC1kOTk2NmU4NTkzYjUiLCJlbWFpbCI6ImFkbWluQHRlc3QuY29tIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiQWRtaW4iLCJuYW1lIjoiQWRtaW4iLCJzdGF0dXMiOiJBY3RpdmUiLCJ0b2tlbl92ZXJzaW9uIjoiMSIsImp0aSI6IjliYjUzMjMzLTNjYWQtNDNiYy05YzA0LWFkMDg1MGQwYjZiMCIsImV4cCI6MTc3MTAzNjg3MiwiaXNzIjoiUmFtYWRhblRvdXJuYW1lbnRBcGkiLCJhdWQiOiJSYW1hZGFuVG91cm5hbWVudEFwcCJ9.SoigcT20VmDCBVjS-QZolDAwkztovUPIg6oMZXVu00M - 101 null null 15058.4906ms
+2026-02-14 03:41:28.151 +02:00 [INF] Request starting HTTP/1.1 GET http://localhost:5125/api/v1/admin/SystemSettings/maintenance-status - null null
+2026-02-14 03:41:28.153 +02:00 [INF] CORS policy execution successful.
+2026-02-14 03:41:28.154 +02:00 [INF] Executing endpoint 'Api.Controllers.SystemSettingsController.GetMaintenanceStatus (Api)'
+2026-02-14 03:41:28.157 +02:00 [INF] Route matched with {action = "GetMaintenanceStatus", controller = "SystemSettings"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.ActionResult`1[System.Object]] GetMaintenanceStatus() on controller Api.Controllers.SystemSettingsController (Api).
+2026-02-14 03:41:28.159 +02:00 [INF] Executing OkObjectResult, writing value of type '<>f__AnonymousType2`1[[System.Boolean, System.Private.CoreLib, Version=9.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]'.
+2026-02-14 03:41:28.163 +02:00 [INF] Executed action Api.Controllers.SystemSettingsController.GetMaintenanceStatus (Api) in 4.7724ms
+2026-02-14 03:41:28.164 +02:00 [INF] Executed endpoint 'Api.Controllers.SystemSettingsController.GetMaintenanceStatus (Api)'
+2026-02-14 03:41:28.165 +02:00 [INF] HTTP GET /api/v1/admin/SystemSettings/maintenance-status responded 200 in 12.2592 ms
+2026-02-14 03:41:28.166 +02:00 [INF] Request finished HTTP/1.1 GET http://localhost:5125/api/v1/admin/SystemSettings/maintenance-status - 200 null application/json; charset=utf-8 15.7164ms
+2026-02-14 03:41:32.809 +02:00 [INF] Successfully acquired SQL distributed lock for key: outbox_processor_lock
+2026-02-14 03:41:32.811 +02:00 [INF] Executed DbCommand (0ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='"Text"', CommandTimeout='30']
+SELECT TOP(@__p_0) [o].[Id], [o].[Content], [o].[CreatedAt], [o].[Error], [o].[ErrorCount], [o].[OccurredOn], [o].[ProcessedOn], [o].[RowVersion], [o].[Status], [o].[Type], [o].[UpdatedAt]
+FROM [OutboxMessages] AS [o]
+WHERE [o].[Status] IN (0, 3) AND [o].[ErrorCount] < 3
+ORDER BY [o].[OccurredOn]
+2026-02-14 03:41:32.812 +02:00 [INF] Released SQL distributed lock for key: outbox_processor_lock

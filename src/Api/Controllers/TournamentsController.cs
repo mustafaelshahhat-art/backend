@@ -126,13 +126,8 @@ public class TournamentsController : ControllerBase
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
-        var user = await _userService.GetByIdAsync(userId);
-        if (user?.Status != UserStatus.Active.ToString())
-        {
-            return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من التسجيل في البطولات.");
-        }
         
-        // PROD-AUDIT: Use Command for Transaction Safety
+        // PROD-AUDIT: Use Command for Transaction Safety (Validation now handled by Pipeline)
         var command = new Application.Features.Tournaments.Commands.RegisterTeam.RegisterTeamCommand(id, request.TeamId, userId);
         var registration = await _mediator.Send(command);
         return Ok(registration);
@@ -154,13 +149,6 @@ public class TournamentsController : ControllerBase
         if (string.IsNullOrEmpty(userIdString)) return Unauthorized();
         
         var userId = Guid.Parse(userIdString);
-        var user = await _userService.GetByIdAsync(userId);
-        if (user?.Status != UserStatus.Active.ToString())
-        {
-            return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من إرسال إيصال الدفع.");
-        }
-
-        if (receipt == null || receipt.Length == 0) return BadRequest("يجب إرسال إيصال الدفع.");
 
         var receiptUrl = await SaveFile(receipt);
         var request = new SubmitPaymentRequest 

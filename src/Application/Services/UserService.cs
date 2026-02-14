@@ -53,12 +53,12 @@ public class UserService : IUserService
         return _mapper.Map<IEnumerable<UserDto>>(users);
     }
 
-    public async Task<UserDto?> GetByIdAsync(Guid id)
+    public async Task<UserDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         // PROD-AUDIT: Use consolidated query with AsNoTracking. Avoid multiple DB roundtrips.
         var user = await _userRepository.GetQueryable()
             .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == id);
+            .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
             
         if (user == null) return null;
 

@@ -44,10 +44,6 @@ public class MatchesController : ControllerBase
     public async Task<ActionResult<MatchDto>> StartMatch(Guid id)
     {
         var (userId, userRole) = GetUserContext();
-        if (userRole != UserRole.Admin.ToString() && !await IsUserActiveAsync(userId))
-        {
-            return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من إدارة المباريات.");
-        }
         var match = await _matchService.StartMatchAsync(id, userId, userRole);
         return Ok(match);
     }
@@ -57,10 +53,6 @@ public class MatchesController : ControllerBase
     public async Task<ActionResult<MatchDto>> EndMatch(Guid id)
     {
         var (userId, userRole) = GetUserContext();
-        if (userRole != UserRole.Admin.ToString() && !await IsUserActiveAsync(userId))
-        {
-            return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من إدارة المباريات.");
-        }
         var match = await _matchService.EndMatchAsync(id, userId, userRole);
         return Ok(match);
     }
@@ -70,10 +62,6 @@ public class MatchesController : ControllerBase
     public async Task<ActionResult<MatchDto>> AddEvent(Guid id, AddMatchEventRequest request)
     {
         var (userId, userRole) = GetUserContext();
-        if (userRole != UserRole.Admin.ToString() && !await IsUserActiveAsync(userId))
-        {
-            return BadRequest("يجب تفعيل حسابك أولاً لتتمكن من إضافة أحداث للمباراة.");
-        }
         var match = await _matchService.AddEventAsync(id, request, userId, userRole);
         return Ok(match);
     }
