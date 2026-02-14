@@ -72,8 +72,9 @@ public class AnalyticsController : ControllerBase
 
     [HttpGet("activities")]
     [Authorize]
-    public async Task<ActionResult<IEnumerable<ActivityDto>>> GetRecentActivity(CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<ActivityDto>>> GetRecentActivity([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
+        if (pageSize > 100) pageSize = 100;
         var (userId, userRole) = GetUserContext();
         var isAdmin = userRole == UserRole.Admin.ToString();
         var isCreator = userRole == UserRole.TournamentCreator.ToString();
@@ -81,7 +82,7 @@ public class AnalyticsController : ControllerBase
         if (!isAdmin && !isCreator) return Forbid();
 
         Guid? creatorId = isCreator ? userId : null;
-        var activity = await _analyticsService.GetRecentActivitiesAsync(creatorId, cancellationToken);
+        var activity = await _analyticsService.GetRecentActivitiesAsync(page, pageSize, creatorId, cancellationToken);
         return Ok(activity);
     }
 

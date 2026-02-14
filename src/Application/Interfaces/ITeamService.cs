@@ -15,21 +15,21 @@ public interface ITeamService
     Task DeleteAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default);
     
     Task<JoinRequestDto> RequestJoinAsync(Guid teamId, Guid playerId, CancellationToken ct = default);
-    Task<IEnumerable<JoinRequestDto>> GetJoinRequestsAsync(Guid teamId, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<JoinRequestDto>> GetJoinRequestsAsync(Guid teamId, int page, int pageSize, CancellationToken ct = default);
     Task<JoinRequestDto> RespondJoinRequestAsync(Guid teamId, Guid requestId, bool approve, Guid userId, string userRole, CancellationToken ct = default);
     
     // Invitation flow
     Task<JoinRequestDto> InvitePlayerAsync(Guid teamId, Guid captainId, AddPlayerRequest request, CancellationToken ct = default);
     Task<JoinRequestDto> AcceptInviteAsync(Guid requestId, Guid userId, CancellationToken ct = default);
     Task<JoinRequestDto> RejectInviteAsync(Guid requestId, Guid userId, CancellationToken ct = default);
-    Task<IEnumerable<JoinRequestDto>> GetUserInvitationsAsync(Guid userId, CancellationToken ct = default);
-    Task<IEnumerable<JoinRequestDto>> GetRequestsForCaptainAsync(Guid captainId, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<JoinRequestDto>> GetUserInvitationsAsync(Guid userId, int page, int pageSize, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<JoinRequestDto>> GetRequestsForCaptainAsync(Guid captainId, int page, int pageSize, CancellationToken ct = default);
     
     Task RemovePlayerAsync(Guid teamId, Guid playerId, Guid userId, string userRole, CancellationToken ct = default);
 
-    Task<IEnumerable<PlayerDto>> GetTeamPlayersAsync(Guid teamId, CancellationToken ct = default);
-    Task<IEnumerable<Application.DTOs.Matches.MatchDto>> GetTeamMatchesAsync(Guid teamId, CancellationToken ct = default);
-    Task<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>> GetTeamFinancialsAsync(Guid teamId, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<PlayerDto>> GetTeamPlayersAsync(Guid teamId, int page, int pageSize, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<Application.DTOs.Matches.MatchDto>> GetTeamMatchesAsync(Guid teamId, int page, int pageSize, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<Application.DTOs.Tournaments.TeamRegistrationDto>> GetTeamFinancialsAsync(Guid teamId, int page, int pageSize, CancellationToken ct = default);
 
     // Admin Action
     Task DisableTeamAsync(Guid teamId, CancellationToken ct = default);

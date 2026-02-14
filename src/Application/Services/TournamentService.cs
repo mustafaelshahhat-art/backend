@@ -466,13 +466,22 @@ public class TournamentService : ITournamentService
         }
     }
 
-    public async Task<IEnumerable<TeamRegistrationDto>> GetRegistrationsAsync(Guid tournamentId, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<TeamRegistrationDto>> GetRegistrationsAsync(Guid tournamentId, int page, int pageSize, CancellationToken ct = default)
     {
-        var registrations = await _registrationRepository.FindAsync(
+        if (pageSize > 100) pageSize = 100;
+        
+        var (items, totalCount) = await _registrationRepository.GetPagedAsync(
+            page, 
+            pageSize, 
             r => r.TournamentId == tournamentId,
-            new[] { "Team", "Team.Players" }
-        , ct);
-        return _mapper.Map<IEnumerable<TeamRegistrationDto>>(registrations);
+            q => q.OrderByDescending(r => r.CreatedAt),
+            ct,
+            r => r.Team!, 
+            r => r.Team!.Players
+        );
+
+        var dtos = _mapper.Map<List<TeamRegistrationDto>>(items);
+        return new Application.Common.Models.PagedResult<TeamRegistrationDto>(dtos, totalCount, page, pageSize);
     }
 
     public async Task<TeamRegistrationDto> SubmitPaymentAsync(Guid tournamentId, Guid teamId, SubmitPaymentRequest request, Guid userId, CancellationToken ct = default)
@@ -659,36 +668,56 @@ public class TournamentService : ITournamentService
         return _mapper.Map<TeamRegistrationDto>(registration);
     }
 
-    public async Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync(Guid? creatorId = null, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<PendingPaymentResponse>> GetPendingPaymentsAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
     {
-        var registrations = await _registrationRepository.FindAsync(
+        if (pageSize > 100) pageSize = 100;
+
+        var (items, totalCount) = await _registrationRepository.GetPagedAsync(
+            page,
+            pageSize,
             r => r.Status == RegistrationStatus.PendingPaymentReview && 
                 (!creatorId.HasValue || r.Tournament!.CreatorUserId == creatorId.Value),
-            new[] { "Team", "Tournament", "Team.Players" }
+            q => q.OrderByDescending(r => r.CreatedAt),
+            ct,
+            r => r.Team!, 
+            r => r.Tournament!, 
+            r => r.Team!.Players
         );
         
-        return registrations.Select(r => new PendingPaymentResponse
+        var dtos = items.Select(r => new PendingPaymentResponse
         {
             Registration = _mapper.Map<TeamRegistrationDto>(r),
             Tournament = _mapper.Map<TournamentDto>(r.Tournament)
-        });
+        }).ToList();
+
+        return new Application.Common.Models.PagedResult<PendingPaymentResponse>(dtos, totalCount, page, pageSize);
     }
 
-    public async Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync(Guid? creatorId = null, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<PendingPaymentResponse>> GetAllPaymentRequestsAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
     {
-        var registrations = await _registrationRepository.FindAsync(
+        if (pageSize > 100) pageSize = 100;
+
+        var (items, totalCount) = await _registrationRepository.GetPagedAsync(
+            page,
+            pageSize,
             r => (r.Status == RegistrationStatus.PendingPaymentReview || 
                   r.Status == RegistrationStatus.Approved || 
                   r.Status == RegistrationStatus.Rejected) &&
                  (!creatorId.HasValue || r.Tournament!.CreatorUserId == creatorId.Value),
-            new[] { "Team", "Tournament", "Team.Players" }
+            q => q.OrderByDescending(r => r.CreatedAt),
+            ct,
+            r => r.Team!, 
+            r => r.Tournament!, 
+            r => r.Team!.Players
         );
         
-         return registrations.Select(r => new PendingPaymentResponse
+        var dtos = items.Select(r => new PendingPaymentResponse
         {
             Registration = _mapper.Map<TeamRegistrationDto>(r),
             Tournament = _mapper.Map<TournamentDto>(r.Tournament)
-        });
+        }).ToList();
+
+        return new Application.Common.Models.PagedResult<PendingPaymentResponse>(dtos, totalCount, page, pageSize);
     }
 
     public async Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId, Guid userId, string userRole, CancellationToken ct = default)
@@ -727,8 +756,9 @@ public class TournamentService : ITournamentService
         return _mapper.Map<TournamentDto>(tournament);
     }
 
-    public async Task<IEnumerable<GroupDto>> GetGroupsAsync(Guid tournamentId, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<GroupDto>> GetGroupsAsync(Guid tournamentId, int page, int pageSize, CancellationToken ct = default)
     {
+        if (pageSize > 100) pageSize = 100;
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
 
@@ -750,7 +780,13 @@ public class TournamentService : ITournamentService
              groups.Add(new GroupDto { Id = 1, Name = "الدوري" });
         }
 
-        return groups;
+        var totalCount = groups.Count;
+        var items = groups
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return new Application.Common.Models.PagedResult<GroupDto>(items, totalCount, page, pageSize);
     }
 
     public async Task<BracketDto> GetBracketAsync(Guid tournamentId, CancellationToken ct = default)
@@ -887,8 +923,10 @@ public class TournamentService : ITournamentService
         };
     }
 
-    public async Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId, int? groupId = null, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId, int page, int pageSize, int? groupId = null, CancellationToken ct = default)
     {
+        if (pageSize > 100) pageSize = 100;
+
         // 1. Get all matches with events
         var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, new[] { "Events" }, ct);
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
@@ -906,12 +944,19 @@ public class TournamentService : ITournamentService
         var allStandings = _lifecycleService.CalculateStandings(matches, registrations);
 
         // 4. Filter by group if requested
+        var query = allStandings.AsQueryable();
         if (groupId.HasValue)
         {
-            return allStandings.Where(s => s.GroupId == groupId.Value).ToList();
+            query = query.Where(s => s.GroupId == groupId.Value);
         }
 
-        return allStandings;
+        var totalCount = query.Count();
+        var items = query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return new Application.Common.Models.PagedResult<TournamentStandingDto>(items, totalCount, page, pageSize);
     }
 
     public async Task EliminateTeamAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole, CancellationToken ct = default)

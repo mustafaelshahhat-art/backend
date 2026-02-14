@@ -4,7 +4,7 @@ namespace Application.Interfaces;
 
 public interface ISearchService
 {
-    Task<SearchResponse> SearchAsync(string query, string? userId, string role, CancellationToken ct = default);
+    Task<SearchResponse> SearchAsync(string query, int page, int pageSize, string? userId, string role, CancellationToken ct = default);
 }
 
 public class SearchResponse

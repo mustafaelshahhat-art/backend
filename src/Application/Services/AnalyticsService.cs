@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Application.DTOs.Analytics;
@@ -119,22 +120,21 @@ public class AnalyticsService : IAnalyticsService
         };
     }
 
-    public async Task<IEnumerable<ActivityDto>> GetRecentActivitiesAsync(Guid? creatorId = null, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<ActivityDto>> GetRecentActivitiesAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
     {
-        IEnumerable<Activity> activities;
+        if (pageSize > 100) pageSize = 100;
+
+        Expression<Func<Activity, bool>>? predicate = creatorId.HasValue ? a => a.UserId == creatorId.Value : null;
+
+        var (items, totalCount) = await _activityRepository.GetPagedAsync(
+            page,
+            pageSize,
+            predicate,
+            q => q.OrderByDescending(a => a.CreatedAt),
+            ct
+        );
         
-        if (creatorId.HasValue)
-        {
-            var result = await _activityRepository.GetPagedAsync(1, 20, a => a.UserId == creatorId.Value, q => q.OrderByDescending(a => a.CreatedAt), ct);
-            activities = result.Items;
-        }
-        else
-        {
-            var result = await _activityRepository.GetPagedAsync(1, 20, null, q => q.OrderByDescending(a => a.CreatedAt), ct);
-            activities = result.Items;
-        }
-        
-        return activities.Select(a => 
+        var dtos = items.Select(a => 
         {
             var localized = Common.ActivityConstants.GetLocalized(a.Type, null);
             return new ActivityDto
@@ -145,7 +145,9 @@ public class AnalyticsService : IAnalyticsService
                 Time = "", 
                 UserName = a.UserName
             };
-        });
+        }).ToList();
+
+        return new Application.Common.Models.PagedResult<ActivityDto>(dtos, totalCount, page, pageSize);
     }
 
     public async Task LogActivityAsync(string type, string message, Guid? userId = null, string? userName = null, CancellationToken ct = default)

@@ -22,12 +22,13 @@ public class NotificationsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Notification>>> GetMyNotifications(CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<Notification>>> GetMyNotifications([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
+        if (pageSize > 100) pageSize = 100;
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var notifications = await _notificationService.GetUserNotificationsAsync(Guid.Parse(userId), cancellationToken);
+        var notifications = await _notificationService.GetUserNotificationsAsync(Guid.Parse(userId), page, pageSize, cancellationToken);
         return Ok(notifications);
     }
 

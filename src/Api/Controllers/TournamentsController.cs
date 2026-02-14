@@ -136,9 +136,10 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("{id}/registrations")]
     [Authorize(Policy = "RequireTournamentOwner")]
-    public async Task<ActionResult<IEnumerable<TeamRegistrationDto>>> GetRegistrations(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<TeamRegistrationDto>>> GetRegistrations(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
-        var registrations = await _tournamentService.GetRegistrationsAsync(id, cancellationToken);
+        if (pageSize > 100) pageSize = 100;
+        var registrations = await _tournamentService.GetRegistrationsAsync(id, page, pageSize, cancellationToken);
         return Ok(registrations);
     }
 
@@ -213,23 +214,25 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("payments/pending")]
     [Authorize(Policy = "RequireCreator")]
-    public async Task<ActionResult<IEnumerable<PendingPaymentResponse>>> GetPendingPayments(CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<PendingPaymentResponse>>> GetPendingPayments([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
+        if (pageSize > 100) pageSize = 100;
         var (userId, userRole) = GetUserContext();
         Guid? creatorId = (userRole == UserRole.TournamentCreator.ToString()) ? userId : null;
 
-        var pending = await _tournamentService.GetPendingPaymentsAsync(creatorId, cancellationToken);
+        var pending = await _tournamentService.GetPendingPaymentsAsync(page, pageSize, creatorId, cancellationToken);
         return Ok(pending);
     }
 
     [HttpGet("payments/all")]
     [Authorize(Policy = "RequireCreator")]
-    public async Task<ActionResult<IEnumerable<PendingPaymentResponse>>> GetAllPaymentRequests(CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<PendingPaymentResponse>>> GetAllPaymentRequests([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
+        if (pageSize > 100) pageSize = 100;
         var (userId, userRole) = GetUserContext();
         Guid? creatorId = (userRole == UserRole.TournamentCreator.ToString()) ? userId : null;
 
-        var requests = await _tournamentService.GetAllPaymentRequestsAsync(creatorId, cancellationToken);
+        var requests = await _tournamentService.GetAllPaymentRequestsAsync(page, pageSize, creatorId, cancellationToken);
         return Ok(requests);
     }
 
@@ -244,17 +247,19 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("{id}/standings")]
     [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<TournamentStandingDto>>> GetStandings(Guid id, [FromQuery] int? groupId, CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<TournamentStandingDto>>> GetStandings(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] int? groupId = null, CancellationToken cancellationToken = default)
     {
-        var standings = await _tournamentService.GetStandingsAsync(id, groupId, cancellationToken);
+        if (pageSize > 100) pageSize = 100;
+        var standings = await _tournamentService.GetStandingsAsync(id, page, pageSize, groupId, cancellationToken);
         return Ok(standings);
     }
 
     [HttpGet("{id}/groups")]
     [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<GroupDto>>> GetGroups(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<GroupDto>>> GetGroups(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
-        var groups = await _tournamentService.GetGroupsAsync(id, cancellationToken);
+        if (pageSize > 100) pageSize = 100;
+        var groups = await _tournamentService.GetGroupsAsync(id, page, pageSize, cancellationToken);
         return Ok(groups);
     }
 

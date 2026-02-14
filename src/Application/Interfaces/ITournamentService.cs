@@ -17,18 +17,18 @@ public interface ITournamentService
     Task DeleteAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default);
     
     Task<TeamRegistrationDto> RegisterTeamAsync(Guid tournamentId, RegisterTeamRequest request, Guid userId, CancellationToken ct = default);
-    Task<IEnumerable<TeamRegistrationDto>> GetRegistrationsAsync(Guid tournamentId, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<TeamRegistrationDto>> GetRegistrationsAsync(Guid tournamentId, int page, int pageSize, CancellationToken ct = default);
     Task<TeamRegistrationDto> SubmitPaymentAsync(Guid tournamentId, Guid teamId, SubmitPaymentRequest request, Guid userId, CancellationToken ct = default);
     Task<TeamRegistrationDto> ApproveRegistrationAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole, CancellationToken ct = default);
     Task<TeamRegistrationDto> RejectRegistrationAsync(Guid tournamentId, Guid teamId, RejectRegistrationRequest request, Guid userId, string userRole, CancellationToken ct = default);
     Task WithdrawTeamAsync(Guid tournamentId, Guid teamId, Guid userId, CancellationToken ct = default);
     Task<TeamRegistrationDto> PromoteWaitingTeamAsync(Guid tournamentId, Guid teamId, Guid userId, string userRole, CancellationToken ct = default);
     
-    Task<IEnumerable<PendingPaymentResponse>> GetPendingPaymentsAsync(Guid? creatorId = null, CancellationToken ct = default);
-    Task<IEnumerable<PendingPaymentResponse>> GetAllPaymentRequestsAsync(Guid? creatorId = null, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<PendingPaymentResponse>> GetPendingPaymentsAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<PendingPaymentResponse>> GetAllPaymentRequestsAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default);
     Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId, Guid userId, string userRole, CancellationToken ct = default);
-    Task<IEnumerable<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId, int? groupId = null, CancellationToken ct = default);
-    Task<IEnumerable<GroupDto>> GetGroupsAsync(Guid tournamentId, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId, int page, int pageSize, int? groupId = null, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<GroupDto>> GetGroupsAsync(Guid tournamentId, int page, int pageSize, CancellationToken ct = default);
     Task<BracketDto> GetBracketAsync(Guid tournamentId, CancellationToken ct = default);
     Task<TournamentDto> CloseRegistrationAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default);
     Task ProcessAutomatedStateTransitionsAsync(CancellationToken ct = default);

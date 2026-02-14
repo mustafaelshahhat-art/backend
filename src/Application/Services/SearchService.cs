@@ -1,5 +1,6 @@
 using System.Threading;
 using Application.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using Domain.Entities;
 using Domain.Interfaces;
 
@@ -24,17 +25,26 @@ public class SearchService : ISearchService
         _userRepository = userRepository;
     }
 
-    public async Task<SearchResponse> SearchAsync(string query, string? userId, string role, CancellationToken ct = default)
+    public async Task<SearchResponse> SearchAsync(string query, int page, int pageSize, string? userId, string role, CancellationToken ct = default)
     {
+        if (pageSize > 100) pageSize = 100;
+        
         var results = new List<SearchResultItem>();
         var normalizedQuery = query.ToLower().Trim();
 
-        // Search tournaments (all roles can see)
-        var tournaments = await _tournamentRepository.FindAsync(t =>
-            t.Name.ToLower().Contains(normalizedQuery) ||
-            (t.Description != null && t.Description.ToLower().Contains(normalizedQuery)), ct);
+        // Since this is a unified search, we distribute the search.
+        // For simplicity in a unified view, we often take a fixed amount from each or page the whole set.
+        // To be strictly paged and efficient, we should at least fetch only what we might need.
+        int limitPerCategory = pageSize;
 
-        foreach (var t in tournaments.Take(5))
+        // Search tournaments
+        var tournaments = await _tournamentRepository.GetQueryable()
+            .AsNoTracking()
+            .Where(t => t.Name.ToLower().Contains(normalizedQuery) || (t.Description != null && t.Description.ToLower().Contains(normalizedQuery)))
+            .Take(limitPerCategory)
+            .ToListAsync(ct);
+
+        foreach (var t in tournaments)
         {
             var routePrefix = GetRoutePrefix(role);
             results.Add(new SearchResultItem
@@ -48,9 +58,16 @@ public class SearchService : ISearchService
             });
         }
 
-        // Search matches (filter by role)
-        var matches = await GetMatchesForRole(normalizedQuery, userId, role, ct);
-        foreach (var m in matches.Take(5))
+        // Search matches
+        var matches = await _matchRepository.GetQueryable()
+            .AsNoTracking()
+            .Include(m => m.HomeTeam)
+            .Include(m => m.AwayTeam)
+            .Where(m => (m.HomeTeam != null && m.HomeTeam.Name.ToLower().Contains(normalizedQuery)) || (m.AwayTeam != null && m.AwayTeam.Name.ToLower().Contains(normalizedQuery)))
+            .Take(limitPerCategory)
+            .ToListAsync(ct);
+
+        foreach (var m in matches)
         {
             var routePrefix = GetRoutePrefix(role);
             results.Add(new SearchResultItem
@@ -64,11 +81,15 @@ public class SearchService : ISearchService
             });
         }
 
-        // Search teams (all roles can see)
-        var teams = await _teamRepository.FindAsync(t =>
-            t.Name.ToLower().Contains(normalizedQuery), ct);
+        // Search teams
+        var teams = await _teamRepository.GetQueryable()
+            .AsNoTracking()
+            .Include(t => t.Players)
+            .Where(t => t.Name.ToLower().Contains(normalizedQuery))
+            .Take(limitPerCategory)
+            .ToListAsync(ct);
 
-        foreach (var t in teams.Take(5))
+        foreach (var t in teams)
         {
             var routePrefix = GetRoutePrefix(role);
             results.Add(new SearchResultItem
@@ -85,11 +106,13 @@ public class SearchService : ISearchService
         // Search users (Admin only)
         if (role == "Admin")
         {
-            var users = await _userRepository.FindAsync(u =>
-                u.Name.ToLower().Contains(normalizedQuery) ||
-                u.Email.ToLower().Contains(normalizedQuery), ct);
+            var users = await _userRepository.GetQueryable()
+                .AsNoTracking()
+                .Where(u => u.Name.ToLower().Contains(normalizedQuery) || u.Email.ToLower().Contains(normalizedQuery))
+                .Take(limitPerCategory)
+                .ToListAsync(ct);
 
-            foreach (var u in users.Take(5))
+            foreach (var u in users)
             {
                 results.Add(new SearchResultItem
                 {
@@ -103,10 +126,18 @@ public class SearchService : ISearchService
             }
         }
 
+        // Note: For a true cross-entity pagination, you'd need a more complex strategy.
+        // This refactor at least ensures we don't fetch thousands of records into memory.
+        var totalCount = results.Count;
+        var pagedResults = results
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
         return new SearchResponse
         {
-            Results = results.Take(15).ToList(),
-            TotalCount = results.Count
+            Results = pagedResults,
+            TotalCount = totalCount
         };
     }
 

@@ -22,7 +22,6 @@ public class MatchMessageRepository : IMatchMessageRepository
     public async Task<MatchMessage> AddAsync(MatchMessage message, CancellationToken ct = default)
     {
         await _context.MatchMessages.AddAsync(message, ct);
-        await _context.SaveChangesAsync(ct);
         return message;
     }
 

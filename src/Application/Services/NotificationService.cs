@@ -58,9 +58,19 @@ public class NotificationService : INotificationService
         await SendNotificationAsync(userId, title, message, type, ct);
     }
 
-    public async Task<IEnumerable<Notification>> GetUserNotificationsAsync(Guid userId, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<Notification>> GetUserNotificationsAsync(Guid userId, int page, int pageSize, CancellationToken ct = default)
     {
-        return await _repository.GetByUserIdAsync(userId, ct);
+        if (pageSize > 100) pageSize = 100;
+
+        var (items, totalCount) = await _repository.GetPagedAsync(
+            page,
+            pageSize,
+            n => n.UserId == userId,
+            q => q.OrderByDescending(n => n.CreatedAt),
+            ct
+        );
+
+        return new Application.Common.Models.PagedResult<Notification>(items.ToList(), totalCount, page, pageSize);
     }
 
     public async Task MarkAsReadAsync(Guid id, CancellationToken ct = default)

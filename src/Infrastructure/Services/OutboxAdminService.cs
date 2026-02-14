@@ -49,7 +49,7 @@ public class OutboxAdminService : IOutboxAdminService
         message.ScheduledAt = DateTime.UtcNow;
         message.UpdatedAt = DateTime.UtcNow;
 
-        await _dbContext.SaveChangesAsync(ct);
+
         return true;
     }
 
@@ -60,7 +60,7 @@ public class OutboxAdminService : IOutboxAdminService
             .ToListAsync(ct);
 
         _dbContext.OutboxMessages.RemoveRange(deadLetters);
-        await _dbContext.SaveChangesAsync(ct);
+
         
         return deadLetters.Count;
     }

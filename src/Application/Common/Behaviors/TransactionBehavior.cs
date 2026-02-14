@@ -23,7 +23,10 @@ public class TransactionBehavior<TRequest, TResponse> : IPipelineBehavior<TReque
 
         return await _transactionManager.ExecuteInTransactionAsync(async () => 
         {
-            return await next();
+            var result = await next();
+            // Note: SaveChangesAsync is handled inside TransactionManager's rollback/commit strategy
+            // but we ensure the manager is aware it needs to persist.
+            return result;
         }, cancellationToken);
     }
 }

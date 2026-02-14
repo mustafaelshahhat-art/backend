@@ -9,6 +9,4 @@ namespace Application.Interfaces;
 public interface IOutboxAdminService
 {
     Task<(IEnumerable<OutboxMessage> Messages, int TotalCount)> GetDeadLetterMessagesAsync(int page, int pageSize, CancellationToken ct);
-    Task<bool> RetryDeadLetterMessageAsync(Guid messageId, CancellationToken ct);
-    Task<int> ClearDeadLetterMessagesAsync(CancellationToken ct);
 }

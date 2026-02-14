@@ -456,25 +456,30 @@ public class TeamService : ITeamService
         return result;
     }
 
-    public async Task<IEnumerable<JoinRequestDto>> GetJoinRequestsAsync(Guid teamId, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<JoinRequestDto>> GetJoinRequestsAsync(Guid teamId, int page, int pageSize, CancellationToken ct = default)
     {
-        // Eager load User to avoid N+1 problem
-        var requests = await _joinRequestRepository.FindAsync(r => r.TeamId == teamId, new[] { "User" }, ct);
+        if (pageSize > 100) pageSize = 100;
+
+        var (items, totalCount) = await _joinRequestRepository.GetPagedAsync(
+            page,
+            pageSize,
+            r => r.TeamId == teamId,
+            q => q.OrderByDescending(r => r.CreatedAt),
+            ct,
+            r => r.User!
+        );
         
-        var dtos = new List<JoinRequestDto>();
-        foreach (var r in requests)
+        var dtos = items.Select(r => new JoinRequestDto
         {
-             dtos.Add(new JoinRequestDto
-             {
-                 Id = r.Id,
-                 PlayerId = r.UserId,
-                 PlayerName = r.User?.Name ?? "Unknown",
-                 Status = r.Status,
-                 RequestDate = r.CreatedAt,
-                 InitiatedByPlayer = r.InitiatedByPlayer
-             });
-        }
-        return dtos;
+            Id = r.Id,
+            PlayerId = r.UserId,
+            PlayerName = r.User?.Name ?? "Unknown",
+            Status = r.Status,
+            RequestDate = r.CreatedAt,
+            InitiatedByPlayer = r.InitiatedByPlayer
+        }).ToList();
+
+        return new Application.Common.Models.PagedResult<JoinRequestDto>(dtos, totalCount, page, pageSize);
     }
 
     public async Task<JoinRequestDto> RespondJoinRequestAsync(Guid teamId, Guid requestId, bool approve, Guid userId, string userRole, CancellationToken ct = default)
@@ -673,10 +678,20 @@ public class TeamService : ITeamService
         };
     }
 
-    public async Task<IEnumerable<JoinRequestDto>> GetUserInvitationsAsync(Guid userId, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<JoinRequestDto>> GetUserInvitationsAsync(Guid userId, int page, int pageSize, CancellationToken ct = default)
     {
-        var requests = await _joinRequestRepository.FindAsync(r => r.UserId == userId && r.Status == "pending", new[] { "Team" }, ct);
-        return requests.Select(r => new JoinRequestDto
+        if (pageSize > 100) pageSize = 100;
+
+        var (items, totalCount) = await _joinRequestRepository.GetPagedAsync(
+            page,
+            pageSize,
+            r => r.UserId == userId && r.Status == "pending",
+            q => q.OrderByDescending(r => r.CreatedAt),
+            ct,
+            r => r.Team!
+        );
+
+        var dtos = items.Select(r => new JoinRequestDto
         {
             Id = r.Id,
             TeamId = r.TeamId,
@@ -685,17 +700,28 @@ public class TeamService : ITeamService
             Status = r.Status,
             RequestDate = r.CreatedAt,
             InitiatedByPlayer = r.InitiatedByPlayer
-        });
+        }).ToList();
+
+        return new Application.Common.Models.PagedResult<JoinRequestDto>(dtos, totalCount, page, pageSize);
     }
 
-    public async Task<IEnumerable<JoinRequestDto>> GetRequestsForCaptainAsync(Guid captainId, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<JoinRequestDto>> GetRequestsForCaptainAsync(Guid captainId, int page, int pageSize, CancellationToken ct = default)
     {
+        if (pageSize > 100) pageSize = 100;
+
         var teams = await _teamRepository.FindAsync(t => t.Players.Any(p => p.TeamRole == TeamRole.Captain && p.UserId == captainId), new[] { "Players" }, ct);
         var teamIds = teams.Select(t => t.Id).ToList();
 
-        var requests = await _joinRequestRepository.FindAsync(r => teamIds.Contains(r.TeamId) && r.Status == "pending", new[] { "User" }, ct);
+        var (items, totalCount) = await _joinRequestRepository.GetPagedAsync(
+            page,
+            pageSize,
+            r => teamIds.Contains(r.TeamId) && r.Status == "pending",
+            q => q.OrderByDescending(r => r.CreatedAt),
+            ct,
+            r => r.User!
+        );
         
-        return requests.Select(r => new JoinRequestDto
+        var dtos = items.Select(r => new JoinRequestDto
         {
             Id = r.Id,
             TeamId = r.TeamId,
@@ -705,7 +731,9 @@ public class TeamService : ITeamService
             Status = r.Status,
             RequestDate = r.CreatedAt,
             InitiatedByPlayer = r.InitiatedByPlayer
-        });
+        }).ToList();
+
+        return new Application.Common.Models.PagedResult<JoinRequestDto>(dtos, totalCount, page, pageSize);
     }
 
     public async Task RemovePlayerAsync(Guid teamId, Guid playerId, Guid userId, string userRole, CancellationToken ct = default)
@@ -757,22 +785,51 @@ public class TeamService : ITeamService
         }
     }
 
-    public async Task<IEnumerable<PlayerDto>> GetTeamPlayersAsync(Guid teamId, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<PlayerDto>> GetTeamPlayersAsync(Guid teamId, int page, int pageSize, CancellationToken ct = default)
     {
-        var players = await _playerRepository.FindAsync(p => p.TeamId == teamId, ct);
-        return _mapper.Map<IEnumerable<PlayerDto>>(players);
+        if (pageSize > 100) pageSize = 100;
+
+        var (items, totalCount) = await _playerRepository.GetPagedAsync(
+            page,
+            pageSize,
+            p => p.TeamId == teamId,
+            q => q.OrderBy(p => p.Name),
+            ct
+        );
+        var dtos = _mapper.Map<List<PlayerDto>>(items);
+        return new Application.Common.Models.PagedResult<PlayerDto>(dtos, totalCount, page, pageSize);
     }
 
-    public async Task<IEnumerable<Application.DTOs.Matches.MatchDto>> GetTeamMatchesAsync(Guid teamId, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<Application.DTOs.Matches.MatchDto>> GetTeamMatchesAsync(Guid teamId, int page, int pageSize, CancellationToken ct = default)
     {
-        var matches = await _matchRepository.FindAsync(m => m.HomeTeamId == teamId || m.AwayTeamId == teamId, ct);
-        return _mapper.Map<IEnumerable<Application.DTOs.Matches.MatchDto>>(matches);
+        if (pageSize > 100) pageSize = 100;
+
+        var (items, totalCount) = await _matchRepository.GetPagedAsync(
+            page,
+            pageSize,
+            m => (m.HomeTeamId == teamId || m.AwayTeamId == teamId),
+            q => q.OrderByDescending(m => m.Date),
+            ct
+        );
+        var dtos = _mapper.Map<List<Application.DTOs.Matches.MatchDto>>(items);
+        return new Application.Common.Models.PagedResult<Application.DTOs.Matches.MatchDto>(dtos, totalCount, page, pageSize);
     }
 
-    public async Task<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>> GetTeamFinancialsAsync(Guid teamId, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<Application.DTOs.Tournaments.TeamRegistrationDto>> GetTeamFinancialsAsync(Guid teamId, int page, int pageSize, CancellationToken ct = default)
     {
-        var registrations = await _registrationRepository.FindAsync(r => r.TeamId == teamId, new[] { "Tournament", "Team.Players" }, ct);
-        return _mapper.Map<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>>(registrations);
+        if (pageSize > 100) pageSize = 100;
+
+        var (items, totalCount) = await _registrationRepository.GetPagedAsync(
+            page,
+            pageSize,
+            r => r.TeamId == teamId,
+            q => q.OrderByDescending(r => r.CreatedAt),
+            ct,
+            r => r.Tournament!,
+            r => r.Team!.Players
+        );
+        var dtos = _mapper.Map<List<Application.DTOs.Tournaments.TeamRegistrationDto>>(items);
+        return new Application.Common.Models.PagedResult<Application.DTOs.Tournaments.TeamRegistrationDto>(dtos, totalCount, page, pageSize);
     }
 
     public async Task<TeamsOverviewDto> GetTeamsOverviewAsync(Guid userId, CancellationToken ct = default)

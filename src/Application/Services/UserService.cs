@@ -51,6 +51,7 @@ public class UserService : IUserService
 
     public async Task<Application.Common.Models.PagedResult<UserDto>> GetPagedAsync(int pageNumber, int pageSize, string? role = null, CancellationToken ct = default)
     {
+        if (pageSize > 100) pageSize = 100;
         Expression<Func<User, bool>>? predicate = null;
         if (!string.IsNullOrEmpty(role) && Enum.TryParse<UserRole>(role, true, out var userRole))
         {
@@ -251,6 +252,7 @@ public class UserService : IUserService
 
     public async Task<Application.Common.Models.PagedResult<UserPublicDto>> GetPublicPagedAsync(int pageNumber, int pageSize, string? role = null, CancellationToken ct = default)
     {
+        if (pageSize > 100) pageSize = 100;
         Expression<Func<User, bool>>? predicate = null;
         if (!string.IsNullOrEmpty(role) && Enum.TryParse<UserRole>(role, true, out var userRole))
         {

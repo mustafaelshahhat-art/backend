@@ -19,25 +19,27 @@ public class TeamRequestsController : ControllerBase
     }
 
     [HttpGet("my-invitations")]
-    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetMyInvitations(CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<JoinRequestDto>>> GetMyInvitations([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
+        if (pageSize > 100) pageSize = 100;
         var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
-        var invitations = await _teamService.GetUserInvitationsAsync(userId, cancellationToken);
+        var invitations = await _teamService.GetUserInvitationsAsync(userId, page, pageSize, cancellationToken);
         return Ok(invitations);
     }
 
     [HttpGet("for-my-team")]
-    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetForMyTeam(CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<JoinRequestDto>>> GetForMyTeam([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
+        if (pageSize > 100) pageSize = 100;
         var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
         // Find teams where user is captain
-        var requests = await _teamService.GetRequestsForCaptainAsync(userId, cancellationToken);
+        var requests = await _teamService.GetRequestsForCaptainAsync(userId, page, pageSize, cancellationToken);
         return Ok(requests);
     }
 

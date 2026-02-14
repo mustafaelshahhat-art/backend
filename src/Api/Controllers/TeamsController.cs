@@ -69,9 +69,10 @@ public class TeamsController : ControllerBase
 
     [HttpGet("{id}/join-requests")]
     [Authorize(Policy = "RequireTeamCaptain")]
-    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetJoinRequests(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<JoinRequestDto>>> GetJoinRequests(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
-        var requests = await _teamService.GetJoinRequestsAsync(id, cancellationToken);
+        if (pageSize > 100) pageSize = 100;
+        var requests = await _teamService.GetJoinRequestsAsync(id, page, pageSize, cancellationToken);
         return Ok(requests);
     }
 
@@ -97,9 +98,10 @@ public class TeamsController : ControllerBase
 
     [HttpGet("{id}/requests")]
     [Authorize(Policy = "RequireTeamCaptain")]
-    public async Task<ActionResult<IEnumerable<JoinRequestDto>>> GetRequests(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<JoinRequestDto>>> GetRequests(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
-        var requests = await _teamService.GetJoinRequestsAsync(id, cancellationToken);
+        if (pageSize > 100) pageSize = 100;
+        var requests = await _teamService.GetJoinRequestsAsync(id, page, pageSize, cancellationToken);
         return Ok(requests);
     }
 
@@ -145,24 +147,27 @@ public class TeamsController : ControllerBase
     }
 
     [HttpGet("{id}/players")]
-    public async Task<ActionResult<IEnumerable<PlayerDto>>> GetTeamPlayers(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<PlayerDto>>> GetTeamPlayers(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
-        var players = await _teamService.GetTeamPlayersAsync(id, cancellationToken);
+        if (pageSize > 100) pageSize = 100;
+        var players = await _teamService.GetTeamPlayersAsync(id, page, pageSize, cancellationToken);
         return Ok(players);
     }
 
     [HttpGet("{id}/matches")]
-    public async Task<ActionResult<IEnumerable<Application.DTOs.Matches.MatchDto>>> GetTeamMatches(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<Application.DTOs.Matches.MatchDto>>> GetTeamMatches(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
-        var matches = await _teamService.GetTeamMatchesAsync(id, cancellationToken);
+        if (pageSize > 100) pageSize = 100;
+        var matches = await _teamService.GetTeamMatchesAsync(id, page, pageSize, cancellationToken);
         return Ok(matches);
     }
 
     [HttpGet("{id}/financials")]
     [Authorize(Policy = "RequireTeamCaptain")]
-    public async Task<ActionResult<IEnumerable<Application.DTOs.Tournaments.TeamRegistrationDto>>> GetTeamFinancials(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<Application.DTOs.Tournaments.TeamRegistrationDto>>> GetTeamFinancials(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
-        var financials = await _teamService.GetTeamFinancialsAsync(id, cancellationToken);
+        if (pageSize > 100) pageSize = 100;
+        var financials = await _teamService.GetTeamFinancialsAsync(id, page, pageSize, cancellationToken);
         return Ok(financials);
     }
 }

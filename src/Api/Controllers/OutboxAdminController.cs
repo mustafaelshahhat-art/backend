@@ -1,4 +1,7 @@
+using Application.Features.Admin.Commands.ClearDeadLetterMessages;
+using Application.Features.Admin.Commands.RetryOutboxMessage;
 using Application.Interfaces;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
@@ -13,10 +16,12 @@ namespace Api.Controllers;
 public class OutboxAdminController : ControllerBase
 {
     private readonly IOutboxAdminService _outboxAdminService;
+    private readonly IMediator _mediator;
 
-    public OutboxAdminController(IOutboxAdminService outboxAdminService)
+    public OutboxAdminController(IOutboxAdminService outboxAdminService, IMediator mediator)
     {
         _outboxAdminService = outboxAdminService;
+        _mediator = mediator;
     }
 
     [HttpGet("dead-letters")]
@@ -29,7 +34,7 @@ public class OutboxAdminController : ControllerBase
     [HttpPost("dead-letters/{id}/retry")]
     public async Task<IActionResult> RetryDeadLetter(Guid id, CancellationToken ct = default)
     {
-        var success = await _outboxAdminService.RetryDeadLetterMessageAsync(id, ct);
+        var success = await _mediator.Send(new RetryOutboxMessageCommand(id), ct);
         if (!success) return NotFound("Dead letter message not found or not in DeadLetter status.");
         return Ok(new { message = "Message scheduled for retry." });
     }
@@ -37,7 +42,7 @@ public class OutboxAdminController : ControllerBase
     [HttpDelete("dead-letters")]
     public async Task<IActionResult> ClearDeadLetters(CancellationToken ct = default)
     {
-        var count = await _outboxAdminService.ClearDeadLetterMessagesAsync(ct);
+        var count = await _mediator.Send(new ClearDeadLetterMessagesCommand(), ct);
         return Ok(new { count, message = $"{count} dead letters cleared." });
     }
 }
