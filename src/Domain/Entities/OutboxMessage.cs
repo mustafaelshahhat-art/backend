@@ -7,9 +7,10 @@ public class OutboxMessage : BaseEntity
 {
     public DateTime OccurredOn { get; set; }
     public string Type { get; set; } = string.Empty;
-    public string Content { get; set; } = string.Empty;
+    public string Payload { get; set; } = string.Empty;
     public DateTime? ProcessedOn { get; set; }
-    public int ErrorCount { get; set; }
+    public DateTime? ScheduledAt { get; set; }
+    public int RetryCount { get; set; }
     public string? Error { get; set; }
     public OutboxMessageStatus Status { get; set; } = OutboxMessageStatus.Pending;
 }

@@ -280,6 +280,10 @@ public class AppDbContext : DbContext
             .HasIndex(r => r.Key)
             .IsUnique()
             .HasDatabaseName("UQ_IdempotentRequests_Key");
+
+        modelBuilder.Entity<OutboxMessage>()
+            .HasIndex(m => new { m.Status, m.ScheduledAt })
+            .HasDatabaseName("IX_OutboxMessages_Status_ScheduledAt");
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -327,8 +331,10 @@ public class AppDbContext : DbContext
                 Id = Guid.NewGuid(),
                 OccurredOn = domainEvent.OccurredOn,
                 Type = domainEvent.GetType().Name,
-                Content = System.Text.Json.JsonSerializer.Serialize(domainEvent, domainEvent.GetType()),
+                Payload = System.Text.Json.JsonSerializer.Serialize(domainEvent, domainEvent.GetType()),
                 Status = OutboxMessageStatus.Pending,
+                ScheduledAt = DateTime.UtcNow,
+                RetryCount = 0,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             });

@@ -35,13 +35,13 @@ public class TournamentServiceTests
         _service = new TournamentService(
             _tournamentRepoMock.Object,
             _registrationRepoMock.Object,
-            new Mock<IRepository<Match>>().Object,
+            new Mock<global::Domain.Interfaces.IRepository<global::Domain.Entities.Match>>().Object,
             _mapperMock.Object,
             new Mock<IAnalyticsService>().Object,
             new Mock<INotificationService>().Object,
             _teamRepoMock.Object,
             new Mock<IRealTimeNotifier>().Object,
-            new Mock<IRepository<TournamentPlayer>>().Object,
+            new Mock<global::Domain.Interfaces.IRepository<global::Domain.Entities.TournamentPlayer>>().Object,
             new Mock<ITournamentLifecycleService>().Object
         );
     }

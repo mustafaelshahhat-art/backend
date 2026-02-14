@@ -10,7 +10,7 @@ using Xunit;
 
 namespace IntegrationTests.Base;
 
-public class IntegrationTestFactory : WebApplicationFactory<Api.Program>, IAsyncLifetime
+public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly MsSqlContainer _dbContainer = new MsSqlBuilder()
         .WithImage("mcr.microsoft.com/mssql/server:2022-latest")

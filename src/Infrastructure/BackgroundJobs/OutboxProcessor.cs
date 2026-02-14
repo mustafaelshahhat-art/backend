@@ -64,10 +64,11 @@ public class OutboxProcessor : BackgroundService
             var dbContext = scope.ServiceProvider.GetRequiredService<Data.AppDbContext>();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            // PROD-AUDIT: Initial fetch of pending/failed messages
+            // PROD-AUDIT: Initial fetch of pending/failed messages that are due
             var messages = await dbContext.OutboxMessages
                 .Where(m => m.Status == OutboxMessageStatus.Pending || m.Status == OutboxMessageStatus.Failed)
-                .Where(m => m.ErrorCount < MaxRetries)
+                .Where(m => m.RetryCount < MaxRetries)
+                .Where(m => m.ScheduledAt <= DateTime.UtcNow)
                 .OrderBy(m => m.OccurredOn)
                 .Take(BatchSize)
                 .ToListAsync(stoppingToken);
@@ -98,7 +99,7 @@ public class OutboxProcessor : BackgroundService
                     var eventType = _typeCache.GetEventType(message.Type);
                     if (eventType == null) throw new Exception($"Event type {message.Type} not found.");
 
-                    var domainEvent = JsonSerializer.Deserialize(message.Content, eventType);
+                    var domainEvent = JsonSerializer.Deserialize(message.Payload, eventType);
                     if (domainEvent == null) throw new Exception($"Failed to deserialize event {message.Type}.");
 
                     await publisher.Publish(domainEvent, stoppingToken);
@@ -109,11 +110,20 @@ public class OutboxProcessor : BackgroundService
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error processing outbox message {MessageId}", message.Id);
-                    message.ErrorCount++;
+                    message.RetryCount++;
                     message.Error = ex.ToString();
-                    message.Status = message.ErrorCount >= MaxRetries 
-                        ? OutboxMessageStatus.DeadLetter 
-                        : OutboxMessageStatus.Failed;
+                    
+                    if (message.RetryCount >= MaxRetries)
+                    {
+                        message.Status = OutboxMessageStatus.DeadLetter;
+                    }
+                    else
+                    {
+                        message.Status = OutboxMessageStatus.Failed;
+                        // Exponential backoff: 2^RetryCount * 30 seconds
+                        var delaySeconds = Math.Pow(2, message.RetryCount) * 30;
+                        message.ScheduledAt = DateTime.UtcNow.AddSeconds(delaySeconds);
+                    }
                 }
 
                 message.UpdatedAt = DateTime.UtcNow;
