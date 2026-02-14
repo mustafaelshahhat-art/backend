@@ -54,7 +54,8 @@ public class CreateTournamentCommandHandler : IRequestHandler<CreateTournamentCo
             PaymentMethodsJson = request.Request.PaymentMethodsJson,
             Mode = request.Request.Mode,
             AllowLateRegistration = request.Request.AllowLateRegistration,
-            LateRegistrationMode = request.Request.LateRegistrationMode
+            LateRegistrationMode = request.Request.LateRegistrationMode,
+            SchedulingMode = request.Request.SchedulingMode
         };
 
         // PROD-HARDEN: Status is initialized to Draft by default in entity. Request cannot override it.

@@ -108,7 +108,7 @@ public class ApproveRegistrationCommandHandler : IRequestHandler<ApproveRegistra
         if (activeRegistrations.Count == tournament.MaxTeams && activeRegistrations.All(r => r.Status == RegistrationStatus.Approved))
         {
             var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == request.TournamentId, cancellationToken);
-            if (!existingMatches.Any() && tournament.Status != TournamentStatus.Active)
+            if (!existingMatches.Any() && tournament.Status != TournamentStatus.Active && tournament.SchedulingMode != SchedulingMode.Manual)
             {
                 // Ensure data is persisted before dispatching next command so it's visible in the DB
                 await _transactionManager.SaveChangesAsync(cancellationToken);

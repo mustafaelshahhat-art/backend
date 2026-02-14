@@ -19,17 +19,18 @@ public class Match : BaseEntity
     public int AwayScore { get; set; }
 
     public int? GroupId { get; set; }
-    public int? RoundNumber { get; set; } // 1 = Group Stage MD1 / R16, 2 = QF, etc.
-    public string? StageName { get; set; } // "Group Stage", "Quarter Final", "Semi Final", "Final"
+    public int? RoundNumber { get; set; }
+    public string? StageName { get; set; }
     
     public MatchStatus Status { get; set; } = MatchStatus.Scheduled;
     public DateTime? Date { get; set; }
     public bool Forfeit { get; set; } = false;
-    
-    // Referee
 
-
-
+    /// <summary>
+    /// Marks this match as the Opening Match of the tournament.
+    /// Always Round 1, Match 1 of its group.
+    /// </summary>
+    public bool IsOpeningMatch { get; set; } = false;
 
     public ICollection<MatchEvent> Events { get; set; } = new List<MatchEvent>();
 }

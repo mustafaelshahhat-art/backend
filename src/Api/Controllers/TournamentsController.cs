@@ -31,15 +31,24 @@ public class TournamentsController : ControllerBase
         var (userId, userRole) = GetUserContextSafely();
         
         Guid? creatorIdFilter = null;
+        bool includeDrafts = false;
+
         if (userRole == UserRole.TournamentCreator.ToString())
         {
             creatorIdFilter = userId;
+            includeDrafts = true;
+        }
+        else if (userRole == UserRole.Admin.ToString())
+        {
+            includeDrafts = true;
+            // Note: Admins see ALL tournaments by default. 
+            // If they want only their own, the frontend should ideally pass a filter, 
+            // but for now we follow the existing pattern.
         }
 
         // PROD-FIX: Visibility Filtering logic. 
         // If not Owner/Creator, we only see RegistrationOpen, Active, Completed, etc. (everything except Draft).
-        // The service method GetPagedAsync needs to handle this.
-        var result = await _tournamentService.GetPagedAsync(page, pageSize, creatorIdFilter, cancellationToken);
+        var result = await _tournamentService.GetPagedAsync(page, pageSize, creatorIdFilter, includeDrafts, cancellationToken);
         
         // Secondary safety filter: If it's public (Anonymous or Player), filter out Drafts 
         // which might have been returned if creatorIdFilter was null.
@@ -63,7 +72,7 @@ public class TournamentsController : ControllerBase
     public async Task<ActionResult<TournamentDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContextSafely();
-        var tournament = await _tournamentService.GetByIdAsync(id, userId, cancellationToken);
+        var tournament = await _tournamentService.GetByIdAsync(id, userId, userRole, cancellationToken);
         if (tournament == null) return NotFound();
 
         // PROD-FIX: Protection for Draft tournaments (redundant extra check)
@@ -149,6 +158,16 @@ public class TournamentsController : ControllerBase
     {
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.CloseRegistration.CloseRegistrationCommand(id, userId, userRole);
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("{id}/start")]
+    [Authorize(Policy = "RequireTournamentOwner")]
+    public async Task<ActionResult<TournamentDto>> StartTournament(Guid id, CancellationToken cancellationToken)
+    {
+        var (userId, userRole) = GetUserContext();
+        var command = new Application.Features.Tournaments.Commands.StartTournament.StartTournamentCommand(id, userId, userRole);
         var result = await _mediator.Send(command, cancellationToken);
         return Ok(result);
     }
@@ -355,6 +374,46 @@ public class TournamentsController : ControllerBase
         var command = new Application.Features.Tournaments.Commands.ManualDraw.ManualDrawCommand(id, request, userId, userRole);
         var result = await _mediator.Send(command, cancellationToken);
         return Ok(result);
+    }
+
+    [HttpPost("{id}/assign-groups")]
+    [Authorize(Policy = "RequireTournamentOwner")]
+    public async Task<IActionResult> AssignGroups(Guid id, [FromBody] List<GroupAssignmentDto> assignments, CancellationToken cancellationToken)
+    {
+        var (userId, userRole) = GetUserContext();
+        var command = new Application.Features.Tournaments.Commands.AssignTeamsToGroups.AssignTeamsToGroupsCommand(id, assignments, userId, userRole);
+        await _mediator.Send(command, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("{id}/generate-manual-group-matches")]
+    [Authorize(Policy = "RequireTournamentOwner")]
+    public async Task<ActionResult<IEnumerable<MatchDto>>> GenerateManualGroupMatches(Guid id, CancellationToken cancellationToken)
+    {
+        var (userId, userRole) = GetUserContext();
+        var command = new Application.Features.Tournaments.Commands.GenerateManualGroupMatches.GenerateManualGroupMatchesCommand(id, userId, userRole);
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("{id}/manual-knockout-pairings")]
+    [Authorize(Policy = "RequireTournamentOwner")]
+    public async Task<ActionResult<IEnumerable<MatchDto>>> CreateManualKnockoutMatches(Guid id, [FromBody] List<KnockoutPairingDto> pairings, CancellationToken cancellationToken)
+    {
+        var (userId, userRole) = GetUserContext();
+        var command = new Application.Features.Tournaments.Commands.CreateManualKnockoutMatches.CreateManualKnockoutMatchesCommand(id, pairings, userId, userRole);
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("{id}/reset-schedule")]
+    [Authorize(Policy = "RequireTournamentOwner")]
+    public async Task<IActionResult> ResetSchedule(Guid id, CancellationToken cancellationToken)
+    {
+        var (userId, userRole) = GetUserContext();
+        var command = new Application.Features.Tournaments.Commands.ResetSchedule.ResetScheduleCommand(id, userId, userRole);
+        await _mediator.Send(command, cancellationToken);
+        return NoContent();
     }
 
     private (Guid userId, string userRole) GetUserContext()

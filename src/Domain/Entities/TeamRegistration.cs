@@ -16,4 +16,5 @@ public class TeamRegistration : BaseEntity
     public string? PaymentMethod { get; set; } // "E_WALLET" | "INSTAPAY"
     public string? SenderNumber { get; set; }
     public string? RejectionReason { get; set; }
+    public int? GroupId { get; set; }
 }

@@ -1,6 +1,4 @@
-using Application.DTOs.Matches;
 using Application.Interfaces;
-using AutoMapper;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
@@ -9,48 +7,73 @@ using Shared.Exceptions;
 
 namespace Application.Features.Tournaments.Commands.SetOpeningMatch;
 
-public class SetOpeningMatchCommandHandler : IRequestHandler<SetOpeningMatchCommand, IEnumerable<MatchDto>>
+/// <summary>
+/// PRE-DRAW: Sets two teams as the opening match BEFORE schedule generation.
+/// - Only Creator/Admin.
+/// - Only if matches not generated.
+/// - Must run before GenerateScheduleCommand.
+/// - Uses DistributedLock.
+/// - Overrides previous opening selection if exists.
+/// - Cannot be called after schedule generated.
+/// </summary>
+public class SetOpeningMatchCommandHandler : IRequestHandler<SetOpeningMatchCommand, Unit>
 {
     private readonly IRepository<Tournament> _tournamentRepository;
-    private readonly ITournamentLifecycleService _lifecycleService;
-    private readonly IMapper _mapper;
+    private readonly IRepository<TeamRegistration> _registrationRepository;
+    private readonly IRepository<Match> _matchRepository;
+    private readonly IDistributedLock _distributedLock;
 
     public SetOpeningMatchCommandHandler(
         IRepository<Tournament> tournamentRepository,
-        ITournamentLifecycleService lifecycleService,
-        IMapper mapper)
+        IRepository<TeamRegistration> registrationRepository,
+        IRepository<Match> matchRepository,
+        IDistributedLock distributedLock)
     {
         _tournamentRepository = tournamentRepository;
-        _lifecycleService = lifecycleService;
-        _mapper = mapper;
+        _registrationRepository = registrationRepository;
+        _matchRepository = matchRepository;
+        _distributedLock = distributedLock;
     }
 
-    public async Task<IEnumerable<MatchDto>> Handle(SetOpeningMatchCommand request, CancellationToken cancellationToken)
+    public async Task<Unit> Handle(SetOpeningMatchCommand request, CancellationToken cancellationToken)
     {
-        var tournament = await _tournamentRepository.GetByIdAsync(request.TournamentId, cancellationToken);
-        if (tournament == null) throw new NotFoundException(nameof(Tournament), request.TournamentId);
-
-        // Authorization
-        var isAdmin = request.UserRole == UserRole.Admin.ToString();
-        var isOwner = request.UserRole == UserRole.TournamentCreator.ToString() && tournament.CreatorUserId == request.UserId;
-        if (!isAdmin && !isOwner) throw new ForbiddenException("غير مصرح لك بإدارة هذه البطولة.");
-
-        if (tournament.Status != TournamentStatus.WaitingForOpeningMatchSelection)
+        var lockKey = $"tournament-lock-{request.TournamentId}";
+        if (!await _distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromMinutes(2), cancellationToken))
         {
-            throw new ConflictException("لا يمكن تحديد مباراة الافتتاح في هذه المرحلة.");
+            throw new ConflictException("العملية قيد التنفيذ من قبل مستخدم آخر.");
         }
 
-        tournament.OpeningMatchHomeTeamId = request.HomeTeamId;
-        tournament.OpeningMatchAwayTeamId = request.AwayTeamId;
+        try
+        {
+            var tournament = await _tournamentRepository.GetByIdAsync(request.TournamentId, cancellationToken);
+            if (tournament == null) throw new NotFoundException(nameof(Tournament), request.TournamentId);
 
-        await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
-        
-        // Generate Matches (this adds matches to the repo)
-        await _lifecycleService.GenerateKnockoutR1Async(request.TournamentId, cancellationToken);
+            // Authorization: Only Creator or Admin
+            var isAdmin = request.UserRole == UserRole.Admin.ToString();
+            var isOwner = request.UserRole == UserRole.TournamentCreator.ToString() && tournament.CreatorUserId == request.UserId;
+            if (!isAdmin && !isOwner)
+                throw new ForbiddenException("غير مصرح لك بإدارة هذه البطولة.");
 
-        // Reload matches to return
-        // Actually lifecycle service adds them to context.
-        var tournamentWithMatches = await _tournamentRepository.GetByIdNoTrackingAsync(request.TournamentId, new[] { "Matches", "Matches.HomeTeam", "Matches.AwayTeam" }, cancellationToken);
-        return _mapper.Map<IEnumerable<MatchDto>>(tournamentWithMatches?.Matches ?? new List<Match>());
+            // Validate: No matches already generated
+            var matchesExist = await _matchRepository.AnyAsync(m => m.TournamentId == request.TournamentId, cancellationToken);
+
+            // Get registered (approved) team IDs
+            var registrations = await _registrationRepository.FindAsync(
+                r => r.TournamentId == request.TournamentId && r.Status == RegistrationStatus.Approved, 
+                cancellationToken);
+            var registeredTeamIds = registrations.Select(r => r.TeamId);
+
+            // Domain validation via entity method (encapsulated)
+            tournament.SetOpeningTeams(request.HomeTeamId, request.AwayTeamId, registeredTeamIds, matchesExist);
+
+            // Persist within same transaction
+            await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
+
+            return Unit.Value;
+        }
+        finally
+        {
+            await _distributedLock.ReleaseLockAsync(lockKey, cancellationToken);
+        }
     }
 }

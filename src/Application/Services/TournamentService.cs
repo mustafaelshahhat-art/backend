@@ -57,13 +57,18 @@ public class TournamentService : ITournamentService
         _distributedLock = distributedLock;
     }
 
-    public async Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int page, int pageSize, Guid? creatorId = null, bool includeDrafts = false, CancellationToken ct = default)
     {
         Expression<Func<Tournament, bool>>? predicate = null;
         if (creatorId.HasValue)
         {
-            // If filtering by creator (e.g. Creator's Dashboard), show everything
+            // If filtering by creator (e.g. Creator's Dashboard), show everything for that creator
             predicate = t => t.CreatorUserId == creatorId.Value;
+        }
+        else if (includeDrafts)
+        {
+            // If explicitly requested (e.g. by Admin), show everything
+            predicate = null;
         }
         else
         {
@@ -140,7 +145,7 @@ public class TournamentService : ITournamentService
 
 
 
-    public async Task<TournamentDto?> GetByIdAsync(Guid id, Guid? userId = null, CancellationToken ct = default)
+    public async Task<TournamentDto?> GetByIdAsync(Guid id, Guid? userId = null, string? userRole = null, CancellationToken ct = default)
     {
         // Use SplitQuery to prevent Cartesian Product/Join Explosion for deep includes
         var tournament = await _tournamentRepository.GetQueryable()
@@ -155,7 +160,7 @@ public class TournamentService : ITournamentService
         if (tournament == null) return null;
 
         // PROD-HARDEN: Privacy filter for Drafts
-        if (tournament.Status == TournamentStatus.Draft && tournament.CreatorUserId != userId)
+        if (tournament.Status == TournamentStatus.Draft && tournament.CreatorUserId != userId && userRole != "Admin")
         {
             return null;
         }
@@ -192,7 +197,7 @@ public class TournamentService : ITournamentService
 
     private async Task<TournamentDto?> GetByIdFreshAsync(Guid id, CancellationToken ct = default)
     {
-        return await GetByIdAsync(id, null, ct);
+        return await GetByIdAsync(id, null, null, ct);
     }
 
     public async Task<TournamentDto?> GetActiveByTeamAsync(Guid teamId, CancellationToken ct = default)

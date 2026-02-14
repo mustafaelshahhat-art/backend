@@ -4,16 +4,19 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace Infrastructure.Migrations
+namespace Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260214194220_AddManualScheduling")]
+    partial class AddManualScheduling
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -142,9 +145,6 @@ namespace Infrastructure.Migrations
 
                     b.Property<Guid>("HomeTeamId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("IsOpeningMatch")
-                        .HasColumnType("bit");
 
                     b.Property<int?>("RoundNumber")
                         .HasColumnType("int");
@@ -769,12 +769,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("OpeningMatchId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("OpeningTeamAId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("OpeningTeamBId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("PaymentMethodsJson")

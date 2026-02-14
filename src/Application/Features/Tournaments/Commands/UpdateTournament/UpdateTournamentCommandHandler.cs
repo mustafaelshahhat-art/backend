@@ -95,6 +95,19 @@ public class UpdateTournamentCommandHandler : IRequestHandler<UpdateTournamentCo
         if (request.Request.OpeningMatchHomeTeamId.HasValue) tournament.OpeningMatchHomeTeamId = request.Request.OpeningMatchHomeTeamId.Value;
         if (request.Request.OpeningMatchAwayTeamId.HasValue) tournament.OpeningMatchAwayTeamId = request.Request.OpeningMatchAwayTeamId.Value;
 
+        if (request.Request.SchedulingMode.HasValue && request.Request.SchedulingMode.Value != tournament.SchedulingMode)
+        {
+            var matches = await _matchRepository.FindAsync(m => m.TournamentId == request.Id, cancellationToken);
+            var hasAssignments = tournament.Registrations.Any(r => r.GroupId != null);
+            
+            if (matches.Any() || hasAssignments)
+            {
+                throw new BadRequestException("لا يمكن تغيير وضع الجدولة بعد تعيين المجموعات أو إنشاء المباريات. يرجى إعادة تعيين الجدول أولاً.");
+            }
+            
+            tournament.SchedulingMode = request.Request.SchedulingMode.Value;
+        }
+
         // Force auto-closure if capacity reached after manual update
         if (tournament.CurrentTeams >= tournament.MaxTeams && tournament.Status == TournamentStatus.RegistrationOpen)
         {

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Domain.Enums;
 
 namespace Domain.Entities;
@@ -13,13 +14,6 @@ public class Tournament : BaseEntity
     public string? ImageUrl { get; set; }
     public Guid? CreatorUserId { get; set; }
     public User? CreatorUser { get; set; }
-    // status: "registration_open|active|completed" mapped to logic or Enum?
-    // Contract says lower case string, we can use Enum and map.
-    // Wait, contract says `status: "registration_open|active|completed"`. 
-    // I'll use a string or a custom enum that maps well? DTO has enum string values.
-    // I already created MatchStatus. For Tournament, I need a status too. 
-    // I missed `TournamentStatus` enum in previous step. I'll add it or use string.
-    // Better use string to be compliant exactly or Enum with converter. Best: Enum.
     
     // PROD-HARDEN: Locked down Status to prevent direct mutation
     public TournamentStatus Status { get; private set; } = TournamentStatus.Draft;
@@ -39,7 +33,7 @@ public class Tournament : BaseEntity
     public int CurrentTeams { get; set; }
     public string Location { get; set; } = string.Empty;
     public string Rules { get; set; } = string.Empty;
-    public string Prizes { get; set; } = string.Empty; // Store as comma-separated or JSON
+    public string Prizes { get; set; } = string.Empty;
 
     // Tournament Format Configurations
     public TournamentFormat Format { get; set; } = TournamentFormat.RoundRobin;
@@ -51,9 +45,70 @@ public class Tournament : BaseEntity
     public TournamentMode? Mode { get; set; }
     public Guid? OpeningMatchId { get; set; }
 
-    // Opening Match Selection Configuration
-    public Guid? OpeningMatchHomeTeamId { get; set; }
-    public Guid? OpeningMatchAwayTeamId { get; set; }
+    // ============================================================
+    // OPENING MATCH PRE-DRAW SELECTION
+    // These two teams will be placed in the same group automatically
+    // and excluded from shuffle/random draw.
+    // ============================================================
+    public Guid? OpeningTeamAId { get; private set; }
+    public Guid? OpeningTeamBId { get; private set; }
+
+    // Backward-compatible aliases (mapped to same DB columns)
+    public Guid? OpeningMatchHomeTeamId
+    {
+        get => OpeningTeamAId;
+        set => OpeningTeamAId = value;
+    }
+    public Guid? OpeningMatchAwayTeamId
+    {
+        get => OpeningTeamBId;
+        set => OpeningTeamBId = value;
+    }
+
+    /// <summary>
+    /// PRE-DRAW: Set the two teams for the opening match.
+    /// Must be called BEFORE schedule generation.
+    /// Validates: teams belong to tournament, are registered, are different,
+    /// no matches generated, tournament not Active, status is RegistrationClosed.
+    /// </summary>
+    public void SetOpeningTeams(Guid teamAId, Guid teamBId, IEnumerable<Guid> registeredTeamIds, bool matchesExist)
+    {
+        if (teamAId == teamBId)
+            throw new InvalidOperationException("لا يمكن اختيار نفس الفريق للمباراة الافتتاحية.");
+
+        if (Status != TournamentStatus.RegistrationClosed)
+            throw new InvalidOperationException("يمكن تحديد المباراة الافتتاحية فقط عندما يكون التسجيل مغلقاً.");
+
+        if (matchesExist)
+            throw new InvalidOperationException("لا يمكن تحديد المباراة الافتتاحية بعد إنشاء المباريات. قم بإعادة تعيين الجدول أولاً.");
+
+        if (SchedulingMode != SchedulingMode.Random && SchedulingMode != SchedulingMode.Manual)
+            throw new InvalidOperationException("وضع الجدولة غير مدعوم لتحديد المباراة الافتتاحية.");
+
+        var registeredSet = registeredTeamIds.ToHashSet();
+        if (!registeredSet.Contains(teamAId))
+            throw new InvalidOperationException("الفريق الأول غير مسجل في البطولة.");
+
+        if (!registeredSet.Contains(teamBId))
+            throw new InvalidOperationException("الفريق الثاني غير مسجل في البطولة.");
+
+        OpeningTeamAId = teamAId;
+        OpeningTeamBId = teamBId;
+    }
+
+    /// <summary>
+    /// Clears the opening team selection (used during schedule reset).
+    /// </summary>
+    public void ClearOpeningTeams()
+    {
+        OpeningTeamAId = null;
+        OpeningTeamBId = null;
+    }
+
+    /// <summary>
+    /// Returns true if opening teams have been selected.
+    /// </summary>
+    public bool HasOpeningTeams => OpeningTeamAId.HasValue && OpeningTeamBId.HasValue;
 
     // Late Registration Policy
     public bool AllowLateRegistration { get; set; } = false;
@@ -63,10 +118,13 @@ public class Tournament : BaseEntity
     public bool IsHomeAwayEnabled { get; set; } = false; 
     public SeedingMode SeedingMode { get; set; } = SeedingMode.ShuffleOnly;
     
-    // Payment Config (JSON: [{ "type": "E_WALLET", "label": "Orange Cash", "accountNumber": "012..." }])
+    // Scheduling Mode: Random or Manual
+    public SchedulingMode SchedulingMode { get; set; } = SchedulingMode.Random;
+    
+    // Payment Config
     public string? PaymentMethodsJson { get; set; }
 
-    // Payment Info (Legacy/Specific overrides if needed, keeping for backward compat)
+    // Payment Info (Legacy)
     public string? WalletNumber { get; set; }
     public string? InstaPayNumber { get; set; }
 
@@ -105,29 +163,24 @@ public class Tournament : BaseEntity
         switch (Status)
         {
             case TournamentStatus.Draft:
-                // Only to RegistrationOpen or Cancelled
                 isValid = newStatus == TournamentStatus.RegistrationOpen || newStatus == TournamentStatus.Cancelled;
                 break;
 
             case TournamentStatus.RegistrationOpen:
-                // Only to RegistrationClosed or Cancelled
                 isValid = newStatus == TournamentStatus.RegistrationClosed || newStatus == TournamentStatus.Cancelled;
                 break;
 
             case TournamentStatus.RegistrationClosed:
-                // Only to Active (or intermediate Opening Selection) or Cancelled
                 isValid = newStatus == TournamentStatus.Active || 
                           newStatus == TournamentStatus.WaitingForOpeningMatchSelection || 
                           newStatus == TournamentStatus.Cancelled;
                 break;
 
             case TournamentStatus.WaitingForOpeningMatchSelection:
-                // Proceed to Active or Cancel
                 isValid = newStatus == TournamentStatus.Active || newStatus == TournamentStatus.Cancelled;
                 break;
 
             case TournamentStatus.Active:
-                // Only to Completed or intermediate selection if hybrid, or Cancelled
                 isValid = newStatus == TournamentStatus.Completed || 
                           newStatus == TournamentStatus.WaitingForOpeningMatchSelection ||
                           newStatus == TournamentStatus.Cancelled;
@@ -135,7 +188,7 @@ public class Tournament : BaseEntity
 
             case TournamentStatus.Completed:
             case TournamentStatus.Cancelled:
-                isValid = false; // Terminal states
+                isValid = false;
                 break;
         }
 

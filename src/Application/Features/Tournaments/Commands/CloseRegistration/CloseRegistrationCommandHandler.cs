@@ -27,7 +27,7 @@ public class CloseRegistrationCommandHandler : IRequestHandler<CloseRegistration
 
     public async Task<TournamentDto> Handle(CloseRegistrationCommand request, CancellationToken cancellationToken)
     {
-        var lockKey = $"tournament:lifecycle:{request.Id}";
+        var lockKey = $"tournament-lock-{request.Id}";
         if (!await _distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromMinutes(2)))
         {
             throw new ConflictException("العملية قيد التنفيذ من قبل مستخدم آخر.");

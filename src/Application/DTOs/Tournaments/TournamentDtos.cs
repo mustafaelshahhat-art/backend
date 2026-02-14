@@ -40,6 +40,7 @@ public class TournamentDto
     public bool RequiresAdminIntervention { get; set; }
     public bool AllowLateRegistration { get; set; }
     public LateRegistrationMode LateRegistrationMode { get; set; }
+    public SchedulingMode SchedulingMode { get; set; }
     public Guid? OpeningMatchHomeTeamId { get; set; }
     public Guid? OpeningMatchAwayTeamId { get; set; }
     public Guid? OpeningMatchId { get; set; }
@@ -72,6 +73,7 @@ public class CreateTournamentRequest
     public TournamentMode? Mode { get; set; }
     public bool AllowLateRegistration { get; set; }
     public LateRegistrationMode LateRegistrationMode { get; set; }
+    public SchedulingMode SchedulingMode { get; set; }
 }
 
 public class UpdateTournamentRequest
@@ -102,6 +104,7 @@ public class UpdateTournamentRequest
     public LateRegistrationMode? LateRegistrationMode { get; set; }
     public Guid? OpeningMatchHomeTeamId { get; set; }
     public Guid? OpeningMatchAwayTeamId { get; set; }
+    public SchedulingMode? SchedulingMode { get; set; }
 }
 
 public class TeamRegistrationDto
