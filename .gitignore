@@ -52,6 +52,8 @@ _ReSharper*/
 
 # Debug and Logs
 src/Api/settings_debug.log
+src/Api/logs/
+*.txt
 
 # User Uploads
 src/Api/wwwroot/uploads/*

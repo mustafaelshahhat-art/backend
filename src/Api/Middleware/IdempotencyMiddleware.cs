@@ -32,9 +32,18 @@ public class IdempotencyMiddleware
             return;
         }
 
-        if (!context.Request.Headers.TryGetValue("X-Idempotency-Key", out var idempotencyKey) || string.IsNullOrEmpty(idempotencyKey))
+        // Skip idempotency for Auth, Health, and SignalR Hub routes
+        var path = context.Request.Path.ToString().ToLowerInvariant();
+        if (path.Contains("/auth/") || path.Contains("/health/") || path.Contains("/hubs/"))
         {
             await _next(context);
+            return;
+        }
+
+        if (!context.Request.Headers.TryGetValue("X-Idempotency-Key", out var idempotencyKey) || string.IsNullOrEmpty(idempotencyKey))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsync("X-Idempotency-Key header is required for POST/PUT requests.");
             return;
         }
 

@@ -69,6 +69,7 @@ public static class DependencyInjection
         services.AddSingleton<IDomainEventTypeCache, Infrastructure.BackgroundJobs.DomainEventTypeCache>();
         services.AddHostedService<Infrastructure.BackgroundJobs.TournamentBackgroundService>();
         services.AddHostedService<Infrastructure.BackgroundJobs.OutboxProcessor>();
+        services.AddHostedService<Infrastructure.BackgroundJobs.IdempotencyCleanupService>();
 
         return services;
     }

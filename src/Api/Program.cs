@@ -273,9 +273,11 @@ else
 app.UseHttpsRedirection();
 
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
+app.UseCors("AllowFrontend");
 
 app.UseCookiePolicy();
 app.UseMiddleware<CorrelationIdMiddleware>(); // PROD-AUDIT: Traceability
+app.UseMiddleware<IdempotencyMiddleware>();
 app.UseMiddleware<SlowQueryMiddleware>(); // PROD-AUDIT: Performance
 app.UseSerilogRequestLogging(options =>
 {
@@ -286,9 +288,9 @@ app.UseSerilogRequestLogging(options =>
 });
 
 app.UseStaticFiles();
+app.UseMiddleware<FallbackImageMiddleware>();
 
 app.UseMiddleware<SecurityHeadersMiddleware>();
-app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 app.UseMiddleware<UserStatusCheckMiddleware>();

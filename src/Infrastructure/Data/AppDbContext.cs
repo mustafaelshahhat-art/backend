@@ -277,9 +277,9 @@ public class AppDbContext : DbContext
             .HasDatabaseName("UQ_Player_Team_User");
 
         modelBuilder.Entity<IdempotentRequest>()
-            .HasIndex(r => r.Key)
+            .HasIndex(r => new { r.Key, r.Route })
             .IsUnique()
-            .HasDatabaseName("UQ_IdempotentRequests_Key");
+            .HasDatabaseName("UQ_IdempotentRequests_Key_Route");
 
         modelBuilder.Entity<OutboxMessage>()
             .HasIndex(m => new { m.Status, m.ScheduledAt })
