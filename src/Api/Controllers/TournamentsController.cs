@@ -152,14 +152,15 @@ public class TournamentsController : ControllerBase
         var userId = Guid.Parse(userIdString);
 
         var receiptUrl = await SaveFile(receipt, cancellationToken);
-        var request = new SubmitPaymentRequest 
-        { 
-            PaymentReceiptUrl = receiptUrl,
-            SenderNumber = senderNumber,
-            PaymentMethod = paymentMethod
-        };
+        var command = new Application.Features.Tournaments.Commands.SubmitPayment.SubmitPaymentCommand(
+            id, 
+            teamId, 
+            userId, 
+            receiptUrl, 
+            senderNumber, 
+            paymentMethod);
 
-        var registration = await _tournamentService.SubmitPaymentAsync(id, teamId, request, userId, cancellationToken);
+        var registration = await _mediator.Send(command, cancellationToken);
         return Ok(registration);
     }
 
