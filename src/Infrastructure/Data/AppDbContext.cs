@@ -28,6 +28,7 @@ public class AppDbContext : DbContext
     public DbSet<Otp> Otps { get; set; }
     public DbSet<TournamentPlayer> TournamentPlayers { get; set; }
     public DbSet<OutboxMessage> OutboxMessages { get; set; }
+    public DbSet<IdempotentRequest> IdempotentRequests { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -274,6 +275,11 @@ public class AppDbContext : DbContext
             .HasIndex(p => new { p.TeamId, p.UserId })
             .IsUnique()
             .HasDatabaseName("UQ_Player_Team_User");
+
+        modelBuilder.Entity<IdempotentRequest>()
+            .HasIndex(r => r.Key)
+            .IsUnique()
+            .HasDatabaseName("UQ_IdempotentRequests_Key");
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
