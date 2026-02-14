@@ -61,9 +61,8 @@ public class TournamentLifecycleService : ITournamentLifecycleService
             if (groupMatches.Any() && groupMatches.All(m => m.Status == MatchStatus.Finished) && !knockoutMatches.Any())
             {
                 // PART 3 Logic: Transition to WaitingForOpeningMatchSelection
-                if (tournament.Status != TournamentStatus.WaitingForOpeningMatchSelection)
                 {
-                    tournament.Status = TournamentStatus.WaitingForOpeningMatchSelection;
+                    tournament.ChangeStatus(TournamentStatus.WaitingForOpeningMatchSelection);
                     await _tournamentRepository.UpdateAsync(tournament, ct);
                     
                     await _analyticsService.LogActivityByTemplateAsync("GROUPS_FINISHED", new Dictionary<string, string> { { "tournamentName", tournament.Name } }, null, "System", ct);
@@ -218,7 +217,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         
         foreach(var m in newMatches) await _matchRepository.AddAsync(m, ct);
         
-        tournament.Status = TournamentStatus.Active;
+        tournament.ChangeStatus(TournamentStatus.Active);
         await _tournamentRepository.UpdateAsync(tournament, ct);
 
         // Notify
@@ -329,7 +328,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
              winnerId = finalMatch.HomeScore > finalMatch.AwayScore ? finalMatch.HomeTeamId : finalMatch.AwayTeamId;
          }
          
-         tournament.Status = TournamentStatus.Completed;
+         tournament.ChangeStatus(TournamentStatus.Completed);
          tournament.WinnerTeamId = winnerId;
          await _tournamentRepository.UpdateAsync(tournament, ct);
          

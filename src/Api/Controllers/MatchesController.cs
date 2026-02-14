@@ -13,11 +13,13 @@ public class MatchesController : ControllerBase
 {
     private readonly IMatchService _matchService;
     private readonly IUserService _userService;
+    private readonly MediatR.IMediator _mediator;
 
-    public MatchesController(IMatchService matchService, IUserService userService)
+    public MatchesController(IMatchService matchService, IUserService userService, MediatR.IMediator mediator)
     {
         _matchService = matchService;
         _userService = userService;
+        _mediator = mediator;
     }
 
     [HttpGet]
@@ -45,8 +47,9 @@ public class MatchesController : ControllerBase
     public async Task<ActionResult<MatchDto>> StartMatch(Guid id, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        var match = await _matchService.StartMatchAsync(id, userId, userRole, cancellationToken);
-        return Ok(match);
+        var command = new Application.Features.Matches.Commands.StartMatch.StartMatchCommand(id, userId, userRole);
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
     }
 
     [HttpPost("{id}/end")]
@@ -54,17 +57,19 @@ public class MatchesController : ControllerBase
     public async Task<ActionResult<MatchDto>> EndMatch(Guid id, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        var match = await _matchService.EndMatchAsync(id, userId, userRole, cancellationToken);
-        return Ok(match);
+        var command = new Application.Features.Matches.Commands.EndMatch.EndMatchCommand(id, userId, userRole);
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
     }
 
     [HttpPost("{id}/events")]
     [Authorize(Policy = "RequireCreator")]
-    public async Task<ActionResult<MatchDto>> AddEvent(Guid id, AddMatchEventRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<MatchDto>> AddEvent(Guid id, [FromBody] AddMatchEventRequest request, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        var match = await _matchService.AddEventAsync(id, request, userId, userRole, cancellationToken);
-        return Ok(match);
+        var command = new Application.Features.Matches.Commands.AddMatchEvent.AddMatchEventCommand(id, request, userId, userRole);
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
     }
 
     [HttpDelete("{id}/events/{eventId}")]
@@ -72,17 +77,19 @@ public class MatchesController : ControllerBase
     public async Task<ActionResult<MatchDto>> RemoveEvent(Guid id, Guid eventId, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        var match = await _matchService.RemoveEventAsync(id, eventId, userId, userRole, cancellationToken);
-        return Ok(match);
+        var command = new Application.Features.Matches.Commands.RemoveMatchEvent.RemoveMatchEventCommand(id, eventId, userId, userRole);
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
     }
 
     [HttpPatch("{id}")]
-    [Authorize(Policy = "RequireAdmin")]
-    public async Task<ActionResult<MatchDto>> UpdateMatch(Guid id, UpdateMatchRequest request, CancellationToken cancellationToken)
+    [Authorize(Policy = "RequireCreator")] // Changed policy based on instruction's new line
+    public async Task<ActionResult<MatchDto>> UpdateMatch(Guid id, [FromBody] UpdateMatchRequest request, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        var match = await _matchService.UpdateAsync(id, request, userId, userRole, cancellationToken);
-        return Ok(match);
+        var command = new Application.Features.Matches.Commands.UpdateMatch.UpdateMatchCommand(id, request, userId, userRole);
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
     }
 
     private (Guid userId, string userRole) GetUserContext()

@@ -62,7 +62,13 @@ public class TournamentService : ITournamentService
         Expression<Func<Tournament, bool>>? predicate = null;
         if (creatorId.HasValue)
         {
+            // If filtering by creator (e.g. Creator's Dashboard), show everything
             predicate = t => t.CreatorUserId == creatorId.Value;
+        }
+        else
+        {
+            // PROD-HARDEN: Publicly hide Drafts
+            predicate = t => t.Status != TournamentStatus.Draft;
         }
 
         var (items, totalCount) = await _tournamentRepository.GetPagedAsync(
@@ -134,7 +140,7 @@ public class TournamentService : ITournamentService
 
 
 
-    public async Task<TournamentDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    public async Task<TournamentDto?> GetByIdAsync(Guid id, Guid? userId = null, CancellationToken ct = default)
     {
         // Use SplitQuery to prevent Cartesian Product/Join Explosion for deep includes
         var tournament = await _tournamentRepository.GetQueryable()
@@ -147,6 +153,12 @@ public class TournamentService : ITournamentService
             .FirstOrDefaultAsync(t => t.Id == id);
 
         if (tournament == null) return null;
+
+        // PROD-HARDEN: Privacy filter for Drafts
+        if (tournament.Status == TournamentStatus.Draft && tournament.CreatorUserId != userId)
+        {
+            return null;
+        }
 
         var matches = await _matchRepository.GetQueryable()
             .AsNoTracking()
@@ -180,7 +192,7 @@ public class TournamentService : ITournamentService
 
     private async Task<TournamentDto?> GetByIdFreshAsync(Guid id, CancellationToken ct = default)
     {
-        return await GetByIdAsync(id, ct);
+        return await GetByIdAsync(id, null, ct);
     }
 
     public async Task<TournamentDto?> GetActiveByTeamAsync(Guid teamId, CancellationToken ct = default)
@@ -247,6 +259,13 @@ public class TournamentService : ITournamentService
 
     public async Task<TournamentDto> CreateAsync(CreateTournamentRequest request, Guid? creatorId = null, CancellationToken ct = default)
     {
+        // PROD-HARDEN: Service-level uniqueness check
+        var existing = await _tournamentRepository.FindAsync(t => t.Name == request.Name, ct);
+        if (existing.Any())
+        {
+            throw new ConflictException("يوجد بطولة بنفس الاسم بالفعل.");
+        }
+
         var tournament = new Tournament
         {
             Name = request.Name,
@@ -260,7 +279,7 @@ public class TournamentService : ITournamentService
             Location = request.Location,
             Rules = request.Rules,
             Prizes = request.Prizes,
-            Status = TournamentStatus.RegistrationOpen,
+            // Status initialized to Draft by default
             Format = request.Format,
             MatchType = request.MatchType,
             NumberOfGroups = request.NumberOfGroups,
@@ -313,10 +332,16 @@ public class TournamentService : ITournamentService
             }
         }
 
-        if (request.Name != null) tournament.Name = request.Name;
+        if (request.Name != null && tournament.Name != request.Name) 
+        {
+            // PROD-HARDEN: Uniqueness Check
+            var existing = await _tournamentRepository.FindAsync(t => t.Name == request.Name && t.Id != id, ct);
+            if (existing.Any()) throw new ConflictException("الاسم الجديد مستخدم في بطولة أخرى.");
+            tournament.Name = request.Name;
+        }
         if (request.Description != null) tournament.Description = request.Description;
         if (request.Status != null && Enum.TryParse<TournamentStatus>(request.Status, true, out var newStatus)) 
-            tournament.Status = newStatus;
+            tournament.ChangeStatus(newStatus);
         if (request.StartDate.HasValue) tournament.StartDate = request.StartDate.Value;
         if (request.EndDate.HasValue) tournament.EndDate = request.EndDate.Value;
         if (request.RegistrationDeadline.HasValue) tournament.RegistrationDeadline = request.RegistrationDeadline.Value;
@@ -348,14 +373,14 @@ public class TournamentService : ITournamentService
         // Force auto-closure if capacity reached after manual update
         if (tournament.CurrentTeams >= tournament.MaxTeams && tournament.Status == TournamentStatus.RegistrationOpen)
         {
-            tournament.Status = TournamentStatus.RegistrationClosed;
+            tournament.ChangeStatus(TournamentStatus.RegistrationClosed);
         }
         else if (tournament.CurrentTeams < tournament.MaxTeams && tournament.Status == TournamentStatus.RegistrationClosed && !(await _matchRepository.FindAsync(m => m.TournamentId == id, ct)).Any())
         {
             // Re-open if capacity was increased and no matches exist
             if (DateTime.UtcNow <= tournament.RegistrationDeadline)
             {
-                tournament.Status = TournamentStatus.RegistrationOpen;
+                tournament.ChangeStatus(TournamentStatus.RegistrationOpen);
             }
         }
 
@@ -466,7 +491,7 @@ public class TournamentService : ITournamentService
 
             if (tournament.CurrentTeams >= tournament.MaxTeams && tournament.Status == TournamentStatus.RegistrationOpen)
             {
-                tournament.Status = TournamentStatus.RegistrationClosed;
+                tournament.ChangeStatus(TournamentStatus.RegistrationClosed);
             }
 
             await _registrationRepository.AddAsync(registration, ct);
@@ -674,7 +699,7 @@ public class TournamentService : ITournamentService
                 var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, ct);
                 if (!matches.Any() && DateTime.UtcNow <= tournament.RegistrationDeadline)
                 {
-                    tournament.Status = TournamentStatus.RegistrationOpen;
+                    tournament.ChangeStatus(TournamentStatus.RegistrationOpen);
                 }
             }
             
@@ -768,7 +793,7 @@ public class TournamentService : ITournamentService
         var teamIds = registrations.Select(r => r.TeamId).ToList();
         var matches = await CreateMatchesAsync(tournament, teamIds, ct);
         
-        tournament.Status = TournamentStatus.Active; 
+        tournament.ChangeStatus(TournamentStatus.Active); 
         await _tournamentRepository.UpdateAsync(tournament, ct);
         
         return _mapper.Map<IEnumerable<MatchDto>>(matches);
@@ -781,7 +806,7 @@ public class TournamentService : ITournamentService
 
         ValidateOwnership(tournament, userId, userRole, ct);
         
-        tournament.Status = TournamentStatus.RegistrationClosed;
+        tournament.ChangeStatus(TournamentStatus.RegistrationClosed);
         await _tournamentRepository.UpdateAsync(tournament, ct);
         
         return _mapper.Map<TournamentDto>(tournament);
@@ -1069,7 +1094,7 @@ public class TournamentService : ITournamentService
         ValidateOwnership(tournament, userId, userRole, ct);
 
         var oldStatus = tournament.Status;
-        tournament.Status = TournamentStatus.Active;
+        tournament.ChangeStatus(TournamentStatus.Active);
         await _tournamentRepository.UpdateAsync(tournament, ct);
 
         await _analyticsService.LogActivityByTemplateAsync(
@@ -1097,7 +1122,7 @@ public class TournamentService : ITournamentService
         ValidateOwnership(tournament, userId, userRole, ct);
 
         var oldStatus = tournament.Status;
-        tournament.Status = TournamentStatus.Completed;
+        tournament.ChangeStatus(TournamentStatus.Completed);
         await _tournamentRepository.UpdateAsync(tournament, ct);
 
         await _analyticsService.LogActivityByTemplateAsync(
@@ -1277,7 +1302,7 @@ public class TournamentService : ITournamentService
         }
 
         await _matchRepository.AddRangeAsync(matches);
-        tournament.Status = TournamentStatus.Active;
+        tournament.ChangeStatus(TournamentStatus.Active);
         await _tournamentRepository.UpdateAsync(tournament, ct);
 
         return _mapper.Map<IEnumerable<MatchDto>>(matches);
@@ -1302,7 +1327,7 @@ public class TournamentService : ITournamentService
         var openTournaments = await _tournamentRepository.FindAsync(t => t.Status == TournamentStatus.RegistrationOpen && t.RegistrationDeadline < DateTime.UtcNow, ct);
         foreach (var t in openTournaments)
         {
-             t.Status = TournamentStatus.RegistrationClosed;
+             t.ChangeStatus(TournamentStatus.RegistrationClosed);
              await _tournamentRepository.UpdateAsync(t, ct); // TransactionBehavior will commit this? No, pipeline wraps Command. Yes.
         }
         
@@ -1312,7 +1337,7 @@ public class TournamentService : ITournamentService
         var readyTournaments = await _tournamentRepository.FindAsync(t => t.Status == TournamentStatus.RegistrationClosed && t.StartDate <= DateTime.UtcNow, ct);
         foreach (var t in readyTournaments)
         {
-             t.Status = TournamentStatus.Active;
+             t.ChangeStatus(TournamentStatus.Active);
              await _tournamentRepository.UpdateAsync(t, ct);
         }
     }

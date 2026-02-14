@@ -1,18 +1,6 @@
-using MediatR;
 using Application.DTOs.Tournaments;
+using MediatR;
 
 namespace Application.Features.Tournaments.Commands.RegisterTeam;
 
-public class RegisterTeamCommand : IRequest<TeamRegistrationDto>
-{
-    public Guid TournamentId { get; set; }
-    public Guid TeamId { get; set; }
-    public Guid UserId { get; set; }
-
-    public RegisterTeamCommand(Guid tournamentId, Guid teamId, Guid userId)
-    {
-        TournamentId = tournamentId;
-        TeamId = teamId;
-        UserId = userId;
-    }
-}
+public record RegisterTeamCommand(Guid TournamentId, Guid TeamId, Guid UserId) : IRequest<TeamRegistrationDto>;

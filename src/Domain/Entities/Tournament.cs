@@ -21,8 +21,14 @@ public class Tournament : BaseEntity
     // I missed `TournamentStatus` enum in previous step. I'll add it or use string.
     // Better use string to be compliant exactly or Enum with converter. Best: Enum.
     
-    // Updated Status to Enum
-    public TournamentStatus Status { get; set; } = TournamentStatus.Draft;
+    // PROD-HARDEN: Locked down Status to prevent direct mutation
+    public TournamentStatus Status { get; private set; } = TournamentStatus.Draft;
+
+    public void ChangeStatus(TournamentStatus newStatus)
+    {
+        ValidateTransition(newStatus);
+        Status = newStatus;
+    }
 
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
@@ -89,5 +95,53 @@ public class Tournament : BaseEntity
             return IsHomeAwayEnabled || MatchType == TournamentLegType.HomeAndAway ? TournamentMode.KnockoutHomeAway : TournamentMode.KnockoutSingle;
 
         return TournamentMode.LeagueSingle; // Fallback
+    }
+
+    public void ValidateTransition(TournamentStatus newStatus)
+    {
+        if (Status == newStatus) return;
+
+        bool isValid = false;
+        switch (Status)
+        {
+            case TournamentStatus.Draft:
+                // Only to RegistrationOpen or Cancelled
+                isValid = newStatus == TournamentStatus.RegistrationOpen || newStatus == TournamentStatus.Cancelled;
+                break;
+
+            case TournamentStatus.RegistrationOpen:
+                // Only to RegistrationClosed or Cancelled
+                isValid = newStatus == TournamentStatus.RegistrationClosed || newStatus == TournamentStatus.Cancelled;
+                break;
+
+            case TournamentStatus.RegistrationClosed:
+                // Only to Active (or intermediate Opening Selection) or Cancelled
+                isValid = newStatus == TournamentStatus.Active || 
+                          newStatus == TournamentStatus.WaitingForOpeningMatchSelection || 
+                          newStatus == TournamentStatus.Cancelled;
+                break;
+
+            case TournamentStatus.WaitingForOpeningMatchSelection:
+                // Proceed to Active or Cancel
+                isValid = newStatus == TournamentStatus.Active || newStatus == TournamentStatus.Cancelled;
+                break;
+
+            case TournamentStatus.Active:
+                // Only to Completed or intermediate selection if hybrid, or Cancelled
+                isValid = newStatus == TournamentStatus.Completed || 
+                          newStatus == TournamentStatus.WaitingForOpeningMatchSelection ||
+                          newStatus == TournamentStatus.Cancelled;
+                break;
+
+            case TournamentStatus.Completed:
+            case TournamentStatus.Cancelled:
+                isValid = false; // Terminal states
+                break;
+        }
+
+        if (!isValid)
+        {
+            throw new InvalidOperationException($"فشل تغيير الحالة: لا يمكن الانتقال من {Status} إلى {newStatus}.");
+        }
     }
 }

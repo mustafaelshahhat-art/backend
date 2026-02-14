@@ -28,7 +28,7 @@ public class GlobalExceptionHandlerMiddleware
         }
     }
 
-    private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+    private Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         context.Response.ContentType = "application/json";
         
@@ -48,12 +48,21 @@ public class GlobalExceptionHandlerMiddleware
                 statusCode = HttpStatusCode.BadRequest;
                 errorCode = "BAD_REQUEST";
                 message = ex.Message;
+                _logger.LogWarning("Bad Request: {Message}", ex.Message);
                 break;
             case ValidationException ex:
                 statusCode = HttpStatusCode.BadRequest;
                 errorCode = "VALIDATION_ERROR";
                 message = ex.Message;
                 details = ex.Errors;
+                
+                var currentEnv = context.RequestServices.GetRequiredService<IWebHostEnvironment>();
+                if (currentEnv.IsDevelopment())
+                {
+                    _logger.LogWarning("Validation failed: {Message}. Errors: {Errors}", 
+                        ex.Message, 
+                        JsonSerializer.Serialize(ex.Errors));
+                }
                 break;
             case ForbiddenException ex:
                 statusCode = HttpStatusCode.Forbidden;

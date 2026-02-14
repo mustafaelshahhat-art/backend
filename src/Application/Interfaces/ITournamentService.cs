@@ -11,7 +11,7 @@ public interface ITournamentService
 {
 
     Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default);
-    Task<TournamentDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<TournamentDto?> GetByIdAsync(Guid id, Guid? userId = null, CancellationToken ct = default);
     Task<TournamentDto?> GetActiveByTeamAsync(Guid teamId, CancellationToken ct = default);
     Task<TeamRegistrationDto?> GetRegistrationByTeamAsync(Guid tournamentId, Guid teamId, CancellationToken ct = default);
     Task<TournamentDto> CreateAsync(CreateTournamentRequest request, Guid? creatorId = null, CancellationToken ct = default);

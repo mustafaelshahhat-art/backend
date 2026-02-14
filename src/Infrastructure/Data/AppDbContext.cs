@@ -226,6 +226,11 @@ public class AppDbContext : DbContext
             .HasDatabaseName("IX_Users_Location");
 
         modelBuilder.Entity<Tournament>()
+            .HasIndex(t => t.Name)
+            .IsUnique()
+            .HasDatabaseName("UQ_Tournaments_Name");
+
+        modelBuilder.Entity<Tournament>()
             .HasIndex(t => new { t.CreatorUserId, t.Status })
             .HasDatabaseName("IX_Tournaments_Creator_Status");
 

@@ -745,7 +745,7 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("NameAr")
                         .HasColumnType("nvarchar(max)");
@@ -807,6 +807,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_Tournaments_Name");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Tournaments_Status");

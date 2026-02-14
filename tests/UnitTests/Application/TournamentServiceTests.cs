@@ -42,7 +42,8 @@ public class TournamentServiceTests
             _teamRepoMock.Object,
             new Mock<IRealTimeNotifier>().Object,
             new Mock<global::Domain.Interfaces.IRepository<global::Domain.Entities.TournamentPlayer>>().Object,
-            new Mock<ITournamentLifecycleService>().Object
+            new Mock<ITournamentLifecycleService>().Object,
+            new Mock<IDistributedLock>().Object
         );
     }
 

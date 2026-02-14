@@ -26,7 +26,7 @@ public class IdempotencyMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        if (context.Request.Method != HttpMethods.Post && context.Request.Method != HttpMethods.Put)
+        if (context.Request.Method != HttpMethods.Post && context.Request.Method != HttpMethods.Put && context.Request.Method != HttpMethods.Patch)
         {
             await _next(context);
             return;
@@ -40,10 +40,17 @@ public class IdempotencyMiddleware
             return;
         }
 
-        if (!context.Request.Headers.TryGetValue("X-Idempotency-Key", out var idempotencyKey) || string.IsNullOrEmpty(idempotencyKey))
+        if (!context.Request.Headers.TryGetValue("Idempotency-Key", out var idempotencyKey) && 
+            !context.Request.Headers.TryGetValue("X-Idempotency-Key", out idempotencyKey))
+        {
+            await _next(context);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(idempotencyKey))
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await context.Response.WriteAsync("X-Idempotency-Key header is required for POST/PUT requests.");
+            await context.Response.WriteAsync("Idempotency-Key header is required for POST/PUT/PATCH requests.");
             return;
         }
 

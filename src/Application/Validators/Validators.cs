@@ -31,8 +31,9 @@ public class CreateTournamentRequestValidator : AbstractValidator<CreateTourname
     public CreateTournamentRequestValidator()
     {
         RuleFor(x => x.Name).NotEmpty();
-        RuleFor(x => x.StartDate).GreaterThan(DateTime.UtcNow);
-        RuleFor(x => x.EndDate).GreaterThan(x => x.StartDate);
+        RuleFor(x => x.StartDate).GreaterThanOrEqualTo(DateTime.Today.AddDays(-1)).WithMessage("تاريخ بداية البطولة لا يمكن أن يكون في الماضي.");
+        RuleFor(x => x.EndDate).GreaterThanOrEqualTo(x => x.StartDate).WithMessage("تاريخ النهاية يجب أن يكون في نفس يوم بداية البطولة أو بعده.");
+        RuleFor(x => x.RegistrationDeadline).LessThanOrEqualTo(x => x.StartDate).WithMessage("آخر موعد للتسجيل يجب أن يكون قبل أو يوم بداية البطولة.");
         RuleFor(x => x.EntryFee).GreaterThanOrEqualTo(0);
         RuleFor(x => x.MaxTeams).GreaterThan(1);
     }
