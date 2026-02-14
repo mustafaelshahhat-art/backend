@@ -6,6 +6,7 @@ using Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Infrastructure;
 
@@ -62,7 +63,11 @@ public static class DependencyInjection
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<IMatchMessageRepository, MatchMessageRepository>();
         services.AddScoped<IMatchRepository, MatchRepository>();
-        services.AddScoped<IEmailService, Services.EmailService>();
+        services.AddScoped<Services.EmailService>();
+        services.AddScoped<IEmailService, Services.ResilientEmailService>(sp => 
+            new Services.ResilientEmailService(
+                sp.GetRequiredService<Services.EmailService>(), 
+                sp.GetRequiredService<ILogger<Services.ResilientEmailService>>()));
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorization.TeamCaptainHandler>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorization.TournamentOwnerHandler>();
 
