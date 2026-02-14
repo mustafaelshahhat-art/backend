@@ -7,4 +7,5 @@ public interface ITransactionManager
 {
     Task<TResult> ExecuteInTransactionAsync<TResult>(Func<Task<TResult>> operation, CancellationToken ct = default);
     Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken ct = default);
+    Task SaveChangesAsync(CancellationToken ct = default);
 }

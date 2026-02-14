@@ -17,6 +17,11 @@ public class TransactionManager : ITransactionManager
 
     public async Task<TResult> ExecuteInTransactionAsync<TResult>(Func<Task<TResult>> operation, CancellationToken ct = default)
     {
+        if (_context.Database.CurrentTransaction != null)
+        {
+            return await operation();
+        }
+
         var strategy = _context.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async (cancellation) =>
         {
@@ -38,6 +43,12 @@ public class TransactionManager : ITransactionManager
 
     public async Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken ct = default)
     {
+        if (_context.Database.CurrentTransaction != null)
+        {
+            await operation();
+            return;
+        }
+
         var strategy = _context.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async (cancellation) =>
         {
@@ -54,5 +65,10 @@ public class TransactionManager : ITransactionManager
                 throw;
             }
         }, ct);
+    }
+
+    public async Task SaveChangesAsync(CancellationToken ct = default)
+    {
+        await _context.SaveChangesAsync(ct);
     }
 }

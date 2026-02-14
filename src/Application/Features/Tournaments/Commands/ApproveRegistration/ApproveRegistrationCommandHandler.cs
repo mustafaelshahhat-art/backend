@@ -19,6 +19,7 @@ public class ApproveRegistrationCommandHandler : IRequestHandler<ApproveRegistra
     private readonly IMapper _mapper;
     private readonly IMediator _mediator;
     private readonly IDistributedLock _distributedLock;
+    private readonly ITransactionManager _transactionManager;
 
     public ApproveRegistrationCommandHandler(
         IRepository<Tournament> tournamentRepository,
@@ -27,7 +28,8 @@ public class ApproveRegistrationCommandHandler : IRequestHandler<ApproveRegistra
         IRepository<Match> matchRepository,
         IMapper mapper,
         IMediator mediator,
-        IDistributedLock distributedLock)
+        IDistributedLock distributedLock,
+        ITransactionManager transactionManager)
     {
         _tournamentRepository = tournamentRepository;
         _registrationRepository = registrationRepository;
@@ -36,6 +38,7 @@ public class ApproveRegistrationCommandHandler : IRequestHandler<ApproveRegistra
         _mapper = mapper;
         _mediator = mediator;
         _distributedLock = distributedLock;
+        _transactionManager = transactionManager;
     }
 
     public async Task<TeamRegistrationDto> Handle(ApproveRegistrationCommand request, CancellationToken cancellationToken)
@@ -107,6 +110,9 @@ public class ApproveRegistrationCommandHandler : IRequestHandler<ApproveRegistra
             var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == request.TournamentId, cancellationToken);
             if (!existingMatches.Any() && tournament.Status != TournamentStatus.Active)
             {
+                // Ensure data is persisted before dispatching next command so it's visible in the DB
+                await _transactionManager.SaveChangesAsync(cancellationToken);
+
                 // Dispatch command for generating matches (will handle its own transaction and notification)
                 await _mediator.Send(new GenerateMatchesCommand(request.TournamentId, request.UserId, request.UserRole), cancellationToken);
             }
