@@ -59,12 +59,41 @@ builder.Services.AddControllers()
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<Infrastructure.Data.AppDbContext>();
 builder.Services.AddMemoryCache();
-builder.Services.AddSignalR();
-if (builder.Environment.IsProduction())
+
+// SignalR with optional Redis backplane
+try
 {
-    builder.Services.AddSignalR().AddStackExchangeRedis(builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379", options => {
-        options.Configuration.ChannelPrefix = "ramadan_signalr";
-    });
+    var redisConnectionString = builder.Configuration["Redis:ConnectionString"];
+    if (!string.IsNullOrEmpty(redisConnectionString) && builder.Environment.IsProduction())
+    {
+        // Attempt to configure Redis backplane for SignalR
+        var checkOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
+        checkOptions.AbortOnConnectFail = true;
+        checkOptions.ConnectTimeout = 3000;
+        using var testConn = StackExchange.Redis.ConnectionMultiplexer.Connect(checkOptions);
+        
+        if (testConn.IsConnected)
+        {
+            builder.Services.AddSignalR().AddStackExchangeRedis(redisConnectionString, options => {
+                options.Configuration.ChannelPrefix = StackExchange.Redis.RedisChannel.Literal("ramadan_signalr");
+            });
+            Log.Information("SignalR configured with Redis backplane.");
+        }
+        else
+        {
+            builder.Services.AddSignalR(); // Fallback to in-memory
+            Log.Warning("Redis unavailable for SignalR. Using in-memory backplane.");
+        }
+    }
+    else
+    {
+        builder.Services.AddSignalR(); // Development or Redis not configured
+    }
+}
+catch
+{
+    builder.Services.AddSignalR(); // Fallback to in-memory
+    Log.Warning("Failed to configure Redis for SignalR. Using in-memory backplane.");
 }
 builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, Api.Infrastructure.CustomUserIdProvider>();
 builder.Services.AddScoped<Application.Interfaces.IRealTimeNotifier, Api.Services.RealTimeNotifier>();
@@ -266,42 +295,25 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
-// PROD-AUDIT: Redis Health Guard
-// In Production, fail fast if Redis is unavailable to prevent unsafe background operations.
-if (app.Environment.IsProduction())
+// PROD-AUDIT: Redis Health Guard (Optional)
+// Check Redis connectivity but don't fail startup if unavailable
+try
 {
-    try
+    var redis = app.Services.GetService<StackExchange.Redis.IConnectionMultiplexer>();
+    if (redis != null && redis.IsConnected)
     {
-        var redis = app.Services.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>();
         var db = redis.GetDatabase();
         db.Ping();
         Log.Information("Redis connectivity verified.");
     }
-    catch (Exception ex)
+    else
     {
-        Log.Fatal(ex, "CRITICAL: Redis is unreachable in Production. Terminating application for safety.");
-        throw new ApplicationException("Redis connectivity is required in Production environment.", ex);
+        Log.Warning("Redis is not configured or unreachable. Using SQL-based caching and distributed lock.");
     }
 }
-else
+catch (Exception ex)
 {
-    // PROD-AUDIT: Optional Redis check for development
-    var lockProvider = builder.Configuration["DistributedLock:Provider"] ?? "Sql";
-    if (lockProvider.Equals("Redis", StringComparison.OrdinalIgnoreCase))
-    {
-        try
-        {
-            var redis = app.Services.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>();
-            if (redis.IsConnected)
-            {
-                Log.Information("Redis connectivity verified (Development).");
-            }
-        }
-        catch
-        {
-            Log.Warning("Redis is unreachable. Using SQL Fallback if configured.");
-        }
-    }
+    Log.Warning(ex, "Redis health check failed. Using SQL-based fallback for caching and distributed lock.");
 }
 
 // Configure the HTTP request pipeline.
@@ -319,17 +331,17 @@ app.Use(async (context, next) =>
     await next();
 });
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-else 
-{
-    // PROD-AUDIT: Disable detailed exceptions
-    app.UseExceptionHandler("/error");
-    app.UseHsts();
-}
+//if (app.Environment.IsDevelopment())
+//{
+app.UseSwagger();
+app.UseSwaggerUI();
+//}
+//else 
+//{
+//    // PROD-AUDIT: Disable detailed exceptions
+//    app.UseExceptionHandler("/error");
+//    app.UseHsts();
+//}
 
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 app.UseCors("AllowFrontend");
