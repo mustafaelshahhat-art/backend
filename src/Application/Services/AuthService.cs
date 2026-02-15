@@ -395,6 +395,17 @@ public class AuthService : IAuthService
         }
     }
 
+    public async Task LogGuestVisitAsync(CancellationToken ct = default)
+    {
+        await _analyticsService.LogActivityAsync(
+            ActivityConstants.GUEST_VISIT,
+            "دخل زائر جديد إلى المنصة كضيف",
+            null,
+            "ضيف",
+            ct
+        );
+    }
+
     public async Task ResendOtpAsync(string email, string type, CancellationToken ct = default)
     {
         var user = (await _userRepository.FindAsync(u => u.Email == email, ct)).FirstOrDefault();

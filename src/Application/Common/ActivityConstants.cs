@@ -15,6 +15,7 @@ public static class ActivityConstants
     public const string MATCH_POSTPONED = "MATCH_POSTPONED";
     public const string MATCH_RESCHEDULED = "MATCH_RESCHEDULED";
     public const string MATCH_CANCELLED = "MATCH_CANCELLED";
+    public const string GUEST_VISIT = "GUEST_VISIT";
 
     public const string TOURNAMENT_CREATED = "TOURNAMENT_CREATED";
     public const string TOURNAMENT_GENERATED = "TOURNAMENT_GENERATED";
@@ -45,6 +46,7 @@ public static class ActivityConstants
     {
         { USER_REGISTERED, ("مستخدم", "تسجيل جديد", "تم تسجيل مستخدم جديد باسم {userName}") },
         { USER_LOGIN, ("مستخدم", "تسجيل دخول", "قام المستخدم {userName} بتسجيل الدخول") },
+        { GUEST_VISIT, ("زائر", "زيارة ضيف", "دخل زائر جديد إلى المنصة كضيف") },
         { ADMIN_CREATED, ("إدارة", "إنشاء مشرف", "تم إنشاء حساب مشرف جديد باسم {adminName}") },
         { PASSWORD_CHANGED, ("مستخدم", "تغيير كلمة المرور", "قام المستخدم بتغيير كلمة المرور الخاصة به") },
         { AVATAR_UPDATED, ("مستخدم", "تحديث صورة", "قام المستخدم بتحديث الصورة الشخصية") },
@@ -78,7 +80,7 @@ public static class ActivityConstants
 
 
         { PAYMENT_SUBMITTED, ("دفع", "إيصال دفع", "تم رفع إيصال دفع من قبل فريق {teamName}") },
-        { PAYMENT_APPROVED, ("دفع", "قبول دفع", "تم اعتماد دفع الرسوم لفريق {teamName}") },
+        { PAYMENT_APPROVED, ("دفع", "قبول دفع", "تم اعتماد دفع الرسوم لفرقة {teamName}") },
         { ADMIN_OVERRIDE, ("إدارة", "تدخل إداري", "تم تنفيذ إجراء طارئ: {action} في {tournamentName}. التفاصيل: {details}") }
     };
 

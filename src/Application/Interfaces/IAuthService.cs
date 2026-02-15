@@ -18,4 +18,5 @@ public interface IAuthService
     Task ResetPasswordAsync(string email, string otp, string newPassword, CancellationToken ct = default);
     Task ResendOtpAsync(string email, string type, CancellationToken ct = default);
     Task LogoutAsync(Guid userId, CancellationToken ct = default);
+    Task LogGuestVisitAsync(CancellationToken ct = default);
 }

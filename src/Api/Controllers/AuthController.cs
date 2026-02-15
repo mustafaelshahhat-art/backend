@@ -51,6 +51,14 @@ public class AuthController : ControllerBase
         return Ok(response);
     }
 
+    [AllowAnonymous]
+    [HttpPost("login-guest")]
+    public async Task<IActionResult> LoginGuest(CancellationToken cancellationToken)
+    {
+        await _authService.LogGuestVisitAsync(cancellationToken);
+        return Ok(new { message = "Guest visit logged." });
+    }
+
     [HttpPost("refresh-token")]
     public async Task<ActionResult<AuthResponse>> RefreshToken([FromBody] RefreshTokenRequest request, CancellationToken cancellationToken)
     {
