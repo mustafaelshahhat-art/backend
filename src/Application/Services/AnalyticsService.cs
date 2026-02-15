@@ -10,6 +10,7 @@ using Application.Interfaces;
 using AutoMapper;
 using Domain.Entities;
 using Domain.Interfaces;
+using Microsoft.EntityFrameworkCore;
 
 namespace Application.Services;
 
@@ -23,6 +24,7 @@ public class AnalyticsService : IAnalyticsService
     private readonly IRepository<Match> _matchRepository;
     private readonly IRepository<TeamRegistration> _registrationRepository;
     private readonly IMapper _mapper;
+    private readonly IBackgroundActivityLogger _backgroundLogger;
 
     public AnalyticsService(
         IRepository<Activity> activityRepository,
@@ -32,7 +34,8 @@ public class AnalyticsService : IAnalyticsService
         IRepository<Tournament> tournamentRepository,
         IRepository<Match> matchRepository,
         IRepository<TeamRegistration> registrationRepository,
-        IMapper mapper)
+        IMapper mapper,
+        IBackgroundActivityLogger backgroundLogger)
     {
         _activityRepository = activityRepository;
         _userRepository = userRepository;
@@ -42,80 +45,79 @@ public class AnalyticsService : IAnalyticsService
         _matchRepository = matchRepository;
         _registrationRepository = registrationRepository;
         _mapper = mapper;
+        _backgroundLogger = backgroundLogger;
     }
 
     public async Task<AnalyticsOverview> GetOverviewAsync(Guid? creatorId = null, CancellationToken ct = default)
     {
-        int totalUsers = 0, totalTeams = 0, activeTournaments = 0, matchesToday = 0, loginsToday = 0, totalGoals = 0;
         var today = DateTime.UtcNow.Date;
 
         if (creatorId.HasValue)
         {
-            // Scoped counts for creators
-            activeTournaments = await _tournamentRepository.CountAsync(t => 
-                t.CreatorUserId == creatorId.Value && 
-                (t.Status == Domain.Enums.TournamentStatus.RegistrationOpen || t.Status == Domain.Enums.TournamentStatus.Active), ct);
-            
-            // Count distinct teams across all tournaments of this creator
-            var registrations = await _registrationRepository.FindAsync(r => r.Tournament != null && r.Tournament.CreatorUserId == creatorId.Value, ct);
-            totalTeams = registrations.Select(r => r.TeamId).Distinct().Count(); // Still a bit in-memory but better than downloading tournaments
-            
-            matchesToday = await _matchRepository.CountAsync(m => 
-                m.Date.HasValue && m.Date.Value.Date == today && 
-                m.Tournament != null && m.Tournament.CreatorUserId == creatorId.Value, ct);
-            
-            var homeGoals = await _matchRepository.SumAsync(m => 
-                m.Status == Domain.Enums.MatchStatus.Finished && m.Tournament != null && m.Tournament.CreatorUserId == creatorId.Value, 
-                m => m.HomeScore, ct);
-            var awayGoals = await _matchRepository.SumAsync(m => 
-                m.Status == Domain.Enums.MatchStatus.Finished && m.Tournament != null && m.Tournament.CreatorUserId == creatorId.Value, 
-                m => m.AwayScore, ct);
-            totalGoals = (int)(homeGoals + awayGoals);
+            // PROD-AUDIT: Consolidated query for creator stats
+            var tournamentStats = await _tournamentRepository.GetQueryable()
+                .Where(t => t.CreatorUserId == creatorId.Value)
+                .Select(t => new { 
+                    IsActive = t.Status == Domain.Enums.TournamentStatus.RegistrationOpen || t.Status == Domain.Enums.TournamentStatus.Active,
+                    TeamCount = t.Registrations.Count(r => r.Status == Domain.Enums.RegistrationStatus.Approved),
+                    MatchCountToday = t.Matches.Count(m => m.Date.HasValue && m.Date.Value.Date == today),
+                    Goals = t.Matches.Where(m => m.Status == Domain.Enums.MatchStatus.Finished).Sum(m => (int?)m.HomeScore + (int?)m.AwayScore) ?? 0
+                })
+                .ToListAsync(ct);
+
+            return new AnalyticsOverview
+            {
+                ActiveTournaments = tournamentStats.Count(x => x.IsActive),
+                TotalTeams = tournamentStats.Sum(x => x.TeamCount),
+                MatchesToday = tournamentStats.Sum(x => x.MatchCountToday),
+                TotalGoals = tournamentStats.Sum(x => x.Goals),
+                TotalUsers = 0, // Creators don't see global user count
+                LoginsToday = 0
+            };
         }
         else
         {
-            // Global counts for admins
-            totalUsers = await _userRepository.CountAsync(u => u.IsEmailVerified, ct);
-            totalTeams = await _teamRepository.CountAsync(_ => true, ct);
-            activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == Domain.Enums.TournamentStatus.RegistrationOpen || t.Status == Domain.Enums.TournamentStatus.Active, ct);
-            matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today, ct);
-            loginsToday = await _activityRepository.CountAsync(a => a.Type == Common.ActivityConstants.USER_LOGIN && a.CreatedAt.Date == today, ct);
+            // Global counts for admins - Sequential to match EF Core threading model per Context instance
+            var activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == Domain.Enums.TournamentStatus.RegistrationOpen || t.Status == Domain.Enums.TournamentStatus.Active, ct);
+            var users = await _userRepository.CountAsync(u => u.IsEmailVerified, ct);
+            var teams = await _teamRepository.CountAsync(_ => true, ct);
             
-            var homeGoals = await _matchRepository.SumAsync(m => m.Status == Domain.Enums.MatchStatus.Finished, m => m.HomeScore, ct);
-            var awayGoals = await _matchRepository.SumAsync(m => m.Status == Domain.Enums.MatchStatus.Finished, m => m.AwayScore, ct);
-            totalGoals = (int)(homeGoals + awayGoals);
-        }
+            var matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today, ct);
+            var loginsToday = await _activityRepository.CountAsync(a => a.Type == Common.ActivityConstants.USER_LOGIN && a.CreatedAt.Date == today, ct);
+            
+            var totalGoals = await _matchRepository.GetQueryable()
+                .Where(m => m.Status == Domain.Enums.MatchStatus.Finished)
+                .SumAsync(m => (int?)m.HomeScore + (int?)m.AwayScore, ct) ?? 0;
 
-        return new AnalyticsOverview
-        {
-            TotalUsers = totalUsers,
-            TotalTeams = totalTeams,
-            ActiveTournaments = activeTournaments,
-            MatchesToday = matchesToday,
-            LoginsToday = loginsToday,
-            TotalGoals = totalGoals
-        };
+            return new AnalyticsOverview
+            {
+                TotalUsers = users,
+                TotalTeams = teams,
+                ActiveTournaments = activeTournaments,
+                MatchesToday = matchesToday,
+                LoginsToday = loginsToday,
+                TotalGoals = totalGoals
+            };
+        }
     }
 
     public async Task<TeamAnalyticsDto> GetTeamAnalyticsAsync(Guid teamId, CancellationToken ct = default)
     {
-        var playerCountTask = _playerRepository.CountAsync(p => p.TeamId == teamId, ct);
-        var matchCountTask = _matchRepository.CountAsync(m => 
+        var playerCount = await _playerRepository.CountAsync(p => p.TeamId == teamId, ct);
+        var matchCount = await _matchRepository.CountAsync(m => 
             (m.HomeTeamId == teamId || m.AwayTeamId == teamId) && 
             m.Status == Domain.Enums.MatchStatus.Scheduled, ct);
         
-        var tournamentCountTask = _registrationRepository.CountAsync(r => 
+        var tournamentCount = await _registrationRepository.CountAsync(r => 
             r.TeamId == teamId && 
             r.Status == Domain.Enums.RegistrationStatus.Approved &&
             (r.Tournament != null && (r.Tournament.Status == Domain.Enums.TournamentStatus.Active || r.Tournament.Status == Domain.Enums.TournamentStatus.RegistrationOpen)), ct);
 
-        await Task.WhenAll(playerCountTask, matchCountTask, tournamentCountTask);
-
         return new TeamAnalyticsDto
         {
-            PlayerCount = await playerCountTask,
-            UpcomingMatches = await matchCountTask,
-            ActiveTournaments = await tournamentCountTask,
+            PlayerCount = playerCount,
+            UpcomingMatches = matchCount,
+            ActiveTournaments = tournamentCount,
             Rank = "N/A"
         };
     }
@@ -150,31 +152,15 @@ public class AnalyticsService : IAnalyticsService
         return new Application.Common.Models.PagedResult<ActivityDto>(dtos, totalCount, page, pageSize);
     }
 
-    public async Task LogActivityAsync(string type, string message, Guid? userId = null, string? userName = null, CancellationToken ct = default)
+    public Task LogActivityAsync(string type, string message, Guid? userId = null, string? userName = null, CancellationToken ct = default) // Modified method signature
     {
-        var activity = new Activity
-        {
-            Type = type,
-            Message = message,
-            UserId = userId,
-            UserName = userName
-        };
-        await _activityRepository.AddAsync(activity, ct);
+        _backgroundLogger.LogActivity(type, message, userId, userName); // Modified implementation
+        return Task.CompletedTask; // Modified implementation
     }
 
-    public async Task LogActivityByTemplateAsync(string code, Dictionary<string, string> placeholders, Guid? userId = null, string? userName = null, CancellationToken ct = default)
+    public Task LogActivityByTemplateAsync(string code, Dictionary<string, string> placeholders, Guid? userId = null, string? userName = null, CancellationToken ct = default) // Modified method signature
     {
-        var localized = Application.Common.ActivityConstants.GetLocalized(code, placeholders);
-        
-        var activity = new Activity
-        {
-            Type = code, 
-            Message = localized.Message,
-            UserId = userId,
-            UserName = userName
-        };
-        await _activityRepository.AddAsync(activity, ct);
+        _backgroundLogger.LogActivityByTemplate(code, placeholders, userId, userName); // Modified implementation
+        return Task.CompletedTask; // Modified implementation
     }
 }
-
-

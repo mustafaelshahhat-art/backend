@@ -677,6 +677,9 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_TeamRegistration_CreatedAt");
+
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_TeamRegistration_Status");
 
@@ -687,6 +690,54 @@ namespace Infrastructure.Migrations
                         .HasDatabaseName("UQ_TeamRegistration_Tournament_Team");
 
                     b.ToTable("TeamRegistrations");
+                });
+
+            modelBuilder.Entity("Domain.Entities.TeamStats", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Draws")
+                        .HasColumnType("int");
+
+                    b.Property<int>("GoalsAgainst")
+                        .HasColumnType("int");
+
+                    b.Property<int>("GoalsFor")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Losses")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MatchesPlayed")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Wins")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TeamId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_TeamStats_TeamId");
+
+                    b.ToTable("TeamStats");
                 });
 
             modelBuilder.Entity("Domain.Entities.Tournament", b =>
@@ -778,9 +829,6 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("QualifiedTeamsPerGroup")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("RegistrationDeadline")
                         .HasColumnType("datetime2");
 
@@ -814,9 +862,15 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_Tournaments_CreatedAt");
+
                     b.HasIndex("Name")
                         .IsUnique()
                         .HasDatabaseName("UQ_Tournaments_Name");
+
+                    b.HasIndex("StartDate")
+                        .HasDatabaseName("IX_Tournaments_StartDate");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Tournaments_Status");
@@ -959,6 +1013,9 @@ namespace Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_Users_CreatedAt");
 
                     b.HasIndex("Email")
                         .IsUnique()
@@ -1113,6 +1170,17 @@ namespace Infrastructure.Migrations
                     b.Navigation("Tournament");
                 });
 
+            modelBuilder.Entity("Domain.Entities.TeamStats", b =>
+                {
+                    b.HasOne("Domain.Entities.Team", "Team")
+                        .WithOne("Statistics")
+                        .HasForeignKey("Domain.Entities.TeamStats", "TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Team");
+                });
+
             modelBuilder.Entity("Domain.Entities.Tournament", b =>
                 {
                     b.HasOne("Domain.Entities.User", "CreatorUser")
@@ -1176,6 +1244,8 @@ namespace Infrastructure.Migrations
                     b.Navigation("Players");
 
                     b.Navigation("Registrations");
+
+                    b.Navigation("Statistics");
                 });
 
             modelBuilder.Entity("Domain.Entities.Tournament", b =>

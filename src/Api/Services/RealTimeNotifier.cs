@@ -89,7 +89,7 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("MatchCreated", match, ct);
+            await _hubContext.Clients.Group($"tournament:{match.TournamentId}").SendAsync("MatchCreated", match, ct);
         }
         catch (Exception ex)
         {
@@ -101,7 +101,15 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("MatchesGenerated", matches, ct);
+            var firstMatch = matches.FirstOrDefault();
+            if (firstMatch != null)
+            {
+                await _hubContext.Clients.Group($"tournament:{firstMatch.TournamentId}").SendAsync("MatchesGenerated", matches, ct);
+            }
+            else
+            {
+                await _hubContext.Clients.All.SendAsync("MatchesGenerated", matches, ct);
+            }
         }
         catch (Exception ex)
         {
@@ -273,7 +281,7 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("RegistrationApproved", tournament, ct);
+            await _hubContext.Clients.Group($"tournament:{tournament.Id}").SendAsync("RegistrationApproved", tournament, ct);
         }
         catch (Exception ex)
         {
@@ -285,7 +293,7 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("RegistrationRejected", tournament, ct);
+            await _hubContext.Clients.Group($"tournament:{tournament.Id}").SendAsync("RegistrationRejected", tournament, ct);
         }
         catch (Exception ex)
         {

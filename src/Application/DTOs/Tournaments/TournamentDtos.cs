@@ -28,7 +28,6 @@ public class TournamentDto
     public string Format { get; set; } = string.Empty;
     public string MatchType { get; set; } = string.Empty;
     public int NumberOfGroups { get; set; }
-    public int QualifiedTeamsPerGroup { get; set; }
     public string? WalletNumber { get; set; }
     public string? InstaPayNumber { get; set; }
     public bool IsHomeAwayEnabled { get; set; }
@@ -63,7 +62,6 @@ public class CreateTournamentRequest
     public TournamentFormat Format { get; set; }
     public TournamentLegType MatchType { get; set; }
     public int NumberOfGroups { get; set; }
-    public int QualifiedTeamsPerGroup { get; set; }
     public string? WalletNumber { get; set; }
     public string? InstaPayNumber { get; set; }
     public bool IsHomeAwayEnabled { get; set; }
@@ -90,7 +88,6 @@ public class UpdateTournamentRequest
     public TournamentFormat? Format { get; set; }
     public TournamentLegType? MatchType { get; set; }
     public int? NumberOfGroups { get; set; }
-    public int? QualifiedTeamsPerGroup { get; set; }
     public string? WalletNumber { get; set; }
     public string? InstaPayNumber { get; set; }
     public bool? IsHomeAwayEnabled { get; set; }

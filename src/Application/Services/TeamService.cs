@@ -64,7 +64,7 @@ public class TeamService : ITeamService
     public async Task<Application.Common.Models.PagedResult<TeamDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? captainId = null, Guid? playerId = null, CancellationToken ct = default)
     {
         System.Linq.Expressions.Expression<Func<Team, bool>>? predicate = null;
-        var includes = new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players };
+        var includes = new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players, t => t.Statistics! };
 
         if (captainId.HasValue)
         {
@@ -78,40 +78,15 @@ public class TeamService : ITeamService
         var result = await _teamRepository.GetPagedAsync(pageNumber, pageSize, predicate, q => q.OrderBy(t => t.Name), ct, includes);
         var teamDtos = _mapper.Map<List<TeamDto>>(result.Items);
         
-        // OPTIMIZED STATS CALCULATION: Fetch lightweight DTOs instead of full entities once
-        var finishedMatches = (await _matchRepository.GetFinishedMatchOutcomesAsync(ct)).ToList();
-
-        if (finishedMatches.Any()) 
-        {
-             foreach (var dto in teamDtos)
-             {
-                 dto.Stats = CalculateStatsFromMatches(dto.Id, finishedMatches);
-             }
-        }
-
         return new Application.Common.Models.PagedResult<TeamDto>(teamDtos, result.TotalCount, pageNumber, pageSize);
     }
 
-    private TeamStatsDto CalculateStatsFromMatches(Guid teamId, IEnumerable<MatchOutcomeDto> finishedMatches)
+    public async Task<TeamDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
-        var stats = new TeamStatsDto();
-        var teamMatches = finishedMatches.Where(m => m.HomeTeamId == teamId || m.AwayTeamId == teamId);
+        var team = await _teamRepository.GetByIdNoTrackingAsync(id, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players, t => t.Statistics! }, ct);
+        if (team == null) return null;
 
-        foreach (var match in teamMatches)
-        {
-            stats.Matches++;
-            bool isHome = match.HomeTeamId == teamId;
-            int teamScore = isHome ? match.HomeScore : match.AwayScore;
-            int opponentScore = isHome ? match.AwayScore : match.HomeScore;
-
-            stats.GoalsFor += teamScore;
-            stats.GoalsAgainst += opponentScore;
-
-            if (teamScore > opponentScore) stats.Wins++;
-            else if (teamScore == opponentScore) stats.Draws++;
-            else stats.Losses++;
-        }
-        return stats;
+        return _mapper.Map<TeamDto>(team);
     }
 
     // ... (Use existing methods until DisableTeamAsync)
@@ -203,20 +178,6 @@ public class TeamService : ITeamService
         }
     }
 
-    public async Task<TeamDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
-    {
-        var team = await _teamRepository.GetByIdNoTrackingAsync(id, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
-        if (team == null) return null;
-
-        var teamDto = _mapper.Map<TeamDto>(team);
-
-        // OPTIMIZED STATS: Fetch lightweight DTOs
-        var finishedMatches = (await _matchRepository.GetFinishedMatchOutcomesAsync(ct))
-            .Where(m => m.HomeTeamId == id || m.AwayTeamId == id); // In-memory filter on lightweight list
-
-        teamDto.Stats = CalculateStatsFromMatches(id, finishedMatches);
-        return teamDto;
-    }
 
     private async Task ValidateManagementRights(Guid teamId, Guid userId, string userRole, CancellationToken ct = default)
     {
@@ -835,12 +796,12 @@ public class TeamService : ITeamService
     public async Task<TeamsOverviewDto> GetTeamsOverviewAsync(Guid userId, CancellationToken ct = default)
     {
         // Get teams owned by user (where user is captain)
-        var ownedTeams = await _teamRepository.FindAsync(t => t.Players.Any(p => p.TeamRole == TeamRole.Captain && p.UserId == userId), new[] { "Players" }, ct);
+        var ownedTeams = await _teamRepository.FindAsync(t => t.Players.Any(p => p.TeamRole == TeamRole.Captain && p.UserId == userId), new[] { "Players", "Statistics" }, ct);
         
         // Get teams where user is a member (through Player records)
         var playerTeams = await _teamRepository.FindAsync(
             t => t.Players.Any(p => p.UserId == userId), 
-            new[] { "Players" }, ct 
+            new[] { "Players", "Statistics" }, ct 
         );
         
         // Get pending invitations for user
@@ -870,20 +831,7 @@ public class TeamService : ITeamService
             InitiatedByPlayer = r.InitiatedByPlayer
         }).ToList();
         
-        // Calculate stats for all teams
-        var allTeams = ownedTeamsDtos.Concat(memberTeamsDtos).ToList();
-        if (allTeams.Any())
-        {
-            var finishedMatches = (await _matchRepository.GetFinishedMatchOutcomesAsync(ct)).ToList();
-            
-            if (finishedMatches.Any())
-            {
-                foreach (var dto in allTeams)
-                {
-                    dto.Stats = CalculateStatsFromMatches(dto.Id, finishedMatches);
-                }
-            }
-        }
+
         
         return new TeamsOverviewDto
         {

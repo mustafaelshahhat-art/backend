@@ -53,12 +53,13 @@ public class OutboxProcessor : BackgroundService
         var lockProvider = scope.ServiceProvider.GetRequiredService<IDistributedLock>();
         
         const string lockKey = "outbox_processor_lock";
-        if (!await lockProvider.AcquireLockAsync(lockKey, TimeSpan.FromMinutes(2)))
+        if (!await lockProvider.AcquireLockAsync(lockKey, TimeSpan.FromMinutes(2), stoppingToken))
         {
             _logger.LogDebug("Outbox lock already held by another instance. Skipping.");
             return;
         }
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<Data.AppDbContext>();
@@ -131,6 +132,8 @@ public class OutboxProcessor : BackgroundService
             }
 
             await dbContext.SaveChangesAsync(stoppingToken);
+            sw.Stop();
+            _logger.LogInformation("Processed outbox batch of {Count} messages in {Duration}ms.", messages.Count, sw.ElapsedMilliseconds);
 
             // PROD-AUDIT: Alerting for high DeadLetter count
             var deadLetterCount = await dbContext.OutboxMessages
@@ -143,7 +146,7 @@ public class OutboxProcessor : BackgroundService
         }
         finally
         {
-            await lockProvider.ReleaseLockAsync(lockKey);
+            await lockProvider.ReleaseLockAsync(lockKey, CancellationToken.None);
         }
     }
 }

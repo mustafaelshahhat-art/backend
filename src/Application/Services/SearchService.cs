@@ -29,25 +29,19 @@ public class SearchService : ISearchService
     {
         if (pageSize > 100) pageSize = 100;
         
-        var results = new List<SearchResultItem>();
-        var normalizedQuery = query.ToLower().Trim();
+        var normalizedQuery = query.Trim();
+        if (string.IsNullOrEmpty(normalizedQuery)) return new SearchResponse();
 
-        // Since this is a unified search, we distribute the search.
-        // For simplicity in a unified view, we often take a fixed amount from each or page the whole set.
-        // To be strictly paged and efficient, we should at least fetch only what we might need.
-        int limitPerCategory = pageSize;
+        var routePrefix = GetRoutePrefix(role);
+        int limitPerCategory = 20; // Fetch small set per category for unified view
 
-        // Search tournaments
-        var tournaments = await _tournamentRepository.GetQueryable()
+        // 1. Search Tournaments (SARGABLE Prefix Match)
+        var tournamentResults = await _tournamentRepository.GetQueryable()
             .AsNoTracking()
-            .Where(t => t.Name.ToLower().Contains(normalizedQuery) || (t.Description != null && t.Description.ToLower().Contains(normalizedQuery)))
+            .Where(t => t.Name.StartsWith(normalizedQuery))
+            .OrderBy(t => t.Name)
             .Take(limitPerCategory)
-            .ToListAsync(ct);
-
-        foreach (var t in tournaments)
-        {
-            var routePrefix = GetRoutePrefix(role);
-            results.Add(new SearchResultItem
+            .Select(t => new SearchResultItem
             {
                 Id = t.Id.ToString(),
                 Type = "tournament",
@@ -55,66 +49,36 @@ public class SearchService : ISearchService
                 Subtitle = t.Status.ToString(),
                 Icon = "emoji_events",
                 Route = $"{routePrefix}/tournaments/{t.Id}"
-            });
-        }
-
-        // Search matches
-        var matches = await _matchRepository.GetQueryable()
-            .AsNoTracking()
-            .Include(m => m.HomeTeam)
-            .Include(m => m.AwayTeam)
-            .Where(m => (m.HomeTeam != null && m.HomeTeam.Name.ToLower().Contains(normalizedQuery)) || (m.AwayTeam != null && m.AwayTeam.Name.ToLower().Contains(normalizedQuery)))
-            .Take(limitPerCategory)
+            })
             .ToListAsync(ct);
 
-        foreach (var m in matches)
-        {
-            var routePrefix = GetRoutePrefix(role);
-            results.Add(new SearchResultItem
-            {
-                Id = m.Id.ToString(),
-                Type = "match",
-                Title = $"{m.HomeTeam?.Name ?? "Home"} vs {m.AwayTeam?.Name ?? "Away"}",
-                Subtitle = m.Status.ToString(),
-                Icon = "sports_soccer",
-                Route = $"{routePrefix}/matches/{m.Id}"
-            });
-        }
-
-        // Search teams
-        var teams = await _teamRepository.GetQueryable()
+        // 2. Search Teams
+        var teamResults = await _teamRepository.GetQueryable()
             .AsNoTracking()
-            .Include(t => t.Players)
-            .Where(t => t.Name.ToLower().Contains(normalizedQuery))
+            .Where(t => t.Name.StartsWith(normalizedQuery))
+            .OrderBy(t => t.Name)
             .Take(limitPerCategory)
-            .ToListAsync(ct);
-
-        foreach (var t in teams)
-        {
-            var routePrefix = GetRoutePrefix(role);
-            results.Add(new SearchResultItem
+            .Select(t => new SearchResultItem
             {
                 Id = t.Id.ToString(),
                 Type = "team",
                 Title = t.Name,
-                Subtitle = $"{t.Players?.Count ?? 0} لاعبين",
+                Subtitle = $"{t.Players.Count} لاعبين",
                 Icon = "groups",
                 Route = $"{routePrefix}/teams/{t.Id}"
-            });
-        }
+            })
+            .ToListAsync(ct);
 
-        // Search users (Admin only)
+        // 3. Search Users (Admin only)
+        var userResults = new List<SearchResultItem>();
         if (role == "Admin")
         {
-            var users = await _userRepository.GetQueryable()
+            userResults = await _userRepository.GetQueryable()
                 .AsNoTracking()
-                .Where(u => u.Name.ToLower().Contains(normalizedQuery) || u.Email.ToLower().Contains(normalizedQuery))
+                .Where(u => u.Name.StartsWith(normalizedQuery) || u.Email.StartsWith(normalizedQuery))
+                .OrderBy(u => u.Name)
                 .Take(limitPerCategory)
-                .ToListAsync(ct);
-
-            foreach (var u in users)
-            {
-                results.Add(new SearchResultItem
+                .Select(u => new SearchResultItem
                 {
                     Id = u.Id.ToString(),
                     Type = "user",
@@ -122,14 +86,14 @@ public class SearchService : ISearchService
                     Subtitle = u.Role.ToString(),
                     Icon = "person",
                     Route = $"/admin/users/{u.Id}"
-                });
-            }
+                })
+                .ToListAsync(ct);
         }
 
-        // Note: For a true cross-entity pagination, you'd need a more complex strategy.
-        // This refactor at least ensures we don't fetch thousands of records into memory.
-        var totalCount = results.Count;
-        var pagedResults = results
+        var allResults = tournamentResults.Concat(teamResults).Concat(userResults).ToList();
+        
+        var totalCount = allResults.Count;
+        var pagedResults = allResults
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToList();
@@ -141,21 +105,6 @@ public class SearchService : ISearchService
         };
     }
 
-    private async Task<IEnumerable<Match>> GetMatchesForRole(string query, string? userId, string role, CancellationToken ct = default)
-    {
-        var matches = await _matchRepository.FindAsync(m =>
-            (m.HomeTeam != null && m.HomeTeam.Name.ToLower().Contains(query)) ||
-            (m.AwayTeam != null && m.AwayTeam.Name.ToLower().Contains(query)),
-            new[] { "HomeTeam", "AwayTeam" }, ct);
-
-        if (role == "Admin")
-        {
-            return matches;
-        }
-
-        // Player: return all matches they might be interested in
-        return matches;
-    }
 
     private string GetRoutePrefix(string role)
     {

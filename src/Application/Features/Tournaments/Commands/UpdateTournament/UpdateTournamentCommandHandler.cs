@@ -74,7 +74,6 @@ public class UpdateTournamentCommandHandler : IRequestHandler<UpdateTournamentCo
         if (request.Request.Format.HasValue) tournament.Format = request.Request.Format.Value;
         if (request.Request.MatchType.HasValue) tournament.MatchType = request.Request.MatchType.Value;
         if (request.Request.NumberOfGroups.HasValue) tournament.NumberOfGroups = request.Request.NumberOfGroups.Value;
-        if (request.Request.QualifiedTeamsPerGroup.HasValue) tournament.QualifiedTeamsPerGroup = request.Request.QualifiedTeamsPerGroup.Value;
         if (request.Request.WalletNumber != null) tournament.WalletNumber = request.Request.WalletNumber;
         if (request.Request.InstaPayNumber != null) tournament.InstaPayNumber = request.Request.InstaPayNumber;
         if (request.Request.IsHomeAwayEnabled.HasValue) tournament.IsHomeAwayEnabled = request.Request.IsHomeAwayEnabled.Value;

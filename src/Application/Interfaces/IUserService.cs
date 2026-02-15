@@ -41,6 +41,6 @@ public interface IUserService
     
     // Profile Management
     Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken ct = default);
-    Task<string> UploadAvatarAsync(Guid userId, UploadAvatarRequest request, CancellationToken ct = default);
+    Task<string> UploadAvatarAsync(Guid userId, System.IO.Stream stream, string fileName, string contentType, CancellationToken ct = default);
 }
 

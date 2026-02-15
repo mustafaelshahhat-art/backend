@@ -38,23 +38,17 @@ public class TournamentBackgroundService : BackgroundService
     {
         const string lockKey = "tournament_events_processor";
         var distributedLock = _scopeFactory.CreateScope().ServiceProvider.GetRequiredService<IDistributedLock>();
+        
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            // TTL of 6 minutes (higher than 5 min interval to prevent overlaps on drift, but short enough to recover on crash)
-            if (!await distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromMinutes(6)))
+            // TTL of 10 minutes (higher than 5 min interval to prevent overlaps on drift, but short enough to recover on crash)
+            if (!await distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromMinutes(10), stoppingToken))
             {
                 _logger.LogWarning("FAILED to acquire distributed lock for {LockKey}. Skipping this cycle to prevent overlap.", lockKey);
                 return;
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error acquiring distributed lock for {LockKey}. Skipping cycle for safety.", lockKey);
-            return;
-        }
 
-        try
-        {
             _logger.LogInformation("Processing automated tournament events...");
             
             using (var scope = _scopeFactory.CreateScope())
@@ -63,7 +57,12 @@ public class TournamentBackgroundService : BackgroundService
                 await mediator.Send(new ProcessAutomatedEventsCommand(), stoppingToken);
             }
             
-            _logger.LogInformation("Automated tournament events processed successfully.");
+            sw.Stop();
+            _logger.LogInformation("Automated tournament events processed successfully in {Duration}ms.", sw.ElapsedMilliseconds);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Tournament automation work was canceled.");
         }
         catch (Exception ex)
         {
@@ -71,7 +70,7 @@ public class TournamentBackgroundService : BackgroundService
         }
         finally
         {
-            await distributedLock.ReleaseLockAsync(lockKey);
+            await distributedLock.ReleaseLockAsync(lockKey, CancellationToken.None); // Release should not be canceled by stoppingToken if we want it to always run
         }
     }
 }

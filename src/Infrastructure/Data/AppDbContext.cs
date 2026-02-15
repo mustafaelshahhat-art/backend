@@ -29,6 +29,7 @@ public class AppDbContext : DbContext
     public DbSet<TournamentPlayer> TournamentPlayers { get; set; }
     public DbSet<OutboxMessage> OutboxMessages { get; set; }
     public DbSet<IdempotentRequest> IdempotentRequests { get; set; }
+    public DbSet<TeamStats> TeamStats { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,6 +59,12 @@ public class AppDbContext : DbContext
             .WithMany(t => t.Players)
             .HasForeignKey(p => p.TeamId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // Team - TeamStats (1-to-1)
+        modelBuilder.Entity<Team>()
+            .HasOne(t => t.Statistics)
+            .WithOne(s => s.Team)
+            .HasForeignKey<TeamStats>(s => s.TeamId);
 
         // Player - User (Optional)
         modelBuilder.Entity<Player>()
@@ -156,7 +163,6 @@ public class AppDbContext : DbContext
         // Explicitly Ignore obsolete properties (attributes might fail if DLLs are out of sync)
         modelBuilder.Entity<Tournament>().Ignore(t => t.OpeningMatchHomeTeamId);
         modelBuilder.Entity<Tournament>().Ignore(t => t.OpeningMatchAwayTeamId);
-
         // PROD-FIX: Disable Output Clause for SQL Server triggers compatibility
         modelBuilder.Entity<Tournament>().ToTable(tb => tb.UseSqlOutputClause(false));
 
@@ -297,6 +303,11 @@ public class AppDbContext : DbContext
             .HasIndex(m => new { m.Status, m.ScheduledAt })
             .HasDatabaseName("IX_OutboxMessages_Status_ScheduledAt");
 
+        modelBuilder.Entity<TeamStats>()
+            .HasIndex(s => s.TeamId)
+            .IsUnique()
+            .HasDatabaseName("IX_TeamStats_TeamId");
+
         // SCALE PROTECTION INDEXES
         modelBuilder.Entity<Team>()
             .HasIndex(t => t.IsActive)
@@ -340,6 +351,22 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TeamJoinRequest>()
             .HasIndex(r => new { r.TeamId, r.Status })
             .HasDatabaseName("IX_TeamJoinRequests_Team_Status");
+
+        modelBuilder.Entity<Tournament>()
+            .HasIndex(t => t.StartDate)
+            .HasDatabaseName("IX_Tournaments_StartDate");
+
+        modelBuilder.Entity<Tournament>()
+            .HasIndex(t => t.CreatedAt)
+            .HasDatabaseName("IX_Tournaments_CreatedAt");
+
+        modelBuilder.Entity<TeamRegistration>()
+            .HasIndex(tr => tr.CreatedAt)
+            .HasDatabaseName("IX_TeamRegistration_CreatedAt");
+
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.CreatedAt)
+            .HasDatabaseName("IX_Users_CreatedAt");
 
         modelBuilder.Entity<TeamJoinRequest>()
             .HasIndex(r => r.UserId)

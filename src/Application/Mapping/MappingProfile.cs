@@ -48,8 +48,13 @@ public class MappingProfile : Profile
 
         CreateMap<Team, TeamDto>()
             .ForMember(d => d.CaptainName, o => o.Ignore())
-            .ForMember(d => d.PlayerCount, o => o.Ignore())
-            .ForMember(d => d.MaxPlayers, o => o.MapFrom(s => 10));
+            .ForMember(d => d.PlayerCount, o => o.MapFrom(s => s.Players.Count))
+            .ForMember(d => d.MaxPlayers, o => o.MapFrom(s => 10))
+            .ForMember(d => d.Stats, o => o.MapFrom(s => s.Statistics));
+        
+        CreateMap<TeamStats, TeamStatsDto>()
+            .ForMember(d => d.Matches, o => o.MapFrom(s => s.MatchesPlayed))
+            .ForMember(d => d.Rank, o => o.Ignore());
         
         // Player
         CreateMap<Player, PlayerDto>();

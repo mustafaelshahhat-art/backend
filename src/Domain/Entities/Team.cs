@@ -15,4 +15,6 @@ public class Team : BaseEntity
     public ICollection<Player> Players { get; set; } = new List<Player>();
     public ICollection<TeamRegistration> Registrations { get; set; } = new List<TeamRegistration>(); // Tournament registrations
     public ICollection<TeamJoinRequest> JoinRequests { get; set; } = new List<TeamJoinRequest>(); // Player join requests
+
+    public TeamStats? Statistics { get; set; }
 }

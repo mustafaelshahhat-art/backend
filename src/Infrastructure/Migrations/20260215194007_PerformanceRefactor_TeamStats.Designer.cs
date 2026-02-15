@@ -9,11 +9,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace Infrastructure.Data.Migrations
+namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260214181554_AddTournamentNameUniqueIndex")]
-    partial class AddTournamentNameUniqueIndex
+    [Migration("20260215194007_PerformanceRefactor_TeamStats")]
+    partial class PerformanceRefactor_TeamStats
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -145,6 +145,9 @@ namespace Infrastructure.Data.Migrations
 
                     b.Property<Guid>("HomeTeamId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsOpeningMatch")
+                        .HasColumnType("bit");
 
                     b.Property<int?>("RoundNumber")
                         .HasColumnType("int");
@@ -642,6 +645,9 @@ namespace Infrastructure.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<int?>("GroupId")
+                        .HasColumnType("int");
+
                     b.Property<string>("PaymentMethod")
                         .HasColumnType("nvarchar(max)");
 
@@ -674,6 +680,9 @@ namespace Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_TeamRegistration_CreatedAt");
+
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_TeamRegistration_Status");
 
@@ -684,6 +693,54 @@ namespace Infrastructure.Data.Migrations
                         .HasDatabaseName("UQ_TeamRegistration_Tournament_Team");
 
                     b.ToTable("TeamRegistrations");
+                });
+
+            modelBuilder.Entity("Domain.Entities.TeamStats", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Draws")
+                        .HasColumnType("int");
+
+                    b.Property<int>("GoalsAgainst")
+                        .HasColumnType("int");
+
+                    b.Property<int>("GoalsFor")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Losses")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MatchesPlayed")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Wins")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TeamId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_TeamStats_TeamId");
+
+                    b.ToTable("TeamStats");
                 });
 
             modelBuilder.Entity("Domain.Entities.Tournament", b =>
@@ -759,13 +816,13 @@ namespace Infrastructure.Data.Migrations
                     b.Property<int>("NumberOfGroups")
                         .HasColumnType("int");
 
-                    b.Property<Guid?>("OpeningMatchAwayTeamId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("OpeningMatchHomeTeamId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid?>("OpeningMatchId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OpeningTeamAId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OpeningTeamBId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("PaymentMethodsJson")
@@ -774,9 +831,6 @@ namespace Infrastructure.Data.Migrations
                     b.Property<string>("Prizes")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("QualifiedTeamsPerGroup")
-                        .HasColumnType("int");
 
                     b.Property<DateTime>("RegistrationDeadline")
                         .HasColumnType("datetime2");
@@ -791,7 +845,7 @@ namespace Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("SeedingMode")
+                    b.Property<int>("SchedulingMode")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("StartDate")
@@ -811,9 +865,15 @@ namespace Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_Tournaments_CreatedAt");
+
                     b.HasIndex("Name")
                         .IsUnique()
                         .HasDatabaseName("UQ_Tournaments_Name");
+
+                    b.HasIndex("StartDate")
+                        .HasDatabaseName("IX_Tournaments_StartDate");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Tournaments_Status");
@@ -824,6 +884,8 @@ namespace Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_Tournaments_Creator_Status");
 
                     b.ToTable("Tournaments");
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("Domain.Entities.TournamentPlayer", b =>
@@ -954,6 +1016,9 @@ namespace Infrastructure.Data.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_Users_CreatedAt");
 
                     b.HasIndex("Email")
                         .IsUnique()
@@ -1108,6 +1173,17 @@ namespace Infrastructure.Data.Migrations
                     b.Navigation("Tournament");
                 });
 
+            modelBuilder.Entity("Domain.Entities.TeamStats", b =>
+                {
+                    b.HasOne("Domain.Entities.Team", "Team")
+                        .WithOne("Statistics")
+                        .HasForeignKey("Domain.Entities.TeamStats", "TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Team");
+                });
+
             modelBuilder.Entity("Domain.Entities.Tournament", b =>
                 {
                     b.HasOne("Domain.Entities.User", "CreatorUser")
@@ -1171,6 +1247,8 @@ namespace Infrastructure.Data.Migrations
                     b.Navigation("Players");
 
                     b.Navigation("Registrations");
+
+                    b.Navigation("Statistics");
                 });
 
             modelBuilder.Entity("Domain.Entities.Tournament", b =>

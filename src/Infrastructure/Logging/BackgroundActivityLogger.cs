@@ -1,0 +1,78 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+using Application.Common;
+using Application.Interfaces;
+using Domain.Entities;
+using Domain.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+
+namespace Infrastructure.Logging;
+
+public class BackgroundActivityLogger : BackgroundService, IBackgroundActivityLogger
+{
+    private readonly Channel<Activity> _channel;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<BackgroundActivityLogger> _logger;
+
+    public BackgroundActivityLogger(IServiceProvider serviceProvider, ILogger<BackgroundActivityLogger> logger)
+    {
+        _serviceProvider = serviceProvider;
+        _logger = logger;
+        // Bounded channel to prevent memory overflow if DB is down
+        _channel = Channel.CreateBounded<Activity>(new BoundedChannelOptions(1000)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
+    }
+
+    public void LogActivity(string type, string message, Guid? userId = null, string? userName = null)
+    {
+        var activity = new Activity
+        {
+            Type = type,
+            Message = message,
+            UserId = userId,
+            UserName = userName,
+            CreatedAt = DateTime.UtcNow
+        };
+        _channel.Writer.TryWrite(activity);
+    }
+
+    public void LogActivityByTemplate(string code, Dictionary<string, string> placeholders, Guid? userId = null, string? userName = null)
+    {
+        var localized = ActivityConstants.GetLocalized(code, placeholders);
+        LogActivity(code, localized.Message, userId, userName);
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Background Activity Logger started.");
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                var activity = await _channel.Reader.ReadAsync(stoppingToken);
+
+                using var scope = _serviceProvider.CreateScope();
+                var repository = scope.ServiceProvider.GetRequiredService<IRepository<Activity>>();
+                
+                await repository.AddAsync(activity, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing background activity log.");
+                await Task.Delay(1000, stoppingToken); // Backoff
+            }
+        }
+    }
+}

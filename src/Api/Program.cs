@@ -42,6 +42,12 @@ if (string.IsNullOrEmpty(jwtSecret) || jwtSecret.Length < 16)
     throw new InvalidOperationException("CRITICAL: JwtSettings:Secret is missing or too short. Configure via UserSecrets or Env Vars.");
 }
 
+// PROD-AUDIT: Response Compression
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+});
+
 // Add services to the container.
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -54,6 +60,12 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<Infrastructure.Data.AppDbContext>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSignalR();
+if (builder.Environment.IsProduction())
+{
+    builder.Services.AddSignalR().AddStackExchangeRedis(builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379", options => {
+        options.Configuration.ChannelPrefix = "ramadan_signalr";
+    });
+}
 builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, Api.Infrastructure.CustomUserIdProvider>();
 builder.Services.AddScoped<Application.Interfaces.IRealTimeNotifier, Api.Services.RealTimeNotifier>();
 
@@ -66,8 +78,7 @@ builder.Services.Configure<CookiePolicyOptions>(options =>
 });
 
 // CORS
-// CORS
-var allowedOrigins = builder.Configuration["AllowedOrigins"]?.Split(';', StringSplitOptions.RemoveEmptyEntries);
+var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>();
 if (builder.Environment.IsProduction() && (allowedOrigins == null || allowedOrigins.Length == 0))
 {
     throw new InvalidOperationException("AllowedOrigins is not configured. This is required for Production.");
@@ -169,12 +180,38 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             OnTokenValidated = async context =>
             {
+                var userCache = context.HttpContext.RequestServices.GetRequiredService<Application.Interfaces.IUserCacheService>();
                 var userService = context.HttpContext.RequestServices.GetRequiredService<IRepository<User>>();
+                
                 var userIdStr = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 var tokenVersionStr = context.Principal?.FindFirst("token_version")?.Value;
 
                 if (Guid.TryParse(userIdStr, out var userId) && int.TryParse(tokenVersionStr, out var tokenVersion))
                 {
+                    // 1. Try Cache First
+                    var cachedUser = await userCache.GetUserAsync(userId);
+                    
+                    if (cachedUser != null)
+                    {
+                        if (cachedUser.TokenVersion != tokenVersion || cachedUser.Status == UserStatus.Suspended)
+                        {
+                            context.Fail("Token is no longer valid.");
+                            return;
+                        }
+                        
+                        // Populate Accessor from Cache to save DB trip in services
+                        var userAccessor = context.HttpContext.RequestServices.GetRequiredService<Application.Interfaces.ICurrentUserAccessor>();
+                        userAccessor.SetUser(new User { 
+                            Id = userId, 
+                            Name = cachedUser.Name, 
+                            Role = Enum.Parse<UserRole>(cachedUser.Role), 
+                            Status = cachedUser.Status,
+                            TokenVersion = cachedUser.TokenVersion
+                        });
+                        return;
+                    }
+
+                    // 2. Fallback to DB
                     var user = await userService.GetByIdNoTrackingAsync(userId, Array.Empty<string>());
                     if (user == null || user.TokenVersion != tokenVersion || user.Status == UserStatus.Suspended)
                     {
@@ -182,7 +219,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     }
                     else 
                     {
-                        // PROD-AUDIT FIX: Store resolved user in accessor to prevent duplicate DB reads in middleware/services
+                        // 3. Re-seed cache
+                        await userCache.SetUserAsync(userId, user);
+                        
                         var userAccessor = context.HttpContext.RequestServices.GetRequiredService<Application.Interfaces.ICurrentUserAccessor>();
                         userAccessor.SetUser(user);
                     }
@@ -266,17 +305,31 @@ else
 }
 
 // Configure the HTTP request pipeline.
+app.UseHttpsRedirection();
+app.UseResponseCompression();
+
+// Security Headers Middleware
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.Append("X-Frame-Options", "DENY");
+    context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
+    context.Response.Headers.Append("Referrer-Policy", "no-referrer");
+    context.Response.Headers.Append("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;");
+    await next();
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-else
+else 
 {
+    // PROD-AUDIT: Disable detailed exceptions
+    app.UseExceptionHandler("/error");
     app.UseHsts();
 }
-
-app.UseHttpsRedirection();
 
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 app.UseCors("AllowFrontend");

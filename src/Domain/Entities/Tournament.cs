@@ -40,7 +40,6 @@ public class Tournament : BaseEntity
     public TournamentFormat Format { get; set; } = TournamentFormat.RoundRobin;
     public TournamentLegType MatchType { get; set; } = TournamentLegType.SingleLeg;
     public int NumberOfGroups { get; set; } = 0;
-    public int QualifiedTeamsPerGroup { get; set; } = 0;
     
     // Unified Mode (Consolidated Format + MatchType)
     public TournamentMode? Mode { get; set; }

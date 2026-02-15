@@ -17,6 +17,8 @@ namespace Application.Services;
 
 public class UserService : IUserService
 {
+    private readonly IFileStorageService _fileStorage;
+    private readonly IUserCacheService _userCache;
     private readonly IRepository<User> _userRepository;
     private readonly IRepository<Activity> _activityRepository;
     private readonly IRepository<Team> _teamRepository;
@@ -36,7 +38,9 @@ public class UserService : IUserService
         INotificationService notificationService,
         IPasswordHasher passwordHasher,
         IAnalyticsService analyticsService,
-        ISystemSettingsService systemSettingsService)
+        ISystemSettingsService systemSettingsService,
+        IFileStorageService fileStorage,
+        IUserCacheService userCache)
     {
         _userRepository = userRepository;
         _activityRepository = activityRepository;
@@ -47,6 +51,8 @@ public class UserService : IUserService
         _passwordHasher = passwordHasher;
         _analyticsService = analyticsService;
         _systemSettingsService = systemSettingsService;
+        _fileStorage = fileStorage;
+        _userCache = userCache;
     }
 
     public async Task<Application.Common.Models.PagedResult<UserDto>> GetPagedAsync(int pageNumber, int pageSize, string? role = null, CancellationToken ct = default)
@@ -164,9 +170,10 @@ public class UserService : IUserService
             }
         }
 
-        await _userRepository.DeleteAsync(id, ct);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, "Deleted");
         await _realTimeNotifier.SendUserDeletedAsync(id);
+        await _userRepository.DeleteAsync(user, ct);
+        await _userCache.InvalidateUserAsync(id, ct);
     }
 
     public async Task SuspendAsync(Guid id, CancellationToken ct = default)
@@ -180,22 +187,23 @@ public class UserService : IUserService
             var adminCount = await GetAdminCountAsync(id);
             if (adminCount.IsLastAdmin)
             {
-                throw new BadRequestException("لا يمكن إيقاف آخر مشرف في النظام");
+                throw new BadRequestException("لا يمكن إيقاف آخر مدير نشط في النظام.");
             }
         }
 
         user.Status = UserStatus.Suspended;
         user.TokenVersion++; // Invalidate all existing tokens
         await _userRepository.UpdateAsync(user, ct);
+        await _userCache.InvalidateUserAsync(id, ct);
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Suspended.ToString());
-        
+
         // Persistent Notification
         await _notificationService.SendNotificationByTemplateAsync(id, NotificationTemplates.ACCOUNT_SUSPENDED, new Dictionary<string, string>(), "all", ct);
-        
+
         // Full Update for Lists
         var dto = _mapper.Map<UserDto>(user);
         await _realTimeNotifier.SendUserUpdatedAsync(dto, ct);
-        
+
         // Lightweight System Event
         await _realTimeNotifier.SendSystemEventAsync("USER_BLOCKED", new { UserId = id }, $"user:{id}", ct);
     }
@@ -244,7 +252,7 @@ public class UserService : IUserService
         user.PasswordHash = _passwordHasher.HashPassword(newPassword);
         user.TokenVersion++; // Invalidate all existing tokens on password change
         await _userRepository.UpdateAsync(user, ct);
-        
+
         // Send notification or real-time update if needed
         await _realTimeNotifier.SendAccountStatusChangedAsync(userId, "PasswordChanged");
         await _notificationService.SendNotificationByTemplateAsync(userId, NotificationTemplates.PASSWORD_CHANGED, new Dictionary<string, string>(), "all", ct);
@@ -341,8 +349,8 @@ public class UserService : IUserService
         {
             await _analyticsService.LogActivityByTemplateAsync(
                 "ADMIN_CREATED", // Add to constants
-                new Dictionary<string, string> { { "adminName", newAdmin.Name } }, 
-                createdByAdminId, 
+                new Dictionary<string, string> { { "adminName", newAdmin.Name } },
+                createdByAdminId,
                 "إدارة"
             , ct);
         }
@@ -408,9 +416,9 @@ public class UserService : IUserService
         try
         {
             await _analyticsService.LogActivityByTemplateAsync(
-                "USER_CREATED", 
-                new Dictionary<string, string> { { "userName", newCreator.Name }, { "role", "منشئ بطولة" } }, 
-                createdByAdminId, 
+                "USER_CREATED",
+                new Dictionary<string, string> { { "userName", newCreator.Name }, { "role", "منشئ بطولة" } },
+                createdByAdminId,
                 "إدارة"
             , ct);
         }
@@ -428,11 +436,11 @@ public class UserService : IUserService
     /// </summary>
     public async Task<AdminCountDto> GetAdminCountAsync(Guid? userId = null, CancellationToken ct = default)
     {
-        var admins = await _userRepository.FindAsync(u => 
-            u.Role == UserRole.Admin && 
+        var admins = await _userRepository.FindAsync(u =>
+            u.Role == UserRole.Admin &&
             u.Status != UserStatus.Suspended &&
             u.IsEmailVerified, ct);
-        
+
         var adminList = admins.ToList();
         var totalAdmins = adminList.Count;
 
@@ -464,74 +472,21 @@ public class UserService : IUserService
         return await _userRepository.GetDistinctAsync(u => u.City == city, u => u.Neighborhood);
     }
 
-    public async Task<string> UploadAvatarAsync(Guid userId, UploadAvatarRequest request, CancellationToken ct = default)
+    public async Task<string> UploadAvatarAsync(Guid userId, System.IO.Stream stream, string fileName, string contentType, CancellationToken ct = default)
     {
         var user = await _userRepository.GetByIdAsync(userId, ct);
-        if (user == null)
-        {
-            throw new NotFoundException(nameof(User), userId);
-        }
+        if (user == null) throw new NotFoundException(nameof(User), userId);
 
-        // Validate base64 image
-        if (string.IsNullOrWhiteSpace(request.Base64Image))
-        {
-            throw new BadRequestException("Image data is required");
-        }
-
-        // Remove data URL prefix if present
-        var base64Data = request.Base64Image;
-        if (base64Data.StartsWith("data:image"))
-        {
-            base64Data = base64Data.Substring(base64Data.IndexOf(",") + 1);
-        }
-
-        // Validate base64 format
-        byte[] imageData;
-        try
-        {
-            imageData = Convert.FromBase64String(base64Data);
-        }
-        catch
-        {
-            throw new BadRequestException("Invalid image data");
-        }
-
-        // Save file
-        var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
-        if (!Directory.Exists(uploadsFolder))
-        {
-            Directory.CreateDirectory(uploadsFolder);
-        }
-
-        var fileExtension = Path.GetExtension(request.FileName) ?? ".jpg";
-        var fileName = $"avatar_{userId}_{Guid.NewGuid()}{fileExtension}";
-        var filePath = Path.Combine(uploadsFolder, fileName);
-
-        await File.WriteAllBytesAsync(filePath, imageData);
-
-        var avatarUrl = $"/uploads/{fileName}";
+        var avatarUrl = await _fileStorage.SaveFileAsync(stream, fileName, contentType, ct);
 
         // Update user avatar
         user.Avatar = avatarUrl;
         await _userRepository.UpdateAsync(user, ct);
+        await _userCache.InvalidateUserAsync(userId, ct);
 
-        // Log activity
-        try
-        {
-            await _analyticsService.LogActivityByTemplateAsync(
-                "AVATAR_UPDATED", 
-                new Dictionary<string, string>(), 
-                userId, 
-                "مستخدم",
-                ct
-            );
-        }
-        catch
-        {
-            // Don't fail if analytics logging fails
-        }
+        // Log activity (Fire and forget via background logger inside service)
+        await _analyticsService.LogActivityByTemplateAsync("AVATAR_UPDATED", new Dictionary<string, string>(), userId, "مستخدم", ct);
 
         return avatarUrl;
     }
 }
-

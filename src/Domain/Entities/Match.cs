@@ -33,4 +33,23 @@ public class Match : BaseEntity
     public bool IsOpeningMatch { get; set; } = false;
 
     public ICollection<MatchEvent> Events { get; set; } = new List<MatchEvent>();
+
+    public void Finish(int homeScore, int awayScore)
+    {
+        HomeScore = homeScore;
+        AwayScore = awayScore;
+        Status = MatchStatus.Finished;
+        AddDomainEvent(new Domain.Events.MatchFinishedEvent(this));
+    }
+
+    public void SetStatus(MatchStatus status)
+    {
+        var oldStatus = Status;
+        Status = status;
+        
+        if (oldStatus != MatchStatus.Finished && status == MatchStatus.Finished)
+        {
+            AddDomainEvent(new Domain.Events.MatchFinishedEvent(this));
+        }
+    }
 }

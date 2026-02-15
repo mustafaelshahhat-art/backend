@@ -119,7 +119,7 @@ public class MatchService : IMatchService
         var match = await _matchRepository.GetByIdAsync(id, ct);
         if (match == null) throw new NotFoundException(nameof(Match), id);
 
-        match.Status = MatchStatus.Finished;
+        match.SetStatus(MatchStatus.Finished);
         await _matchRepository.UpdateAsync(match, ct);
         await _analyticsService.LogActivityByTemplateAsync(
             ActivityConstants.MATCH_ENDED, 
@@ -333,7 +333,7 @@ public class MatchService : IMatchService
         if (!string.IsNullOrEmpty(request.Status) && Enum.TryParse<MatchStatus>(request.Status, true, out var status))
         {
             newStatus = status;
-            match.Status = status;
+            match.SetStatus(status);
         }
 
         await _matchRepository.UpdateAsync(match, ct);

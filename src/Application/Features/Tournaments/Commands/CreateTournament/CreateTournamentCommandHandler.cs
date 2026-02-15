@@ -46,7 +46,6 @@ public class CreateTournamentCommandHandler : IRequestHandler<CreateTournamentCo
             Format = request.Request.Format,
             MatchType = request.Request.MatchType,
             NumberOfGroups = request.Request.NumberOfGroups,
-            QualifiedTeamsPerGroup = request.Request.QualifiedTeamsPerGroup,
             WalletNumber = request.Request.WalletNumber,
             InstaPayNumber = request.Request.InstaPayNumber,
             IsHomeAwayEnabled = request.Request.IsHomeAwayEnabled,
@@ -100,9 +99,6 @@ public class CreateTournamentCommandHandler : IRequestHandler<CreateTournamentCo
         {
             if (t.NumberOfGroups <= 0) 
                 throw new Shared.Exceptions.BadRequestException("يجب تحديد عدد المجموعات في هذا النوع من البطولات.");
-            
-            if (t.QualifiedTeamsPerGroup <= 0)
-                throw new Shared.Exceptions.BadRequestException("يجب تحديد عدد المتأهلين من كل مجموعة.");
 
             if (t.MaxTeams < t.NumberOfGroups * 2) // Basic heuristic: min 2 teams per group
                 throw new Shared.Exceptions.BadRequestException("عدد الفرق الحد الأقصى لا يكفي لعدد المجموعات المحدد.");

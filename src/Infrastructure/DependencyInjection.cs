@@ -14,37 +14,86 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        // PROD-AUDIT: Distributed Safety (Redis)
         var redisConnectionString = configuration["Redis:ConnectionString"] 
             ?? configuration.GetConnectionString("Redis") 
             ?? "localhost:6379";
 
-        services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp => 
-        {
-            var options = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
-            options.AbortOnConnectFail = false; 
-            options.ConnectRetry = 3;
-            options.ConnectTimeout = 5000;
-            return StackExchange.Redis.ConnectionMultiplexer.Connect(options);
-        });
-            
-        // PROD-AUDIT: Distributed Safety
-        // Use SQL Fallback in Development for convenience, enforce Redis in Production for performance.
+        bool useRedis = false;
         var isProduction = configuration["ASPNETCORE_ENVIRONMENT"] == "Production";
-        var lockProvider = configuration["DistributedLock:Provider"];
-        
-        if (string.IsNullOrEmpty(lockProvider))
+
+        try
         {
-            lockProvider = isProduction ? "Redis" : "Sql";
+            // PROD-AUDIT: Distributed Safety
+            // Use SQL Fallback in Development for convenience, enforce Redis in Production for performance.
+            if (isProduction)
+            {
+                useRedis = true; // Always attempt Redis in Prod
+            }
+            else
+            {
+                // In Dev, check if Redis is actually reachable before configuring it
+                var checkOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
+                checkOptions.AbortOnConnectFail = true;
+                checkOptions.ConnectTimeout = 2000; // Fast fail check
+                using var checkConn = StackExchange.Redis.ConnectionMultiplexer.Connect(checkOptions);
+                useRedis = checkConn.IsConnected;
+            }
+        }
+        catch
+        {
+            useRedis = false;
+            if (isProduction) throw; // Fail fast in prod
         }
 
-        if (lockProvider.Equals("Sql", StringComparison.OrdinalIgnoreCase))
+        if (useRedis)
         {
-            services.AddSingleton<IDistributedLock, Services.SqlDistributedLockService>();
+            services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp => 
+            {
+                var options = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
+                options.AbortOnConnectFail = false; 
+                options.ConnectRetry = 3;
+                options.ConnectTimeout = 5000;
+                return StackExchange.Redis.ConnectionMultiplexer.Connect(options);
+            });
+
+            services.AddStackExchangeRedisCache(options =>
+            {
+                options.Configuration = redisConnectionString;
+                options.InstanceName = "RamadanAPI_";
+            });
         }
         else
         {
+            // Register a dummy/null multiplexer or just don't register it?
+            // Some services might depend on IConnectionMultiplexer.
+            // If we don't register it, and something injects it, startup fails.
+            // But if we register a failing one, runtime fails (which is what's happening).
+            // Let's assume services only use it if relevant feature is enabled.
+            // But UserCacheService uses IDistributedCache, which is covered below.
+            
+            services.AddDistributedMemoryCache();
+        }
+
+        // Lock Provider Logic
+        var lockProvider = configuration["DistributedLock:Provider"];
+        bool useRedisLock = false;
+
+        if (string.IsNullOrEmpty(lockProvider))
+        {
+             useRedisLock = useRedis; // Default to Redis if available, else Sql
+        }
+        else
+        {
+             useRedisLock = lockProvider.Equals("Redis", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (useRedisLock && useRedis)
+        {
             services.AddSingleton<IDistributedLock, Services.RedisLockService>();
+        }
+        else
+        {
+            services.AddSingleton<IDistributedLock, Services.SqlDistributedLockService>();
         }
 
         services.AddDbContext<AppDbContext>(options =>
@@ -63,6 +112,13 @@ public static class DependencyInjection
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<IMatchMessageRepository, MatchMessageRepository>();
         services.AddScoped<IMatchRepository, MatchRepository>();
+        services.AddScoped<IUserCacheService, Services.UserCacheService>();
+        services.AddScoped<IFileStorageService, Services.LocalFileStorageService>();
+        
+        services.AddSingleton<Infrastructure.Logging.BackgroundActivityLogger>();
+        services.AddSingleton<IBackgroundActivityLogger>(sp => sp.GetRequiredService<Infrastructure.Logging.BackgroundActivityLogger>());
+        services.AddHostedService(sp => sp.GetRequiredService<Infrastructure.Logging.BackgroundActivityLogger>());
+
         services.AddScoped<Services.EmailService>();
         services.AddScoped<IEmailService, Services.ResilientEmailService>(sp => 
             new Services.ResilientEmailService(

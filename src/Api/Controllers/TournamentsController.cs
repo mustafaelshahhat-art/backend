@@ -15,12 +15,14 @@ public class TournamentsController : ControllerBase
     private readonly ITournamentService _tournamentService;
     private readonly IUserService _userService;
     private readonly MediatR.IMediator _mediator;
+    private readonly IFileStorageService _fileStorage;
 
-    public TournamentsController(ITournamentService tournamentService, IUserService userService, MediatR.IMediator mediator)
+    public TournamentsController(ITournamentService tournamentService, IUserService userService, MediatR.IMediator mediator, IFileStorageService fileStorage)
     {
         _tournamentService = tournamentService;
         _userService = userService;
         _mediator = mediator;
+        _fileStorage = fileStorage;
     }
 
     [HttpGet]
@@ -28,7 +30,7 @@ public class TournamentsController : ControllerBase
     public async Task<ActionResult<Application.Common.Models.PagedResult<TournamentDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var (userId, userRole) = GetUserContextSafely();
+        var (userId, userRole) = GetUserContext();
         
         Guid? creatorIdFilter = null;
         bool includeDrafts = false;
@@ -41,17 +43,10 @@ public class TournamentsController : ControllerBase
         else if (userRole == UserRole.Admin.ToString())
         {
             includeDrafts = true;
-            // Note: Admins see ALL tournaments by default. 
-            // If they want only their own, the frontend should ideally pass a filter, 
-            // but for now we follow the existing pattern.
         }
 
-        // PROD-FIX: Visibility Filtering logic. 
-        // If not Owner/Creator, we only see RegistrationOpen, Active, Completed, etc. (everything except Draft).
         var result = await _tournamentService.GetPagedAsync(page, pageSize, creatorIdFilter, includeDrafts, cancellationToken);
         
-        // Secondary safety filter: If it's public (Anonymous or Player), filter out Drafts 
-        // which might have been returned if creatorIdFilter was null.
         if (userRole != UserRole.TournamentCreator.ToString() && userRole != UserRole.Admin.ToString())
         {
             result.Items = result.Items.Where(t => t.Status != TournamentStatus.Draft.ToString()).ToList();
@@ -71,11 +66,10 @@ public class TournamentsController : ControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<TournamentDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var (userId, userRole) = GetUserContextSafely();
+        var (userId, userRole) = GetUserContext();
         var tournament = await _tournamentService.GetByIdAsync(id, userId, userRole, cancellationToken);
         if (tournament == null) return NotFound();
 
-        // PROD-FIX: Protection for Draft tournaments (redundant extra check)
         if (tournament.Status == TournamentStatus.Draft.ToString())
         {
             if (userRole != UserRole.Admin.ToString() && tournament.CreatorUserId != userId)
@@ -110,26 +104,11 @@ public class TournamentsController : ControllerBase
     [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<TournamentDto>> Create(CreateTournamentRequest request, CancellationToken cancellationToken)
     {
-        var (userId, userRole) = GetUserContextSafely();
-        
-
+        var (userId, _) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.CreateTournament.CreateTournamentCommand(request, userId);
         var result = await _mediator.Send(command, cancellationToken);
 
-
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
-    }
-
-    private (Guid userId, string userRole) GetUserContextSafely()
-    {
-        try 
-        {
-            var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "/";
-            if (string.IsNullOrEmpty(idStr)) return (Guid.Empty, "/");
-            return (Guid.Parse(idStr), role);
-        }
-        catch { return (Guid.Empty, "/"); }
     }
 
     [HttpPatch("{id}")]
@@ -204,7 +183,9 @@ public class TournamentsController : ControllerBase
         
         var userId = Guid.Parse(userIdString);
 
-        var receiptUrl = await SaveFile(receipt, cancellationToken);
+        using var stream = receipt.OpenReadStream();
+        var receiptUrl = await _fileStorage.SaveFileAsync(stream, receipt.FileName, receipt.ContentType, cancellationToken);
+
         var command = new Application.Features.Tournaments.Commands.SubmitPayment.SubmitPaymentCommand(
             id, 
             teamId, 
@@ -217,15 +198,6 @@ public class TournamentsController : ControllerBase
         return Ok(registration);
     }
 
-    private async Task<string> SaveFile(IFormFile file, CancellationToken cancellationToken)
-    {
-        using var memoryStream = new MemoryStream();
-        await file.CopyToAsync(memoryStream, cancellationToken);
-        var bytes = memoryStream.ToArray();
-        var base64 = Convert.ToBase64String(bytes);
-        var mimeType = file.ContentType ?? "image/png";
-        return $"data:{mimeType};base64,{base64}";
-    }
 
     [HttpPost("{id}/registrations/{teamId}/approve")]
     [Authorize(Policy = "RequireTournamentOwner")]
@@ -416,10 +388,11 @@ public class TournamentsController : ControllerBase
         return NoContent();
     }
 
-    private (Guid userId, string userRole) GetUserContext()
+    private (Guid UserId, string UserRole) GetUserContext()
     {
-        var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? UserRole.Player.ToString();
-        return (Guid.Parse(idStr!), role);
+        var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var roleClaim = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? UserRole.Player.ToString();
+        
+        return (Guid.TryParse(idClaim, out var userId) ? userId : Guid.Empty, roleClaim);
     }
 }
