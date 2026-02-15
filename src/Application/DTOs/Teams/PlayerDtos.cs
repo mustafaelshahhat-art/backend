@@ -25,6 +25,16 @@ public class AddPlayerRequest
     public string DisplayId { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// Request DTO for adding a guest (unregistered) player by name only.
+/// </summary>
+public class AddGuestPlayerRequest
+{
+    public string Name { get; set; } = string.Empty;
+    public int? Number { get; set; }
+    public string? Position { get; set; }
+}
+
 public class JoinRequestDto
 {
     public Guid Id { get; set; }

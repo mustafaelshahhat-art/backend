@@ -45,9 +45,13 @@ public class MatchService : IMatchService
         _lifecycleService = lifecycleService;
     }
 
-    public async Task<Application.Common.Models.PagedResult<MatchDto>> GetPagedAsync(int pageNumber, int pageSize, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<MatchDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
     {
-        var result = await _matchRepository.GetPagedAsync(pageNumber, pageSize, null, q => q.OrderByDescending(m => m.Date), ct, m => m.HomeTeam!, m => m.AwayTeam!, m => m.Tournament!);
+        System.Linq.Expressions.Expression<Func<Match, bool>> filter = creatorId.HasValue 
+            ? m => m.Tournament!.CreatorUserId == creatorId 
+            : null;
+
+        var result = await _matchRepository.GetPagedAsync(pageNumber, pageSize, filter, q => q.OrderByDescending(m => m.Date), ct, m => m.HomeTeam!, m => m.AwayTeam!, m => m.Tournament!);
         
         var dtos = _mapper.Map<List<MatchDto>>(result.Items);
         return new Application.Common.Models.PagedResult<MatchDto>(dtos, result.TotalCount, pageNumber, pageSize);

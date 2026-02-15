@@ -96,6 +96,17 @@ public class TeamsController : ControllerBase
         return Ok(joinRequest);
     }
 
+    [HttpPost("{id}/add-guest-player")]
+    [Authorize(Policy = "RequireTeamCaptain")]
+    public async Task<ActionResult<PlayerDto>> AddGuestPlayer(Guid id, AddGuestPlayerRequest request, CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Unauthorized();
+
+        var player = await _teamService.AddGuestPlayerAsync(id, Guid.Parse(userId), request, cancellationToken);
+        return Ok(player);
+    }
+
     [HttpGet("{id}/requests")]
     [Authorize(Policy = "RequireTeamCaptain")]
     public async Task<ActionResult<Application.Common.Models.PagedResult<JoinRequestDto>>> GetRequests(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)

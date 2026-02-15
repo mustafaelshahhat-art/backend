@@ -24,6 +24,7 @@ public class UserDto
     public Guid? TeamId { get; set; }
     public string? TeamName { get; set; }
     public string? TeamRole { get; set; }
+    public List<Guid> JoinedTeamIds { get; set; } = new();
     public bool IsEmailVerified { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<UserActivityDto> Activities { get; set; } = new();

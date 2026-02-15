@@ -24,10 +24,10 @@ public class MatchesController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    public async Task<ActionResult<Application.Common.Models.PagedResult<MatchDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<MatchDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] Guid? creatorId = null, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var matches = await _matchService.GetPagedAsync(page, pageSize, cancellationToken);
+        var matches = await _matchService.GetPagedAsync(page, pageSize, creatorId, cancellationToken);
         return Ok(matches);
     }
 

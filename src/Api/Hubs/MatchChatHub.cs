@@ -16,19 +16,21 @@ public class MatchChatHub : Hub
     private readonly IMatchMessageRepository _messageRepository;
     private readonly Domain.Interfaces.IRepository<Match> _matchRepository;
     private readonly Application.Interfaces.IUserService _userService;
+    private readonly Domain.Interfaces.IRepository<Player> _playerRepository;
     private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
-
     private readonly ICurrentUserAccessor _userAccessor;
 
     public MatchChatHub(
         IMatchMessageRepository messageRepository,
         Domain.Interfaces.IRepository<Match> matchRepository,
+        Domain.Interfaces.IRepository<Player> playerRepository,
         Application.Interfaces.IUserService userService,
         ICurrentUserAccessor userAccessor,
         Microsoft.Extensions.Caching.Memory.IMemoryCache cache)
     {
         _messageRepository = messageRepository;
         _matchRepository = matchRepository;
+        _playerRepository = playerRepository;
         _userService = userService;
         _userAccessor = userAccessor;
         _cache = cache;
@@ -109,15 +111,12 @@ public class MatchChatHub : Hub
         // 1. Check if user is the Tournament Creator
         if (matchAccessInfo.TournamentCreatorId == userId) return true;
 
-        // 2. Check if user belongs to one of the teams
-        var userTeamId = _userAccessor.User?.TeamId;
-        if (!userTeamId.HasValue)
-        {
-            var user = await _userService.GetByIdAsync(userId);
-            if (user != null && user.TeamId.HasValue)
-                userTeamId = user.TeamId;
-        }
+        // 2. Check if user belongs to one of the teams participating in the match
+        // We check the Player table for any membership of this user in either team
+        var hasMembership = await _playerRepository.GetQueryable()
+            .AsNoTracking()
+            .AnyAsync(p => p.UserId == userId && (p.TeamId == matchAccessInfo.HomeTeamId || p.TeamId == matchAccessInfo.AwayTeamId));
 
-        return userTeamId.HasValue && (matchAccessInfo.HomeTeamId == userTeamId || matchAccessInfo.AwayTeamId == userTeamId);
+        return hasMembership;
     }
 }

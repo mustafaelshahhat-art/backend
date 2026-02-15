@@ -8,7 +8,7 @@ namespace Application.Interfaces;
 
 public interface IMatchService
 {
-    Task<Application.Common.Models.PagedResult<MatchDto>> GetPagedAsync(int pageNumber, int pageSize, CancellationToken ct = default);
+    Task<Application.Common.Models.PagedResult<MatchDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? creatorId = null, CancellationToken ct = default);
     Task<MatchDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<MatchDto> StartMatchAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default);
     Task<MatchDto> EndMatchAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default);
