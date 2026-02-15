@@ -4,16 +4,19 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace Infrastructure.Migrations
+namespace Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260215112937_RemoveSeedingMode")]
+    partial class RemoveSeedingMode
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -761,6 +764,12 @@ namespace Infrastructure.Migrations
 
                     b.Property<int>("NumberOfGroups")
                         .HasColumnType("int");
+
+                    b.Property<Guid?>("OpeningMatchAwayTeamId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OpeningMatchHomeTeamId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("OpeningMatchId")
                         .HasColumnType("uniqueidentifier");

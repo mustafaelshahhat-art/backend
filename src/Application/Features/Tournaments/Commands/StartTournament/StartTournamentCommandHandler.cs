@@ -15,6 +15,7 @@ public class StartTournamentCommandHandler : IRequestHandler<StartTournamentComm
     private readonly IRepository<Match> _matchRepository;
     private readonly IRepository<TeamRegistration> _registrationRepository;
     private readonly IDistributedLock _distributedLock;
+    private readonly ITournamentService _tournamentService;
     private readonly IMapper _mapper;
 
     public StartTournamentCommandHandler(
@@ -22,12 +23,14 @@ public class StartTournamentCommandHandler : IRequestHandler<StartTournamentComm
         IRepository<Match> matchRepository,
         IRepository<TeamRegistration> registrationRepository,
         IDistributedLock distributedLock,
+        ITournamentService tournamentService,
         IMapper mapper)
     {
         _tournamentRepository = tournamentRepository;
         _matchRepository = matchRepository;
         _registrationRepository = registrationRepository;
         _distributedLock = distributedLock;
+        _tournamentService = tournamentService;
         _mapper = mapper;
     }
 
@@ -67,17 +70,21 @@ public class StartTournamentCommandHandler : IRequestHandler<StartTournamentComm
                 throw new ConflictException($"عدد الفرق غير كافٍ. المطلوب {minRequired} فريق على الأقل.");
             }
 
-            // Validation 3: Matches must exist
-            var existingMatches = await _matchRepository.FindAsync(
-                m => m.TournamentId == request.Id, 
-                cancellationToken);
+            // Validation 3: Matches must exist for Random mode, but not required for Manual mode
+            var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == request.Id, cancellationToken);
             if (!existingMatches.Any())
             {
-                throw new ConflictException("لا توجد مباريات مولدة. يرجى توليد الجدول أولاً.");
+                if (tournament.SchedulingMode == SchedulingMode.Random)
+                {
+                    await _tournamentService.GenerateMatchesAsync(request.Id, request.UserId, request.UserRole, cancellationToken);
+                }
+                // For Manual mode, matches don't need to exist yet - they will be generated after manual draw
             }
 
+            // Refresh existingMatches after generation for subsequent validations
+            existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == request.Id, cancellationToken);
+
             // Validation 4: Opening match integrity
-            // SECTION 9: If opening teams were defined, their match must exist
             if (tournament.HasOpeningTeams)
             {
                 var openingMatch = existingMatches.FirstOrDefault(m => m.IsOpeningMatch);
@@ -86,7 +93,6 @@ public class StartTournamentCommandHandler : IRequestHandler<StartTournamentComm
                     throw new ConflictException("تم تحديد فريقي الافتتاح لكن لم يتم إنشاء مباراة الافتتاح. أعد توليد الجدول.");
                 }
 
-                // Verify both teams are in the opening match
                 var openingTeams = new HashSet<Guid> { tournament.OpeningTeamAId!.Value, tournament.OpeningTeamBId!.Value };
                 var matchTeams = new HashSet<Guid> { openingMatch.HomeTeamId, openingMatch.AwayTeamId };
                 if (!openingTeams.SetEquals(matchTeams))
@@ -96,7 +102,6 @@ public class StartTournamentCommandHandler : IRequestHandler<StartTournamentComm
             }
             else
             {
-                // Legacy: For knockout formats without pre-draw, still require opening match selection
                 var effectiveMode = tournament.GetEffectiveMode();
                 if (effectiveMode == TournamentMode.KnockoutSingle || 
                     effectiveMode == TournamentMode.KnockoutHomeAway ||

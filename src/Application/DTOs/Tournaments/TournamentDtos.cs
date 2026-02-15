@@ -32,7 +32,6 @@ public class TournamentDto
     public string? WalletNumber { get; set; }
     public string? InstaPayNumber { get; set; }
     public bool IsHomeAwayEnabled { get; set; }
-    public SeedingMode SeedingMode { get; set; }
     public string? PaymentMethodsJson { get; set; }
     public List<TeamRegistrationDto> Registrations { get; set; } = new();
     public Guid? WinnerTeamId { get; set; }
@@ -68,7 +67,6 @@ public class CreateTournamentRequest
     public string? WalletNumber { get; set; }
     public string? InstaPayNumber { get; set; }
     public bool IsHomeAwayEnabled { get; set; }
-    public SeedingMode SeedingMode { get; set; }
     public string? PaymentMethodsJson { get; set; }
     public TournamentMode? Mode { get; set; }
     public bool AllowLateRegistration { get; set; }
@@ -96,7 +94,6 @@ public class UpdateTournamentRequest
     public string? WalletNumber { get; set; }
     public string? InstaPayNumber { get; set; }
     public bool? IsHomeAwayEnabled { get; set; }
-    public SeedingMode? SeedingMode { get; set; }
     public string? PaymentMethodsJson { get; set; }
     public TournamentMode? Mode { get; set; }
     public Guid? OpeningMatchId { get; set; }

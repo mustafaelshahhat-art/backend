@@ -292,7 +292,6 @@ public class TournamentService : ITournamentService
             WalletNumber = request.WalletNumber,
             InstaPayNumber = request.InstaPayNumber,
             IsHomeAwayEnabled = request.IsHomeAwayEnabled,
-            SeedingMode = request.SeedingMode,
             PaymentMethodsJson = request.PaymentMethodsJson,
             Mode = request.Mode,
             AllowLateRegistration = request.AllowLateRegistration,
@@ -362,7 +361,6 @@ public class TournamentService : ITournamentService
         if (request.WalletNumber != null) tournament.WalletNumber = request.WalletNumber;
         if (request.InstaPayNumber != null) tournament.InstaPayNumber = request.InstaPayNumber;
         if (request.IsHomeAwayEnabled.HasValue) tournament.IsHomeAwayEnabled = request.IsHomeAwayEnabled.Value;
-        if (request.SeedingMode.HasValue) tournament.SeedingMode = request.SeedingMode.Value;
         if (request.PaymentMethodsJson != null) tournament.PaymentMethodsJson = request.PaymentMethodsJson;
         if (request.Mode.HasValue) 
         {
@@ -474,9 +472,33 @@ public class TournamentService : ITournamentService
                 throw new ForbiddenException("فقط كابتن الفريق يمكنه تسجيل الفريق في البطولات.");
             }
 
+            // 1. Check if the TEAM is already registered in THIS tournament
             if (tournament.Registrations.Any(r => r.TeamId == request.TeamId && r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn))
             {
                 throw new ConflictException("الفريق مسجل بالفعل في هذه البطولة أو قيد المراجعة.");
+            }
+
+            // 2. Check if any PLAYER in this team is already registered in THIS tournament with another team
+            var teamPlayerUserIds = team.Players.Select(p => p.UserId).Where(uid => uid.HasValue).ToList();
+            if (teamPlayerUserIds.Any())
+            {
+                // Check other registrations in this tournament (Pending/Approved/etc)
+                var otherTournamentRegistrations = await _registrationRepository.FindAsync(r => 
+                    r.TournamentId == tournamentId && 
+                    r.TeamId != request.TeamId && 
+                    r.Status != RegistrationStatus.Rejected && 
+                    r.Status != RegistrationStatus.Withdrawn,
+                    new[] { "Team", "Team.Players" }, ct);
+
+                foreach (var otherReg in otherTournamentRegistrations)
+                {
+                    var overlap = otherReg.Team?.Players.Any(p => teamPlayerUserIds.Contains(p.UserId)) ?? false;
+                    if (overlap)
+                    {
+                        var overlapPlayer = otherReg.Team?.Players.First(p => teamPlayerUserIds.Contains(p.UserId))?.Name;
+                        throw new ConflictException($"اللاعب ({overlapPlayer}) مسجل بالفعل في هذه البطولة مع فريق ({otherReg.Team?.Name}). لا يسمح للاعب بالمشاركة في نفس البطولة مع أكثر من فريق.");
+                    }
+                }
             }
 
             var registration = new TeamRegistration
@@ -639,7 +661,14 @@ public class TournamentService : ITournamentService
             var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, ct);
             if (!existingMatches.Any() && tournament.Status != TournamentStatus.Active)
             {
-                await GenerateMatchesAsync(tournamentId, userId, userRole);
+                // Auto-generate ONLY if not Manual AND (if Random, must have opening teams)
+                bool canAutoGenerate = tournament.SchedulingMode != SchedulingMode.Manual &&
+                                     (tournament.SchedulingMode != SchedulingMode.Random || tournament.HasOpeningTeams);
+                
+                if (canAutoGenerate)
+                {
+                    await GenerateMatchesAsync(tournamentId, userId, userRole);
+                }
             }
         }
 
@@ -783,25 +812,40 @@ public class TournamentService : ITournamentService
 
     public async Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId, Guid userId, string userRole, CancellationToken ct = default)
     {
-        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, new[] { "Registrations", "Registrations.Team" }, ct);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
 
         ValidateOwnership(tournament, userId, userRole, ct);
-        
-        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.Status == RegistrationStatus.Approved, ct);
-        // Remove strictly check for < 2 if for testing, but technically correct.
-        if (registrations.Count() < 2) throw new ConflictException("عدد الفرق غير كافٍ لإنشاء المباريات.");
+
+        if (tournament.Status != TournamentStatus.RegistrationClosed)
+            throw new ConflictException("يجب إغلاق التسجيل قبل إنشاء المباريات.");
+
+        if (tournament.SchedulingMode == SchedulingMode.Manual)
+            throw new BadRequestException("لا يمكن استخدام التوليد التلقائي في وضع الجدولة اليدوية.");
+
+        if (tournament.SchedulingMode == SchedulingMode.Random && !tournament.HasOpeningTeams)
+            throw new ConflictException("يجب اختيار الفريقين للمباراة الافتتاحية قبل توليد المباريات في الوضع العشوائي.");
 
         var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, ct);
         if (existingMatches.Any()) throw new ConflictException("المباريات مولدة بالفعل.");
 
+        var registrations = tournament.Registrations.Where(r => r.Status == RegistrationStatus.Approved).ToList();
+        int minRequired = tournament.MinTeams ?? 2;
+        if (registrations.Count < minRequired)
+            throw new ConflictException($"عدد الفرق غير كافٍ. المطلوب {minRequired} فريق على الأقل.");
+
         var teamIds = registrations.Select(r => r.TeamId).ToList();
-        var matches = await CreateMatchesAsync(tournament, teamIds, ct);
+        var matches = await CreateMatchesInternalAsync(tournament, teamIds, ct);
         
-        tournament.ChangeStatus(TournamentStatus.Active); 
+        // Change tournament status to ACTIVE after successful match generation
+        tournament.ChangeStatus(TournamentStatus.Active);
+        
         await _tournamentRepository.UpdateAsync(tournament, ct);
         
-        return _mapper.Map<IEnumerable<MatchDto>>(matches);
+        var dtos = _mapper.Map<IEnumerable<MatchDto>>(matches);
+        await _notifier.SendMatchesGeneratedAsync(dtos, ct);
+        
+        return dtos;
     }
 
     public async Task<TournamentDto> CloseRegistrationAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default)
@@ -884,11 +928,10 @@ public class TournamentService : ITournamentService
         return bracket;
     }
 
-    private async Task<List<Match>> CreateMatchesAsync(Tournament tournament, List<Guid> teamIds, CancellationToken ct = default)
+    private async Task<List<Match>> CreateMatchesInternalAsync(Tournament tournament, List<Guid> teamIds, CancellationToken ct = default)
     {
         var matches = new List<Match>();
         var random = new Random();
-        var shuffledTeams = teamIds.OrderBy(x => random.Next()).ToList();
         var matchDate = DateTime.UtcNow.AddDays(2);
         var effectiveMode = tournament.GetEffectiveMode();
         
@@ -898,87 +941,211 @@ public class TournamentService : ITournamentService
             
             var groups = new List<List<Guid>>();
             for (int i = 0; i < tournament.NumberOfGroups; i++) groups.Add(new List<Guid>());
-            
-            for (int i = 0; i < shuffledTeams.Count; i++)
+
+            if (tournament.HasOpeningTeams)
             {
-                groups[i % tournament.NumberOfGroups].Add(shuffledTeams[i]);
+                var openingTeamA = tournament.OpeningTeamAId!.Value;
+                var openingTeamB = tournament.OpeningTeamBId!.Value;
+                var remainingTeams = teamIds.Where(id => id != openingTeamA && id != openingTeamB).ToList();
+
+                int openingGroupIndex = random.Next(tournament.NumberOfGroups);
+                groups[openingGroupIndex].Add(openingTeamA);
+                groups[openingGroupIndex].Add(openingTeamB);
+
+                var shuffledRemaining = remainingTeams.OrderBy(x => random.Next()).ToList();
+                for (int i = 0; i < shuffledRemaining.Count; i++)
+                {
+                    int targetGroup = 0;
+                    int minCount = groups[0].Count;
+                    for (int g = 1; g < tournament.NumberOfGroups; g++)
+                    {
+                        if (groups[g].Count < minCount)
+                        {
+                            minCount = groups[g].Count;
+                            targetGroup = g;
+                        }
+                    }
+                    groups[targetGroup].Add(shuffledRemaining[i]);
+                }
+            }
+            else
+            {
+                var shuffledTeams = teamIds.OrderBy(x => random.Next()).ToList();
+                for (int i = 0; i < shuffledTeams.Count; i++)
+                {
+                    groups[i % tournament.NumberOfGroups].Add(shuffledTeams[i]);
+                }
             }
             
+            // Persistent Group Assignment
+            for (int g = 0; g < groups.Count; g++)
+            {
+                foreach (var teamId in groups[g])
+                {
+                    var reg = tournament.Registrations.FirstOrDefault(r => r.TeamId == teamId);
+                    if (reg != null) reg.GroupId = g + 1;
+                }
+            }
+
             int dayOffset = 0;
             bool isHomeAway = effectiveMode == TournamentMode.GroupsKnockoutHomeAway;
 
             for (int g = 0; g < groups.Count; g++)
             {
                 var groupTeams = groups[g];
+                bool isOpeningGroup = tournament.HasOpeningTeams && 
+                    groupTeams.Contains(tournament.OpeningTeamAId!.Value) && 
+                    groupTeams.Contains(tournament.OpeningTeamBId!.Value);
+
+                var groupMatchList = new List<Match>();
+                
                 for (int i = 0; i < groupTeams.Count; i++)
                 {
                     for (int j = i + 1; j < groupTeams.Count; j++)
                     {
-                         matches.Add(CreateMatch(tournament, groupTeams[i], groupTeams[j], matchDate.AddDays(dayOffset), g + 1, 1, "Group Stage", ct));
+                         var match = CreateGroupMatch(tournament, groupTeams[i], groupTeams[j], matchDate.AddDays(dayOffset), g + 1, 1, "Group Stage");
+                         
+                         if (isOpeningGroup && IsOpeningPair(tournament, groupTeams[i], groupTeams[j]))
+                         {
+                             match.IsOpeningMatch = true;
+                         }
+                         
+                         groupMatchList.Add(match);
                          dayOffset++;
                          
                          if (isHomeAway)
                          {
-                             matches.Add(CreateMatch(tournament, groupTeams[j], groupTeams[i], matchDate.AddDays(dayOffset + 2), g + 1, 1, "Group Stage", ct));
+                             groupMatchList.Add(CreateGroupMatch(tournament, groupTeams[j], groupTeams[i], matchDate.AddDays(dayOffset + 2), g + 1, 1, "Group Stage"));
                              dayOffset++;
                          }
                     }
                 }
+
+                if (isOpeningGroup)
+                {
+                    var openingMatch = groupMatchList.FirstOrDefault(m => m.IsOpeningMatch);
+                    if (openingMatch != null)
+                    {
+                        groupMatchList.Remove(openingMatch);
+                        if (groupMatchList.Count > 0)
+                        {
+                            var earliestDate = groupMatchList.Min(m => m.Date);
+                            var openingOrigDate = openingMatch.Date;
+                            var firstMatch = groupMatchList.FirstOrDefault(m => m.Date == earliestDate);
+                            if (firstMatch != null && earliestDate < openingOrigDate)
+                            {
+                                firstMatch.Date = openingOrigDate;
+                                openingMatch.Date = earliestDate;
+                            }
+                        }
+                        groupMatchList.Insert(0, openingMatch);
+                    }
+                }
+                matches.AddRange(groupMatchList);
             }
         }
         else if (effectiveMode == TournamentMode.KnockoutSingle || effectiveMode == TournamentMode.KnockoutHomeAway)
         {
+            List<Guid> shuffledTeams;
+            if (tournament.HasOpeningTeams)
+            {
+                var openingTeamA = tournament.OpeningTeamAId!.Value;
+                var openingTeamB = tournament.OpeningTeamBId!.Value;
+                var remaining = teamIds.Where(id => id != openingTeamA && id != openingTeamB).OrderBy(x => random.Next()).ToList();
+                shuffledTeams = new List<Guid> { openingTeamA, openingTeamB };
+                shuffledTeams.AddRange(remaining);
+            }
+            else
+            {
+                shuffledTeams = teamIds.OrderBy(x => random.Next()).ToList();
+            }
+
             bool isHomeAway = effectiveMode == TournamentMode.KnockoutHomeAway;
             for (int i = 0; i < shuffledTeams.Count; i += 2)
             {
                  if (i + 1 < shuffledTeams.Count)
                  {
-                     matches.Add(CreateMatch(tournament, shuffledTeams[i], shuffledTeams[i+1], matchDate.AddDays(i), null, 1, "Round 1", ct));
-                     
-                     if (isHomeAway)
-                     {
-                          matches.Add(CreateMatch(tournament, shuffledTeams[i+1], shuffledTeams[i], matchDate.AddDays(i + 3), null, 1, "Round 1", ct));
-                     }
+                     var match = CreateGroupMatch(tournament, shuffledTeams[i], shuffledTeams[i+1], matchDate.AddDays(i), null, 1, "Round 1");
+                     if (tournament.HasOpeningTeams && i == 0) match.IsOpeningMatch = true;
+                     matches.Add(match);
+                     if (isHomeAway) matches.Add(CreateGroupMatch(tournament, shuffledTeams[i+1], shuffledTeams[i], matchDate.AddDays(i + 3), null, 1, "Round 1"));
                  }
             }
         }
         else // League modes
         {
-             bool isHomeAway = effectiveMode == TournamentMode.LeagueHomeAway;
-             int matchCount = 0;
-             for (int i = 0; i < shuffledTeams.Count; i++)
-             {
-                for (int j = i + 1; j < shuffledTeams.Count; j++)
+            List<Guid> orderedTeams;
+            if (tournament.HasOpeningTeams)
+            {
+                var openingTeamA = tournament.OpeningTeamAId!.Value;
+                var openingTeamB = tournament.OpeningTeamBId!.Value;
+                var remaining = teamIds.Where(id => id != openingTeamA && id != openingTeamB).OrderBy(x => random.Next()).ToList();
+                orderedTeams = new List<Guid> { openingTeamA, openingTeamB };
+                orderedTeams.AddRange(remaining);
+            }
+            else
+            {
+                orderedTeams = teamIds.OrderBy(x => random.Next()).ToList();
+            }
+
+            bool isHomeAway = effectiveMode == TournamentMode.LeagueHomeAway;
+            int matchCount = 0;
+            bool openingMatchSet = false;
+            
+            for (int i = 0; i < orderedTeams.Count; i++)
+            {
+                for (int j = i + 1; j < orderedTeams.Count; j++)
                 {
-                    matches.Add(CreateMatch(tournament, shuffledTeams[i], shuffledTeams[j], matchDate.AddDays(matchCount * 2), 1, 1, "League", ct));
-                    matchCount++;
+                    var match = CreateGroupMatch(tournament, orderedTeams[i], orderedTeams[j], matchDate.AddDays(matchCount * 2), 1, 1, "League");
+                    if (!openingMatchSet && tournament.HasOpeningTeams && IsOpeningPair(tournament, orderedTeams[i], orderedTeams[j]))
+                    {
+                        match.IsOpeningMatch = true;
+                        openingMatchSet = true;
+                        if (matchCount > 0 && matches.Count > 0)
+                        {
+                            var firstDate = matches[0].Date;
+                            matches[0].Date = match.Date;
+                            match.Date = firstDate;
+                            matches.Insert(0, match);
+                        }
+                        else matches.Add(match);
+                    }
+                    else matches.Add(match);
                     
+                    matchCount++;
                     if (isHomeAway)
                     {
-                        matches.Add(CreateMatch(tournament, shuffledTeams[j], shuffledTeams[i], matchDate.AddDays(matchCount * 2 + 1), 1, 1, "League", ct));
+                        matches.Add(CreateGroupMatch(tournament, orderedTeams[j], orderedTeams[i], matchDate.AddDays(matchCount * 2 + 1), 1, 1, "League"));
                         matchCount++;
                     }
                 }
-             }
+            }
         }
         
         await _matchRepository.AddRangeAsync(matches);
-        
         return matches;
     }
 
-    private Match CreateMatch(Tournament t, Guid home, Guid away, DateTime date, int? group, int? round, string stage, CancellationToken ct)
+    private bool IsOpeningPair(Tournament tournament, Guid teamId1, Guid teamId2)
+    {
+        if (!tournament.HasOpeningTeams) return false;
+        var a = tournament.OpeningTeamAId!.Value;
+        var b = tournament.OpeningTeamBId!.Value;
+        return (teamId1 == a && teamId2 == b) || (teamId1 == b && teamId2 == a);
+    }
+
+    private Match CreateGroupMatch(Tournament t, Guid h, Guid a, DateTime d, int? g, int? r, string s)
     {
         return new Match
         {
             TournamentId = t.Id,
-            HomeTeamId = home,
-            AwayTeamId = away,
+            HomeTeamId = h,
+            AwayTeamId = a,
             Status = MatchStatus.Scheduled,
-            Date = date,
-            GroupId = group,
-            RoundNumber = round,
-            StageName = stage,
+            Date = d,
+            GroupId = g,
+            RoundNumber = r,
+            StageName = s,
             HomeScore = 0,
             AwayScore = 0
         };
@@ -1164,6 +1331,33 @@ public class TournamentService : ITournamentService
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
         ValidateOwnership(tournament, userId, userRole, ct);
 
+        // Case 1: Random Mode - Registration Closed (Automated Setup)
+        if (tournament.Status == TournamentStatus.RegistrationClosed)
+        {
+            if (homeTeamId == awayTeamId) throw new ConflictException("لا يمكن اختيار نفس الفريق للمباراة.");
+
+            // Get registrations to validate team existence
+            var regs = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.Status == RegistrationStatus.Approved, ct);
+            
+            // Set teams (this uses the domain logic which handles validation)
+            tournament.SetOpeningTeams(homeTeamId, awayTeamId, regs.Select(r => r.TeamId), false);
+            await _tournamentRepository.UpdateAsync(tournament, ct);
+
+            // AUTO-GENERATE everything if mode is Random
+            if (tournament.SchedulingMode == SchedulingMode.Random || tournament.SchedulingMode == SchedulingMode.Manual)
+            {
+                // In Random Mode, we generate the whole schedule immediately as requested by user
+                if (tournament.SchedulingMode == SchedulingMode.Random)
+                {
+                   return await GenerateMatchesAsync(tournamentId, userId, userRole, ct);
+                }
+                
+                // In Manual Mode, we just save the teams (SetOpeningTeams already did that)
+                return new List<MatchDto>();
+            }
+        }
+
+        // Case 2: Knockout Mode - Waiting for Selection (Status check)
         if (tournament.Status != TournamentStatus.WaitingForOpeningMatchSelection)
         {
             throw new ConflictException("لا يمكن تحديد مباراة الافتتاح في هذه المرحلة.");
@@ -1256,6 +1450,74 @@ public class TournamentService : ITournamentService
         return _mapper.Map<TeamRegistrationDto>(registration);
     }
 
+    public async Task<IEnumerable<MatchDto>> GenerateManualGroupMatchesAsync(Guid tournamentId, Guid userId, string userRole, CancellationToken ct = default)
+    {
+        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, new[] { "Registrations" }, ct);
+        if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
+        ValidateOwnership(tournament, userId, userRole, ct);
+
+        if (tournament.SchedulingMode != SchedulingMode.Manual)
+            throw new BadRequestException("البطولة ليست في وضع الجدولة اليدوية.");
+
+        var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, ct);
+        if (existingMatches.Any()) throw new ConflictException("المباريات مولدة بالفعل.");
+
+        var registrations = tournament.Registrations.Where(r => r.Status == RegistrationStatus.Approved).ToList();
+        if (registrations.Any(r => r.GroupId == null))
+            throw new BadRequestException("لم يتم تعيين جميع الفرق للمجموعات.");
+
+        var groups = registrations.GroupBy(r => r.GroupId!.Value).ToList();
+        var matches = new List<Match>();
+        var matchDate = tournament.StartDate.AddHours(18);
+        bool isHomeAway = tournament.GetEffectiveMode() == TournamentMode.GroupsKnockoutHomeAway || tournament.GetEffectiveMode() == TournamentMode.LeagueHomeAway;
+
+        foreach (var group in groups)
+        {
+            var teamIds = group.Select(r => r.TeamId).ToList();
+            var groupMatchList = new List<Match>();
+            
+            for (int i = 0; i < teamIds.Count; i++)
+            {
+                for (int j = i + 1; j < teamIds.Count; j++)
+                {
+                    var match = CreateGroupMatch(tournament, teamIds[i], teamIds[j], matchDate, group.Key, 1, "Group Stage");
+                    if (IsOpeningPair(tournament, teamIds[i], teamIds[j])) match.IsOpeningMatch = true;
+                    groupMatchList.Add(match);
+                    matchDate = matchDate.AddHours(2);
+
+                    if (isHomeAway)
+                    {
+                        groupMatchList.Add(CreateGroupMatch(tournament, teamIds[j], teamIds[i], matchDate.AddDays(2), group.Key, 1, "Group Stage"));
+                    }
+                }
+            }
+
+            // Reorder: Opening match first in its group
+            var opening = groupMatchList.FirstOrDefault(m => m.IsOpeningMatch);
+            if (opening != null)
+            {
+                groupMatchList.Remove(opening);
+                if (groupMatchList.Count > 0)
+                {
+                    var firstDate = groupMatchList.Min(m => m.Date);
+                    var openingDate = opening.Date;
+                    var firstMatch = groupMatchList.FirstOrDefault(m => m.Date == firstDate);
+                    if (firstMatch != null) { firstMatch.Date = openingDate; opening.Date = firstDate; }
+                }
+                groupMatchList.Insert(0, opening);
+            }
+            matches.AddRange(groupMatchList);
+        }
+
+        await _matchRepository.AddRangeAsync(matches);
+        
+        // Automatically start the tournament after successful manual draw
+        tournament.ChangeStatus(TournamentStatus.Active);
+        await _tournamentRepository.UpdateAsync(tournament, ct);
+        
+        return _mapper.Map<IEnumerable<MatchDto>>(matches);
+    }
+    
     public async Task<IEnumerable<MatchDto>> GenerateManualMatchesAsync(Guid tournamentId, ManualDrawRequest request, Guid userId, string userRole, CancellationToken ct = default)
     {
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
@@ -1280,11 +1542,11 @@ public class TournamentService : ITournamentService
                 {
                     for (int j = i + 1; j < teams.Count; j++)
                     {
-                        matches.Add(CreateMatch(tournament, teams[i], teams[j], matchDate, group.GroupId, 1, "Group Stage", ct));
+                        matches.Add(CreateGroupMatch(tournament, teams[i], teams[j], matchDate, group.GroupId, 1, "Group Stage"));
                         matchDate = matchDate.AddHours(2);
                         if (isHomeAway)
                         {
-                            matches.Add(CreateMatch(tournament, teams[j], teams[i], matchDate, group.GroupId, 1, "Group Stage", ct));
+                            matches.Add(CreateGroupMatch(tournament, teams[j], teams[i], matchDate, group.GroupId, 1, "Group Stage"));
                             matchDate = matchDate.AddHours(2);
                         }
                     }
@@ -1296,20 +1558,22 @@ public class TournamentService : ITournamentService
             bool isHomeAway = effectiveMode == TournamentMode.KnockoutHomeAway;
             foreach (var pairing in request.KnockoutPairings)
             {
-                matches.Add(CreateMatch(tournament, pairing.HomeTeamId, pairing.AwayTeamId, matchDate, null, pairing.RoundNumber, pairing.StageName, ct));
+                matches.Add(CreateGroupMatch(tournament, pairing.HomeTeamId, pairing.AwayTeamId, matchDate, null, pairing.RoundNumber, pairing.StageName));
                 matchDate = matchDate.AddHours(2);
                 if (isHomeAway)
                 {
-                    matches.Add(CreateMatch(tournament, pairing.AwayTeamId, pairing.HomeTeamId, matchDate, null, pairing.RoundNumber, pairing.StageName, ct));
+                    matches.Add(CreateGroupMatch(tournament, pairing.AwayTeamId, pairing.HomeTeamId, matchDate, null, pairing.RoundNumber, pairing.StageName));
                     matchDate = matchDate.AddHours(2);
                 }
             }
         }
 
         await _matchRepository.AddRangeAsync(matches);
+        
+        // Automatically start the tournament after successful manual draw
         tournament.ChangeStatus(TournamentStatus.Active);
         await _tournamentRepository.UpdateAsync(tournament, ct);
-
+        
         return _mapper.Map<IEnumerable<MatchDto>>(matches);
     }
 
@@ -1329,19 +1593,33 @@ public class TournamentService : ITournamentService
     public async Task ProcessAutomatedStateTransitionsAsync(CancellationToken ct = default)
     {
         // 1. Close Registration for Expired Deadlines
-        var openTournaments = await _tournamentRepository.FindAsync(t => t.Status == TournamentStatus.RegistrationOpen && t.RegistrationDeadline < DateTime.UtcNow, ct);
+        var openTournaments = await _tournamentRepository.FindAsync(t => t.Status == TournamentStatus.RegistrationOpen && t.RegistrationDeadline < DateTime.UtcNow, new[] { "Registrations" }, ct);
         foreach (var t in openTournaments)
         {
              t.ChangeStatus(TournamentStatus.RegistrationClosed);
-             await _tournamentRepository.UpdateAsync(t, ct); // TransactionBehavior will commit this? No, pipeline wraps Command. Yes.
+             await _tournamentRepository.UpdateAsync(t, ct);
         }
         
-        // 2. Start Tournament for Scheduled Start Dates (Simulated, real logic might need match generation)
-        // Only start if Registration is Closed (or force close?)
-        // Let's assume strict flow: Open -> Closed -> Active
-        var readyTournaments = await _tournamentRepository.FindAsync(t => t.Status == TournamentStatus.RegistrationClosed && t.StartDate <= DateTime.UtcNow, ct);
+        // 2. Start Tournament for Scheduled Start Dates
+        var readyTournaments = await _tournamentRepository.FindAsync(t => t.Status == TournamentStatus.RegistrationClosed && t.StartDate <= DateTime.UtcNow, new[] { "Registrations" }, ct);
         foreach (var t in readyTournaments)
         {
+             // Auto-generate matches if needed and mode is Random
+             if (t.SchedulingMode == SchedulingMode.Random && !(await _matchRepository.FindAsync(m => m.TournamentId == t.Id, ct)).Any())
+             {
+                 // Check minimum teams
+                 var registrations = t.Registrations.Where(r => r.Status == RegistrationStatus.Approved).ToList();
+                 if (registrations.Count >= (t.MinTeams ?? 2) && t.HasOpeningTeams)
+                 {
+                     var teamIds = registrations.Select(r => r.TeamId).ToList();
+                     await CreateMatchesInternalAsync(t, teamIds, ct);
+                 }
+                 else
+                 {
+                     continue; // Skip auto-start if not ready
+                 }
+             }
+
              t.ChangeStatus(TournamentStatus.Active);
              await _tournamentRepository.UpdateAsync(t, ct);
         }

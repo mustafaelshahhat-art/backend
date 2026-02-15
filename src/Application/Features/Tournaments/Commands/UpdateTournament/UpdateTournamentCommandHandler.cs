@@ -78,7 +78,6 @@ public class UpdateTournamentCommandHandler : IRequestHandler<UpdateTournamentCo
         if (request.Request.WalletNumber != null) tournament.WalletNumber = request.Request.WalletNumber;
         if (request.Request.InstaPayNumber != null) tournament.InstaPayNumber = request.Request.InstaPayNumber;
         if (request.Request.IsHomeAwayEnabled.HasValue) tournament.IsHomeAwayEnabled = request.Request.IsHomeAwayEnabled.Value;
-        if (request.Request.SeedingMode.HasValue) tournament.SeedingMode = request.Request.SeedingMode.Value;
         if (request.Request.PaymentMethodsJson != null) tournament.PaymentMethodsJson = request.Request.PaymentMethodsJson;
         
         if (request.Request.Mode.HasValue) 

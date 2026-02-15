@@ -40,4 +40,5 @@ public interface ITournamentService
     
     Task<IEnumerable<MatchDto>> SetOpeningMatchAsync(Guid tournamentId, Guid homeTeamId, Guid awayTeamId, Guid userId, string userRole, CancellationToken ct = default);
     Task<IEnumerable<MatchDto>> GenerateManualMatchesAsync(Guid tournamentId, ManualDrawRequest request, Guid userId, string userRole, CancellationToken ct = default);
+    Task<IEnumerable<MatchDto>> GenerateManualGroupMatchesAsync(Guid tournamentId, Guid userId, string userRole, CancellationToken ct = default);
 }

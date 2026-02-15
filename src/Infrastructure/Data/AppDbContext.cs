@@ -152,6 +152,13 @@ public class AppDbContext : DbContext
 
         // Tournament precision
         modelBuilder.Entity<Tournament>().Property(t => t.EntryFee).HasPrecision(18, 2);
+        
+        // Explicitly Ignore obsolete properties (attributes might fail if DLLs are out of sync)
+        modelBuilder.Entity<Tournament>().Ignore(t => t.OpeningMatchHomeTeamId);
+        modelBuilder.Entity<Tournament>().Ignore(t => t.OpeningMatchAwayTeamId);
+
+        // PROD-FIX: Disable Output Clause for SQL Server triggers compatibility
+        modelBuilder.Entity<Tournament>().ToTable(tb => tb.UseSqlOutputClause(false));
 
         // Soft Delete Configuration & Propagation
         

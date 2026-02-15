@@ -1,4 +1,6 @@
 using Application.Interfaces;
+using Application.Features.Tournaments.Commands.GenerateMatches;
+using Application.DTOs.Matches;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
@@ -15,27 +17,31 @@ namespace Application.Features.Tournaments.Commands.SetOpeningMatch;
 /// - Uses DistributedLock.
 /// - Overrides previous opening selection if exists.
 /// - Cannot be called after schedule generated.
+/// - AUTOMATION: Automatically triggers match generation for Random scheduling mode.
 /// </summary>
-public class SetOpeningMatchCommandHandler : IRequestHandler<SetOpeningMatchCommand, Unit>
+public class SetOpeningMatchCommandHandler : IRequestHandler<SetOpeningMatchCommand, IEnumerable<MatchDto>>
 {
     private readonly IRepository<Tournament> _tournamentRepository;
     private readonly IRepository<TeamRegistration> _registrationRepository;
     private readonly IRepository<Match> _matchRepository;
     private readonly IDistributedLock _distributedLock;
+    private readonly IMediator _mediator;
 
     public SetOpeningMatchCommandHandler(
         IRepository<Tournament> tournamentRepository,
         IRepository<TeamRegistration> registrationRepository,
         IRepository<Match> matchRepository,
-        IDistributedLock distributedLock)
+        IDistributedLock distributedLock,
+        IMediator mediator)
     {
         _tournamentRepository = tournamentRepository;
         _registrationRepository = registrationRepository;
         _matchRepository = matchRepository;
         _distributedLock = distributedLock;
+        _mediator = mediator;
     }
 
-    public async Task<Unit> Handle(SetOpeningMatchCommand request, CancellationToken cancellationToken)
+    public async Task<IEnumerable<MatchDto>> Handle(SetOpeningMatchCommand request, CancellationToken cancellationToken)
     {
         var lockKey = $"tournament-lock-{request.TournamentId}";
         if (!await _distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromMinutes(2), cancellationToken))
@@ -69,7 +75,15 @@ public class SetOpeningMatchCommandHandler : IRequestHandler<SetOpeningMatchComm
             // Persist within same transaction
             await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
 
-            return Unit.Value;
+            // AUTOMATION: If tournament is in Random scheduling mode, automatically generate matches
+            IEnumerable<MatchDto> generatedMatches = new List<MatchDto>();
+            if (tournament.SchedulingMode == SchedulingMode.Random)
+            {
+                var generateCommand = new GenerateMatchesCommand(request.TournamentId, request.UserId, request.UserRole);
+                generatedMatches = await _mediator.Send(generateCommand, cancellationToken);
+            }
+
+            return generatedMatches;
         }
         finally
         {

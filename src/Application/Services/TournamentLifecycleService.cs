@@ -60,18 +60,10 @@ public class TournamentLifecycleService : ITournamentLifecycleService
 
             if (groupMatches.Any() && groupMatches.All(m => m.Status == MatchStatus.Finished) && !knockoutMatches.Any())
             {
-                // PART 3 Logic: Transition to WaitingForOpeningMatchSelection
-                {
-                    tournament.ChangeStatus(TournamentStatus.WaitingForOpeningMatchSelection);
-                    await _tournamentRepository.UpdateAsync(tournament, ct);
-                    
-                    await _analyticsService.LogActivityByTemplateAsync("GROUPS_FINISHED", new Dictionary<string, string> { { "tournamentName", tournament.Name } }, null, "System", ct);
-                    await _notifier.SendTournamentUpdatedAsync(_mapper.Map<TournamentDto>(tournament));
-                    
-                    // Note: GenerateKnockoutR1Async should now be called by Admin action (SetOpeningMatch or similar)
-                    // But for backward compatibility or auto-flow if no opening match fields are set:
-                    // we could auto-advance if needed. Re-evaluating based on requirements.
-                }
+                await _analyticsService.LogActivityByTemplateAsync("GROUPS_FINISHED", new Dictionary<string, string> { { "tournamentName", tournament.Name } }, null, "System", ct);
+                
+                // Auto-generate Knockout Round 1
+                await GenerateKnockoutR1Async(tournament.Id, ct);
                 return;
             }
         }
@@ -348,7 +340,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
             TeamId = t.TeamId, 
             TeamName = t.Team?.Name ?? "فريق",
             TeamLogoUrl = t.Team?.Logo,
-            GroupId = GetGroupId(allMatches, t.TeamId) 
+            GroupId = t.GroupId
         }).ToList();
         
         foreach(var m in allMatches.Where(mm => (mm.GroupId != null || mm.StageName == "League") && mm.Status == MatchStatus.Finished))
@@ -403,15 +395,6 @@ public class TournamentLifecycleService : ITournamentLifecycleService
             .ToList();
     }
     
-    private int? GetGroupId(IEnumerable<Match> matches, Guid teamId)
-    {
-        var match = matches.FirstOrDefault(m => m.HomeTeamId == teamId || m.AwayTeamId == teamId);
-        if (match == null) return null;
-        if (match.GroupId != null) return match.GroupId;
-        if (match.StageName == "League") return 1;
-        return null;
-    }
-
     private Match CreateMatch(Tournament t, Guid home, Guid away, DateTime date, int? group, int? round, string stage, CancellationToken ct)
     {
         return new Match

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using Domain.Enums;
 
@@ -54,11 +55,14 @@ public class Tournament : BaseEntity
     public Guid? OpeningTeamBId { get; private set; }
 
     // Backward-compatible aliases (mapped to same DB columns)
+    [NotMapped]
     public Guid? OpeningMatchHomeTeamId
     {
         get => OpeningTeamAId;
         set => OpeningTeamAId = value;
     }
+    
+    [NotMapped]
     public Guid? OpeningMatchAwayTeamId
     {
         get => OpeningTeamBId;
@@ -116,7 +120,6 @@ public class Tournament : BaseEntity
 
     // New Configurations
     public bool IsHomeAwayEnabled { get; set; } = false; 
-    public SeedingMode SeedingMode { get; set; } = SeedingMode.ShuffleOnly;
     
     // Scheduling Mode: Random or Manual
     public SchedulingMode SchedulingMode { get; set; } = SchedulingMode.Random;

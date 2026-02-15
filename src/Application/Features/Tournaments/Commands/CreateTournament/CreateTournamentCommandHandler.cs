@@ -50,7 +50,6 @@ public class CreateTournamentCommandHandler : IRequestHandler<CreateTournamentCo
             WalletNumber = request.Request.WalletNumber,
             InstaPayNumber = request.Request.InstaPayNumber,
             IsHomeAwayEnabled = request.Request.IsHomeAwayEnabled,
-            SeedingMode = request.Request.SeedingMode,
             PaymentMethodsJson = request.Request.PaymentMethodsJson,
             Mode = request.Request.Mode,
             AllowLateRegistration = request.Request.AllowLateRegistration,
