@@ -114,6 +114,15 @@ public class UserService : IUserService
             }
         }
 
+        // Populate ALL joined team IDs for multi-team support (e.g., chat auth, dashboard)
+        var joinedTeams = await _teamRepository.GetQueryable()
+            .AsNoTracking()
+            .Where(t => t.Players.Any(p => p.UserId == id))
+            .Select(t => t.Id)
+            .ToListAsync(cancellationToken);
+        
+        dto.JoinedTeamIds = joinedTeams;
+
         var activities = await _activityRepository.GetQueryable()
             .AsNoTracking()
             .Where(a => a.UserId == id)

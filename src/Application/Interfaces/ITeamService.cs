@@ -20,6 +20,7 @@ public interface ITeamService
     
     // Invitation flow
     Task<JoinRequestDto> InvitePlayerAsync(Guid teamId, Guid captainId, AddPlayerRequest request, CancellationToken ct = default);
+    Task<PlayerDto> AddGuestPlayerAsync(Guid teamId, Guid captainId, AddGuestPlayerRequest request, CancellationToken ct = default);
     Task<JoinRequestDto> AcceptInviteAsync(Guid requestId, Guid userId, CancellationToken ct = default);
     Task<JoinRequestDto> RejectInviteAsync(Guid requestId, Guid userId, CancellationToken ct = default);
     Task<Application.Common.Models.PagedResult<JoinRequestDto>> GetUserInvitationsAsync(Guid userId, int page, int pageSize, CancellationToken ct = default);

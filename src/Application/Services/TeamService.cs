@@ -456,8 +456,7 @@ public class TeamService : ITeamService
              // Add player to team
              user = await _userRepository.GetByIdAsync(request.UserId, ct);
              if (user != null) {
-                 if (user.TeamId.HasValue) throw new ConflictException("هذا اللاعب مسجل بالفعل في فريق آخر.");
-                 user.TeamId = teamId;
+                 if (!user.TeamId.HasValue) user.TeamId = teamId;
                  await _userRepository.UpdateAsync(user, ct);
                  await _realTimeNotifier.SendUserUpdatedAsync(_mapper.Map<UserDto>(user));
 
@@ -521,10 +520,9 @@ public class TeamService : ITeamService
         if (user == null) throw new NotFoundException("لم يتم العثور على لاعب بهذا الرقم التعريفي.");
 
         // 3. Validation
-        if (user.TeamId.HasValue)
+        if (user.TeamId == teamId || team.Players.Any(p => p.UserId == user.Id))
         {
-            if (user.TeamId == teamId) throw new ConflictException("اللاعب مسجل بالفعل في هذا الفريق.");
-            throw new ConflictException("هذا اللاعب مسجل بالفعل في فريق آخر.");
+            throw new ConflictException("اللاعب مسجل بالفعل في هذا الفريق.");
         }
 
         // Check for existing pending request
@@ -555,6 +553,56 @@ public class TeamService : ITeamService
         };
     }
 
+    public async Task<PlayerDto> AddGuestPlayerAsync(Guid teamId, Guid captainId, AddGuestPlayerRequest request, CancellationToken ct = default)
+    {
+        // 1. Validate
+        if (string.IsNullOrWhiteSpace(request.Name))
+            throw new BadRequestException("اسم اللاعب مطلوب.");
+
+        // 2. Verify Captain Ownership
+        var team = await _teamRepository.GetByIdAsync(teamId, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
+        if (team == null) throw new NotFoundException(nameof(Team), teamId);
+
+        var captain = team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
+        if (captain == null || captain.UserId != captainId) throw new ForbiddenException("فقط قائد الفريق يمكنه إضافة لاعبين.");
+
+        // 3. Check duplicate name in same team
+        if (team.Players.Any(p => p.Name.Trim().Equals(request.Name.Trim(), StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new ConflictException("يوجد لاعب بنفس الاسم في الفريق بالفعل.");
+        }
+
+        // 4. Create Player (no UserId - guest player)
+        var player = new Player
+        {
+            Name = request.Name.Trim(),
+            DisplayId = "G-" + new Random().Next(100000, 999999),
+            UserId = null, // Guest player - no account
+            TeamId = teamId,
+            TeamRole = TeamRole.Member,
+            Number = request.Number ?? 0,
+            Position = request.Position ?? "لاعب",
+            Status = "active"
+        };
+        await _playerRepository.AddAsync(player, ct);
+
+        // 5. Broadcast update
+        await BroadcastTeamSnapshotAsync(teamId, ct);
+
+        // 6. Log activity
+        await _analyticsService.LogActivityByTemplateAsync(
+            ActivityConstants.TEAM_JOINED,
+            new Dictionary<string, string> {
+                { "playerName", player.Name },
+                { "teamName", team.Name }
+            },
+            captainId,
+            captain.Name ?? "الكابتن"
+        , ct);
+
+        return _mapper.Map<PlayerDto>(player);
+    }
+
     public async Task<JoinRequestDto> AcceptInviteAsync(Guid requestId, Guid userId, CancellationToken ct = default)
     {
         var request = await _joinRequestRepository.GetByIdAsync(requestId, new[] { "Team.Players" }, ct);
@@ -565,14 +613,15 @@ public class TeamService : ITeamService
         var user = await _userRepository.GetByIdAsync(userId, ct);
         if (user == null) throw new NotFoundException(nameof(User), userId);
 
-        if (user.TeamId.HasValue) throw new ConflictException("أنت عضو في فريق آخر بالفعل.");
+        // Allow joining multiple teams - remove single-team blocking check
+        // if (user.TeamId.HasValue) throw new ConflictException("أنت عضو في فريق آخر بالفعل.");
 
         // 1. Update Request
         request.Status = "approved";
         await _joinRequestRepository.UpdateAsync(request, ct);
 
         // 2. Add to Team
-        user.TeamId = request.TeamId;
+        if (!user.TeamId.HasValue) user.TeamId = request.TeamId;
         await _userRepository.UpdateAsync(user, ct);
         await _realTimeNotifier.SendUserUpdatedAsync(_mapper.Map<UserDto>(user));
 
@@ -720,7 +769,12 @@ public class TeamService : ITeamService
                 var user = await _userRepository.GetByIdAsync(targetUserId, ct);
                 if (user != null)
                 {
-                    user.TeamId = null;
+                    if (user.TeamId == teamId) 
+                    {
+                        // Find another team they are a member of to set as primary, or null if none
+                        var otherTeams = await _playerRepository.FindAsync(p => p.UserId == targetUserId && p.TeamId != teamId, ct);
+                        user.TeamId = otherTeams.FirstOrDefault()?.TeamId;
+                    }
                     await _userRepository.UpdateAsync(user, ct);
                     await _realTimeNotifier.SendUserUpdatedAsync(_mapper.Map<UserDto>(user));
 
