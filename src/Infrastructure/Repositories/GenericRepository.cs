@@ -121,31 +121,37 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
     public async Task AddAsync(T entity, CancellationToken ct = default)
     {
         await _dbSet.AddAsync(entity, ct);
+        await _context.SaveChangesAsync(ct);
     }
 
     public async Task AddRangeAsync(IEnumerable<T> entities, CancellationToken ct = default)
     {
         await _dbSet.AddRangeAsync(entities, ct);
+        await _context.SaveChangesAsync(ct);
     }
 
     public async Task UpdateAsync(T entity, CancellationToken ct = default)
     {
         _dbSet.Update(entity);
+        await _context.SaveChangesAsync(ct);
     }
 
     public async Task UpdateRangeAsync(IEnumerable<T> entities, CancellationToken ct = default)
     {
         _dbSet.UpdateRange(entities);
+        await _context.SaveChangesAsync(ct);
     }
 
     public async Task DeleteAsync(T entity, CancellationToken ct = default)
     {
         _dbSet.Remove(entity);
+        await _context.SaveChangesAsync(ct);
     }
 
     public async Task DeleteRangeAsync(IEnumerable<T> entities, CancellationToken ct = default)
     {
         _dbSet.RemoveRange(entities);
+        await _context.SaveChangesAsync(ct);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -160,6 +166,7 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
     public async Task HardDeleteAsync(T entity, CancellationToken ct = default)
     {
         _dbSet.Remove(entity);
+        await _context.SaveChangesAsync(ct);
     }
 
     public async Task<int> CountAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default)

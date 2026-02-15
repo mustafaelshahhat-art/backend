@@ -156,12 +156,14 @@ public class AuthService : IAuthService
             }
         });
 
+        /* MOVED TO VERIFY EMAIL
         // Persistent Notification for Admins
         await _notificationService.SendNotificationByTemplateAsync(Guid.Empty, NotificationTemplates.ADMIN_NEW_USER_REGISTERED, new Dictionary<string, string> 
         { 
             { "name", user.Name },
             { "role", user.Role.ToString() }
         }, "system", ct);
+        */
 
         return new AuthResponse
         {
@@ -192,6 +194,7 @@ public class AuthService : IAuthService
         if (!user.IsEmailVerified && user.Role != UserRole.Admin)
         {
             // NEW LOGIC: Generate a new OTP and resend email in background
+            /* AUTO-RESEND DISABLED TO PREVENT RACE CONDITIONS
             try 
             {
                 var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY", ct);
@@ -209,21 +212,23 @@ public class AuthService : IAuthService
                             "10 دقائق"
                         );
                         await emailSvc.SendEmailAsync(user.Email, "تفعيل حسابك – RAMADAN GANA", body);
-                    } catch { /* Ignored for login flow */ }
+                    } catch {  }
                 });
             }
             catch (Exception ex)
             {
                 // OTP Gen failure or Task.Run failure, ignore to let LoginException proceed
             }
+            */
 
             throw new EmailNotVerifiedException(user.Email);
         }
 
-        // 2. SURGICAL FIX: Enforce Active Status (Only block Suspended)
+        // 2. Enforce Active Status: Block Suspended only. 
+        // Pending users are allowed to login (Read-Only access handled by Policies/Frontend)
         if (user.Status == UserStatus.Suspended)
         {
-             throw new ForbiddenException("Account is suspended.");
+            throw new ForbiddenException("تم إيقاف حسابك. يرجى التواصل مع الإدارة.");
         }
 
         var token = _jwtTokenGenerator.GenerateToken(user);
@@ -282,21 +287,52 @@ public class AuthService : IAuthService
     }
     public async Task VerifyEmailAsync(string email, string otp, CancellationToken ct = default)
     {
-        var user = (await _userRepository.FindAsync(u => u.Email == email, ct)).FirstOrDefault();
-        if (user == null) throw new NotFoundException("User not found.");
+        // CRITICAL FIX: Normalize email to lowercase before lookup (matches registration behavior)
+        var normalizedEmail = email?.Trim().ToLower() ?? string.Empty;
+        
+        _logger.LogInformation($"[VerifyEmail] Attempting verification. Original: '{email}', Normalized: '{normalizedEmail}', OTP: '{otp}'");
+
+        var user = (await _userRepository.FindAsync(u => u.Email.ToLower() == normalizedEmail, ct)).FirstOrDefault();
+        
+        if (user == null) 
+        {
+            _logger.LogError($"[VerifyEmail] FAILURE: User not found for email: '{normalizedEmail}' (Original: '{email}')");
+            throw new NotFoundException($"User not found for email: {email}");
+        }
+
+        _logger.LogInformation($"[VerifyEmail] User found: {user.Id}, IsEmailVerified: {user.IsEmailVerified}");
 
         if (user.IsEmailVerified) return; // Already verified
 
         var isValid = await _otpService.VerifyOtpAsync(user.Id, otp, "EMAIL_VERIFY", ct);
-        if (!isValid) throw new BadRequestException("Invalid or expired OTP.");
+        if (!isValid) 
+        {
+            _logger.LogWarning($"[VerifyEmail] INVALID OTP for User: {user.Id}. Provided: {otp}");
+            throw new BadRequestException("كود التفعيل غير صحيح أو منتهي الصلاحية.");
+        }
+        
+        _logger.LogInformation($"[VerifyEmail] OTP Valid. Updating status for User: {user.Id}");
 
         user.IsEmailVerified = true;
+        // Status stays Pending - Admin must approve before user can login
         
         await _userRepository.UpdateAsync(user, ct);
 
-        // NEW: Notify Admins that a new VERIFIED user joined
+        // Notify Admins: User verified their email, now needs admin review/approval
         var mappedUser = await MapUserWithTeamInfoAsync(user, ct);
         await _notifier.SendUserCreatedAsync(mappedUser, ct);
+        
+        // Persistent notification to admins for review
+        await _notificationService.SendNotificationByTemplateAsync(
+            Guid.Empty, 
+            NotificationTemplates.ADMIN_USER_VERIFIED_PENDING_APPROVAL, 
+            new Dictionary<string, string> 
+            { 
+                { "name", user.Name },
+                { "email", user.Email },
+                { "role", user.Role.ToString() }
+            }, 
+            "system", ct);
     }
 
     public async Task ForgotPasswordAsync(string email, CancellationToken ct = default)

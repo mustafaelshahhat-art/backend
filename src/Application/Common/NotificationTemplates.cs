@@ -34,6 +34,7 @@ public static class NotificationTemplates
     public const string TOURNAMENT_MATCHES_READY = "TOURNAMENT_MATCHES_READY";
     public const string TOURNAMENT_ELIMINATED = "TOURNAMENT_ELIMINATED";
     public const string ADMIN_NEW_USER_REGISTERED = "ADMIN_NEW_USER_REGISTERED";
+    public const string ADMIN_USER_VERIFIED_PENDING_APPROVAL = "ADMIN_USER_VERIFIED_PENDING_APPROVAL";
     public const string PASSWORD_CHANGED = "PASSWORD_CHANGED";
 
     private static readonly Dictionary<string, (string Title, string Message)> Templates = new()
@@ -69,6 +70,7 @@ public static class NotificationTemplates
         { TOURNAMENT_MATCHES_READY, ("جدول المباريات", "تم توليد جدول المباريات لبطولة {tournamentName}. تحقق من مواعيدكم القادمة.") },
         { TOURNAMENT_ELIMINATED, ("إقصاء الفريق", "للأسف، تم إقصاء فريقكم {teamName} من بطولة {tournamentName} من قبل اللجنة المنظمة.") },
         { ADMIN_NEW_USER_REGISTERED, ("تسجيل جديد", "قام مستخدم جديد بالتسجيل: {name} ({role}).") },
+        { ADMIN_USER_VERIFIED_PENDING_APPROVAL, ("مستخدم بانتظار الموافقة", "قام {name} ({email}) بتأكيد بريده الإلكتروني وبانتظار موافقتكم لتفعيل حسابه.") },
         { PASSWORD_CHANGED, ("تغيير كلمة المرور", "تم تغيير كلمة مرور حسابك بنجاح.") }
     };
 

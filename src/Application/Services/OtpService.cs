@@ -65,7 +65,10 @@ public class OtpService : IOtpService
 
         if (validOtp == null)
         {
-            _logger.LogWarning($"No valid OTP found for user {userId}");
+            _logger.LogWarning($"[VerifyOtp] No valid active OTP found for user {userId}. (Type: {type})");
+            // Debug: Check if ANY otp exists for this user, even used/expired
+            var allOtps = await _otpRepository.FindAsync(o => o.UserId == userId && o.Type == type, ct);
+            _logger.LogInformation($"[VerifyOtp] DEBUG: Found {allOtps.Count()} total otps for user. Last one status: Used={allOtps.LastOrDefault()?.IsUsed}, Expires={allOtps.LastOrDefault()?.ExpiresAt}");
             return false;
         }
 
