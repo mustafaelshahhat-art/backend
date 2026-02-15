@@ -18,5 +18,6 @@ public interface IMatchService
     Task<MatchDto> UpdateAsync(Guid id, UpdateMatchRequest request, Guid userId, string userRole, CancellationToken ct = default);
 
     Task<IEnumerable<MatchDto>> GenerateMatchesForTournamentAsync(Guid tournamentId, CancellationToken ct = default);
+    Task<IEnumerable<MatchDto>> GetMatchesByTournamentAsync(Guid tournamentId, CancellationToken ct = default);
 
 }

@@ -14,13 +14,15 @@ public class TournamentsController : ControllerBase
 {
     private readonly ITournamentService _tournamentService;
     private readonly IUserService _userService;
+    private readonly IMatchService _matchService;
     private readonly MediatR.IMediator _mediator;
     private readonly IFileStorageService _fileStorage;
 
-    public TournamentsController(ITournamentService tournamentService, IUserService userService, MediatR.IMediator mediator, IFileStorageService fileStorage)
+    public TournamentsController(ITournamentService tournamentService, IUserService userService, IMatchService matchService, MediatR.IMediator mediator, IFileStorageService fileStorage)
     {
         _tournamentService = tournamentService;
         _userService = userService;
+        _matchService = matchService;
         _mediator = mediator;
         _fileStorage = fileStorage;
     }
@@ -60,6 +62,14 @@ public class TournamentsController : ControllerBase
     public async Task<ActionResult<Application.Common.Models.PagedResult<TournamentDto>>> GetPaged([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         return await GetAll(page, pageSize, cancellationToken);
+    }
+
+    [HttpGet("{id}/matches")]
+    [AllowAnonymous]
+    public async Task<ActionResult<IEnumerable<MatchDto>>> GetMatches(Guid id, CancellationToken cancellationToken)
+    {
+        var matches = await _matchService.GetMatchesByTournamentAsync(id, cancellationToken);
+        return Ok(matches);
     }
 
     [HttpGet("{id}")]

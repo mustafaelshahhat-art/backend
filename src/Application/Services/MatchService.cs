@@ -444,6 +444,13 @@ public class MatchService : IMatchService
         return matchDto;
     }
 
+    public async Task<IEnumerable<MatchDto>> GetMatchesByTournamentAsync(Guid tournamentId, CancellationToken ct = default)
+    {
+        var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, new[] { "Events.Player", "HomeTeam", "AwayTeam", "Tournament" }, ct);
+        
+        // Order by date desc
+        return _mapper.Map<IEnumerable<MatchDto>>(matches.OrderByDescending(m => m.Date));
+    }
     public Task<IEnumerable<MatchDto>> GenerateMatchesForTournamentAsync(Guid tournamentId, CancellationToken ct = default)
     {
         throw new NotImplementedException("Use GenerateMatchesAsync with team IDs instead.");
