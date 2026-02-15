@@ -90,27 +90,34 @@ public class MatchChatHub : Hub
 
     private async Task<bool> VerifyMatchAccessAsync(string matchId, Guid userId)
     {
-        // PROD-AUDIT: Use cached user from accessor if available
+        if (!Guid.TryParse(matchId, out var matchGuid)) return false;
+
+        // Use lean projection to check both participants AND tournament creator
+        var matchAccessInfo = await _matchRepository.GetQueryable()
+            .AsNoTracking()
+            .Where(m => m.Id == matchGuid)
+            .Select(m => new 
+            { 
+                m.HomeTeamId, 
+                m.AwayTeamId, 
+                TournamentCreatorId = m.Tournament!.CreatorUserId 
+            })
+            .FirstOrDefaultAsync();
+
+        if (matchAccessInfo == null) return false;
+
+        // 1. Check if user is the Tournament Creator
+        if (matchAccessInfo.TournamentCreatorId == userId) return true;
+
+        // 2. Check if user belongs to one of the teams
         var userTeamId = _userAccessor.User?.TeamId;
-        
         if (!userTeamId.HasValue)
         {
             var user = await _userService.GetByIdAsync(userId);
-            if (user == null || !user.TeamId.HasValue) return false;
-            userTeamId = user.TeamId;
+            if (user != null && user.TeamId.HasValue)
+                userTeamId = user.TeamId;
         }
 
-        if (!Guid.TryParse(matchId, out var matchGuid)) return false;
-        
-        // Use lean projection to avoid join explosion/full entity materialization
-        var matchTeams = await _matchRepository.GetQueryable()
-            .AsNoTracking()
-            .Where(m => m.Id == matchGuid)
-            .Select(m => new { m.HomeTeamId, m.AwayTeamId })
-            .FirstOrDefaultAsync();
-
-        if (matchTeams == null) return false;
-
-        return matchTeams.HomeTeamId == userTeamId || matchTeams.AwayTeamId == userTeamId;
+        return userTeamId.HasValue && (matchAccessInfo.HomeTeamId == userTeamId || matchAccessInfo.AwayTeamId == userTeamId);
     }
 }

@@ -804,7 +804,7 @@ public class TournamentService : ITournamentService
 
         ValidateOwnership(tournament, userId, userRole, ct);
 
-        if (tournament.Status != TournamentStatus.RegistrationClosed)
+        if (tournament.Status != TournamentStatus.RegistrationClosed && tournament.Status != TournamentStatus.WaitingForOpeningMatchSelection)
             throw new ConflictException("يجب إغلاق التسجيل قبل إنشاء المباريات.");
 
         if (tournament.SchedulingMode == SchedulingMode.Manual)
@@ -1329,51 +1329,44 @@ public class TournamentService : ITournamentService
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
         ValidateOwnership(tournament, userId, userRole, ct);
 
-        // Case 1: Random Mode - Registration Closed (Automated Setup)
-        if (tournament.Status == TournamentStatus.RegistrationClosed)
-        {
-            if (homeTeamId == awayTeamId) throw new ConflictException("لا يمكن اختيار نفس الفريق للمباراة.");
-
-            // Get registrations to validate team existence
-            var regs = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.Status == RegistrationStatus.Approved, ct);
-            
-            // Set teams (this uses the domain logic which handles validation)
-            tournament.SetOpeningTeams(homeTeamId, awayTeamId, regs.Select(r => r.TeamId), false);
-            await _tournamentRepository.UpdateAsync(tournament, ct);
-
-            // AUTO-GENERATE everything if mode is Random
-            if (tournament.SchedulingMode == SchedulingMode.Random || tournament.SchedulingMode == SchedulingMode.Manual)
-            {
-                // In Random Mode, we generate the whole schedule immediately as requested by user
-                if (tournament.SchedulingMode == SchedulingMode.Random)
-                {
-                   return await GenerateMatchesAsync(tournamentId, userId, userRole, ct);
-                }
-                
-                // In Manual Mode, we just save the teams (SetOpeningTeams already did that)
-                return new List<MatchDto>();
-            }
-        }
-
-        // Case 2: Knockout Mode - Waiting for Selection (Status check)
-        if (tournament.Status != TournamentStatus.WaitingForOpeningMatchSelection)
+        // Allow selection when registration is closed OR specifically waiting for opening match selection
+        if (tournament.Status != TournamentStatus.RegistrationClosed && tournament.Status != TournamentStatus.WaitingForOpeningMatchSelection)
         {
             throw new ConflictException("لا يمكن تحديد مباراة الافتتاح في هذه المرحلة.");
         }
 
         if (homeTeamId == awayTeamId) throw new ConflictException("لا يمكن اختيار نفس الفريق للمباراة.");
 
-        tournament.OpeningMatchHomeTeamId = homeTeamId;
-        tournament.OpeningMatchAwayTeamId = awayTeamId;
+        // Get registrations to validate team existence
+        var regs = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId && r.Status == RegistrationStatus.Approved, ct);
         
+        // Set teams (this uses the domain logic which handles validation)
+        tournament.SetOpeningTeams(homeTeamId, awayTeamId, regs.Select(r => r.TeamId), false);
         await _tournamentRepository.UpdateAsync(tournament, ct);
 
-        // Trigger Knockout R1 Generation
-        await _lifecycleService.GenerateKnockoutR1Async(tournamentId, ct);
-        
-        // Refresh tournament and return generated matches
-        var generatedMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId && m.GroupId == null, ct);
-        return _mapper.Map<IEnumerable<MatchDto>>(generatedMatches);
+        // Detect if we should auto-generate
+        if (tournament.SchedulingMode == SchedulingMode.Random)
+        {
+            var mode = tournament.GetEffectiveMode();
+            bool isPureKnockout = mode == TournamentMode.KnockoutSingle || mode == TournamentMode.KnockoutHomeAway;
+
+            if (isPureKnockout)
+            {
+                // Pure Knockout starting from Round 1
+                await _lifecycleService.GenerateKnockoutR1Async(tournamentId, ct);
+                
+                // Refresh and return generated matches
+                var generatedMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId && m.GroupId == null, ct);
+                return _mapper.Map<IEnumerable<MatchDto>>(generatedMatches);
+            }
+            else
+            {
+                // League (Round-Robin) or Groups+Knockout starting from Groups
+                return await GenerateMatchesAsync(tournamentId, userId, userRole, ct);
+            }
+        }
+
+        return new List<MatchDto>();
     }
 
     public async Task WithdrawTeamAsync(Guid tournamentId, Guid teamId, Guid userId, CancellationToken ct = default)

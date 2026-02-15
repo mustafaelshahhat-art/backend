@@ -5,6 +5,5 @@ public enum MatchEventType
     Goal,
     YellowCard,
     RedCard,
-    Penalty,
-    OwnGoal
+    Penalty
 }

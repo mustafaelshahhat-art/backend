@@ -47,7 +47,7 @@ public class MatchService : IMatchService
 
     public async Task<Application.Common.Models.PagedResult<MatchDto>> GetPagedAsync(int pageNumber, int pageSize, CancellationToken ct = default)
     {
-        var result = await _matchRepository.GetPagedAsync(pageNumber, pageSize, null, q => q.OrderByDescending(m => m.Date), ct, m => m.HomeTeam!, m => m.AwayTeam!);
+        var result = await _matchRepository.GetPagedAsync(pageNumber, pageSize, null, q => q.OrderByDescending(m => m.Date), ct, m => m.HomeTeam!, m => m.AwayTeam!, m => m.Tournament!);
         
         var dtos = _mapper.Map<List<MatchDto>>(result.Items);
         return new Application.Common.Models.PagedResult<MatchDto>(dtos, result.TotalCount, pageNumber, pageSize);
@@ -55,7 +55,7 @@ public class MatchService : IMatchService
 
     public async Task<MatchDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
-        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Events.Player" }, ct);
+        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam", "Events.Player", "Tournament" }, ct);
         if (match == null) return null;
 
         if (match.Events == null || !match.Events.Any())
