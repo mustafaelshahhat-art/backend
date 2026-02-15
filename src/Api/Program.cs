@@ -78,18 +78,24 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend",
         policy =>
         {
-            if (allowedOrigins != null && allowedOrigins.Length > 0)
+            if (builder.Environment.IsDevelopment())
             {
-                policy.WithOrigins(allowedOrigins);
+                policy.SetIsOriginAllowed(_ => true) // Allow any origin in Dev (LAN access)
+                      .AllowAnyHeader()
+                      .AllowAnyMethod()
+                      .AllowCredentials();
             }
             else
             {
-                policy.WithOrigins("http://localhost:4200"); // Fallback for Development
+                if (allowedOrigins != null && allowedOrigins.Length > 0)
+                {
+                    policy.WithOrigins(allowedOrigins);
+                }
+                
+                policy.AllowAnyHeader()
+                      .AllowAnyMethod()
+                      .AllowCredentials();
             }
-            
-            policy.AllowAnyHeader()
-                   .AllowAnyMethod()
-                   .AllowCredentials(); // Required for SignalR
         });
 });
 
