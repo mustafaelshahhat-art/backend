@@ -827,6 +827,8 @@ namespace Infrastructure.Migrations
                         .HasDatabaseName("IX_Tournaments_Creator_Status");
 
                     b.ToTable("Tournaments");
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("Domain.Entities.TournamentPlayer", b =>
