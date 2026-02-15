@@ -652,23 +652,19 @@ public class TournamentService : ITournamentService
             await _tournamentPlayerRepository.AddRangeAsync(participations);
         }
         
-        // Check if all teams are approved and we reached max capacity to auto-generate matches
+        // Check if all teams are approved and we reached max capacity 
         var allRegistrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournamentId, ct);
         var activeRegistrations = allRegistrations.Where(r => r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn).ToList();
         
         if (activeRegistrations.Count == tournament.MaxTeams && activeRegistrations.All(r => r.Status == RegistrationStatus.Approved))
         {
-            var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, ct);
-            if (!existingMatches.Any() && tournament.Status != TournamentStatus.Active)
+            // STRICT MODE: Do NOT auto-generate matches.
+            // Transition to WaitingForOpeningMatchSelection instead.
+            if (tournament.Status != TournamentStatus.Active && tournament.Status != TournamentStatus.WaitingForOpeningMatchSelection &&
+                tournament.SchedulingMode != SchedulingMode.Manual)
             {
-                // Auto-generate ONLY if not Manual AND (if Random, must have opening teams)
-                bool canAutoGenerate = tournament.SchedulingMode != SchedulingMode.Manual &&
-                                     (tournament.SchedulingMode != SchedulingMode.Random || tournament.HasOpeningTeams);
-                
-                if (canAutoGenerate)
-                {
-                    await GenerateMatchesAsync(tournamentId, userId, userRole);
-                }
+                tournament.ChangeStatus(TournamentStatus.WaitingForOpeningMatchSelection);
+                await _tournamentRepository.UpdateAsync(tournament, ct);
             }
         }
 
@@ -829,6 +825,16 @@ public class TournamentService : ITournamentService
         var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, ct);
         if (existingMatches.Any()) throw new ConflictException("المباريات مولدة بالفعل.");
 
+        // STRICT PAYMENT CHECK: Block generation if any pending payments exist
+        var hasPendingPayments = tournament.Registrations.Any(r => 
+            r.Status == RegistrationStatus.PendingPaymentReview || 
+            r.Status == RegistrationStatus.PendingPayment);
+            
+        if (hasPendingPayments)
+        {
+            throw new ConflictException("لا يمكن توليد المباريات. بانتظار اكتمال الموافقة على جميع المدفوعات.");
+        }
+
         var registrations = tournament.Registrations.Where(r => r.Status == RegistrationStatus.Approved).ToList();
         int minRequired = tournament.MinTeams ?? 2;
         if (registrations.Count < minRequired)
@@ -948,7 +954,8 @@ public class TournamentService : ITournamentService
                 var openingTeamB = tournament.OpeningTeamBId!.Value;
                 var remainingTeams = teamIds.Where(id => id != openingTeamA && id != openingTeamB).ToList();
 
-                int openingGroupIndex = random.Next(tournament.NumberOfGroups);
+                // Lock opening match to Group 1 to ensure it's Match #1 of Round 1
+                int openingGroupIndex = 0; 
                 groups[openingGroupIndex].Add(openingTeamA);
                 groups[openingGroupIndex].Add(openingTeamB);
 

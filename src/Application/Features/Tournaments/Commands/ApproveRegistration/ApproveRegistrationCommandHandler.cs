@@ -107,14 +107,13 @@ public class ApproveRegistrationCommandHandler : IRequestHandler<ApproveRegistra
         
         if (activeRegistrations.Count == tournament.MaxTeams && activeRegistrations.All(r => r.Status == RegistrationStatus.Approved))
         {
-            var existingMatches = await _matchRepository.FindAsync(m => m.TournamentId == request.TournamentId, cancellationToken);
-            if (!existingMatches.Any() && tournament.Status != TournamentStatus.Active && tournament.SchedulingMode != SchedulingMode.Manual)
+            // STRICT MODE: Do NOT auto-generate matches.
+            // Transition to WaitingForOpeningMatchSelection instead.
+            if (tournament.Status != TournamentStatus.Active && tournament.Status != TournamentStatus.WaitingForOpeningMatchSelection &&
+                tournament.SchedulingMode != SchedulingMode.Manual)
             {
-                // Ensure data is persisted before dispatching next command so it's visible in the DB
-                await _transactionManager.SaveChangesAsync(cancellationToken);
-
-                // Dispatch command for generating matches (will handle its own transaction and notification)
-                await _mediator.Send(new GenerateMatchesCommand(request.TournamentId, request.UserId, request.UserRole), cancellationToken);
+                tournament.ChangeStatus(TournamentStatus.WaitingForOpeningMatchSelection);
+                await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
             }
         }
 

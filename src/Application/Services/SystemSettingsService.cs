@@ -71,16 +71,20 @@ public class SystemSettingsService : ISystemSettingsService
 
     private async Task<SystemSetting> GetCachedSettingsAsync(CancellationToken ct = default)
     {
-        if (!_cache.TryGetValue(CacheKey, out SystemSetting settings))
+        if (_cache.TryGetValue(CacheKey, out SystemSetting? settings))
         {
-            settings = await GetOrCreateSettingsAsync(ct);
-            var options = new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions()
-                .SetSlidingExpiration(TimeSpan.FromMinutes(5))
-                .SetAbsoluteExpiration(TimeSpan.FromHours(1));
-            
-            _cache.Set(CacheKey, settings, options);
+             if (settings != null) return settings;
         }
-        return settings!;
+
+        settings = await GetOrCreateSettingsAsync(ct);
+        
+        var options = new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions()
+            .SetSlidingExpiration(TimeSpan.FromMinutes(5))
+            .SetAbsoluteExpiration(TimeSpan.FromHours(1));
+        
+        _cache.Set(CacheKey, settings, options);
+        
+        return settings;
     }
 
     /// <summary>
