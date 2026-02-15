@@ -22,9 +22,9 @@ public class EmailService : IEmailService
 
     public async Task SendEmailAsync(string to, string subject, string body, CancellationToken ct = default)
     {
-        // 1. HARDENING: Read ONLY from Environment Variables
-        var gmailUser = Environment.GetEnvironmentVariable("GMAIL_USER");
-        var gmailPass = Environment.GetEnvironmentVariable("GMAIL_APP_PASSWORD");
+        // Check Configuration first (appsettings), then Environment Variables
+        var gmailUser = _configuration["EmailSettings:Username"] ?? Environment.GetEnvironmentVariable("GMAIL_USER");
+        var gmailPass = _configuration["EmailSettings:Password"] ?? Environment.GetEnvironmentVariable("GMAIL_APP_PASSWORD");
 
         if (string.IsNullOrEmpty(gmailUser) || string.IsNullOrEmpty(gmailPass))
         {
