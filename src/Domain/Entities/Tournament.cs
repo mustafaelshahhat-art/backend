@@ -80,8 +80,8 @@ public class Tournament : BaseEntity
         if (teamAId == teamBId)
             throw new InvalidOperationException("لا يمكن اختيار نفس الفريق للمباراة الافتتاحية.");
 
-        if (Status != TournamentStatus.RegistrationClosed)
-            throw new InvalidOperationException("يمكن تحديد المباراة الافتتاحية فقط عندما يكون التسجيل مغلقاً.");
+        if (Status != TournamentStatus.RegistrationClosed && Status != TournamentStatus.WaitingForOpeningMatchSelection)
+            throw new InvalidOperationException("يمكن تحديد المباراة الافتتاحية فقط عندما يكون التسجيل مغلقاً أو بانتظار اختيار المباراة الافتتاحية.");
 
         if (matchesExist)
             throw new InvalidOperationException("لا يمكن تحديد المباراة الافتتاحية بعد إنشاء المباريات. قم بإعادة تعيين الجدول أولاً.");

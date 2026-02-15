@@ -26,19 +26,22 @@ public class SetOpeningMatchCommandHandler : IRequestHandler<SetOpeningMatchComm
     private readonly IRepository<Match> _matchRepository;
     private readonly IDistributedLock _distributedLock;
     private readonly IMediator _mediator;
+    private readonly ITournamentService _tournamentService;
 
     public SetOpeningMatchCommandHandler(
         IRepository<Tournament> tournamentRepository,
         IRepository<TeamRegistration> registrationRepository,
         IRepository<Match> matchRepository,
         IDistributedLock distributedLock,
-        IMediator mediator)
+        IMediator mediator,
+        ITournamentService tournamentService)
     {
         _tournamentRepository = tournamentRepository;
         _registrationRepository = registrationRepository;
         _matchRepository = matchRepository;
         _distributedLock = distributedLock;
         _mediator = mediator;
+        _tournamentService = tournamentService;
     }
 
     public async Task<IEnumerable<MatchDto>> Handle(SetOpeningMatchCommand request, CancellationToken cancellationToken)
@@ -63,11 +66,26 @@ public class SetOpeningMatchCommandHandler : IRequestHandler<SetOpeningMatchComm
             // Validate: No matches already generated
             var matchesExist = await _matchRepository.AnyAsync(m => m.TournamentId == request.TournamentId, cancellationToken);
 
-            // Get registered (approved) team IDs
-            var registrations = await _registrationRepository.FindAsync(
-                r => r.TournamentId == request.TournamentId && r.Status == RegistrationStatus.Approved, 
+            // STRICT: Validate all teams are approved (Payment Lock System)
+            var allActiveRegistrations = await _registrationRepository.FindAsync(
+                r => r.TournamentId == request.TournamentId && 
+                     r.Status != RegistrationStatus.Rejected && 
+                     r.Status != RegistrationStatus.Withdrawn &&
+                     r.Status != RegistrationStatus.WaitingList, 
                 cancellationToken);
-            var registeredTeamIds = registrations.Select(r => r.TeamId);
+
+            if (allActiveRegistrations.Any(r => r.Status != RegistrationStatus.Approved))
+            {
+                throw new ConflictException("بانتظار اكتمال الموافقة على جميع المدفوعات.");
+            }
+
+            // Ensure we have enough teams
+            if (allActiveRegistrations.Count() < (tournament.MinTeams ?? 2))
+            {
+                 throw new ConflictException("عدد الفرق غير كاف لبدء البطولة.");
+            }
+
+            var registeredTeamIds = allActiveRegistrations.Select(r => r.TeamId);
 
             // Domain validation via entity method (encapsulated)
             tournament.SetOpeningTeams(request.HomeTeamId, request.AwayTeamId, registeredTeamIds, matchesExist);
@@ -79,8 +97,8 @@ public class SetOpeningMatchCommandHandler : IRequestHandler<SetOpeningMatchComm
             IEnumerable<MatchDto> generatedMatches = new List<MatchDto>();
             if (tournament.SchedulingMode == SchedulingMode.Random)
             {
-                var generateCommand = new GenerateMatchesCommand(request.TournamentId, request.UserId, request.UserRole);
-                generatedMatches = await _mediator.Send(generateCommand, cancellationToken);
+                // Call Service DIRECTLY to avoid Distributed Lock Deadlock (since we already hold the lock)
+                generatedMatches = await _tournamentService.GenerateMatchesAsync(request.TournamentId, request.UserId, request.UserRole, cancellationToken);
             }
 
             return generatedMatches;

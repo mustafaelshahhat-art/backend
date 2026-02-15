@@ -121,14 +121,17 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         foreach (var g in groups)
         {
              var ranked = RankTeams(g.ToList());
+             var groupSize = ranked.Count;
+
+             // Logic: If group has <= 2 teams, only top 1 qualifies. Else top 2.
+             int teamsToQualify = groupSize <= 2 ? 1 : 2;
              
-             // Top 2 always qualify
-             for (int i = 0; i < Math.Min(ranked.Count, 2); i++)
+             for (int i = 0; i < Math.Min(ranked.Count, teamsToQualify); i++)
              {
                  qualificationPool.Add(ranked[i]);
              }
 
-             // Others go to best-3rd pool if they are 3rd
+             // Others go to best-3rd pool if they are 3rd (only possible if group size > 2)
              if (ranked.Count > 2)
              {
                  best3rdsPool.Add(ranked[2]);
