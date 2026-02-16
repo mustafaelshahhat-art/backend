@@ -102,9 +102,9 @@ public class AuthService : IAuthService
             Phone = request.Phone?.Trim(),
             NationalId = request.NationalId?.Trim(),
             Age = request.Age,
-            Governorate = request.Governorate,
-            City = request.City,
-            Neighborhood = request.Neighborhood,
+            GovernorateId = request.GovernorateId,
+            CityId = request.CityId,
+            AreaId = request.AreaId,
             IdFrontUrl = request.IdFrontUrl,
             IdBackUrl = request.IdBackUrl,
             IsEmailVerified = false

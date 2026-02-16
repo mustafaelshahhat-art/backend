@@ -18,12 +18,17 @@ public class MappingProfile : Profile
         CreateMap<User, UserDto>()
             .ForMember(d => d.Role, o => o.MapFrom(s => s.Role.ToString()))
             .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()))
+            .ForMember(d => d.GovernorateNameAr, o => o.MapFrom(s => s.GovernorateNav != null ? s.GovernorateNav.NameAr : null))
+            .ForMember(d => d.CityNameAr, o => o.MapFrom(s => s.CityNav != null ? s.CityNav.NameAr : null))
+            .ForMember(d => d.AreaNameAr, o => o.MapFrom(s => s.AreaNav != null ? s.AreaNav.NameAr : null))
             .ForMember(d => d.TeamName, o => o.Ignore())
             .ForMember(d => d.Activities, o => o.Ignore());
 
         CreateMap<User, UserPublicDto>()
             .ForMember(d => d.Role, o => o.MapFrom(s => s.Role.ToString()))
             .ForMember(d => d.Status, o => o.MapFrom(s => s.Status.ToString()))
+            .ForMember(d => d.GovernorateNameAr, o => o.MapFrom(s => s.GovernorateNav != null ? s.GovernorateNav.NameAr : null))
+            .ForMember(d => d.CityNameAr, o => o.MapFrom(s => s.CityNav != null ? s.CityNav.NameAr : null))
             .ForMember(d => d.TeamName, o => o.Ignore());
 
         CreateMap<Activity, UserActivityDto>();

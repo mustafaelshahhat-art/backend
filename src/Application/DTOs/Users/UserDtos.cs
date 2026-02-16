@@ -16,9 +16,12 @@ public class UserDto
     public string? Phone { get; set; }
     public int? Age { get; set; }
     public string? NationalId { get; set; }
-    public string? Governorate { get; set; }
-    public string? City { get; set; }
-    public string? Neighborhood { get; set; }
+    public Guid? GovernorateId { get; set; }
+    public string? GovernorateNameAr { get; set; }
+    public Guid? CityId { get; set; }
+    public string? CityNameAr { get; set; }
+    public Guid? AreaId { get; set; }
+    public string? AreaNameAr { get; set; }
     public string? IdFrontUrl { get; set; }
     public string? IdBackUrl { get; set; }
     public Guid? TeamId { get; set; }
@@ -40,8 +43,10 @@ public class UserPublicDto
     public string Name { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
     public string? Avatar { get; set; }
-    public string? Governorate { get; set; }
-    public string? City { get; set; }
+    public Guid? GovernorateId { get; set; }
+    public string? GovernorateNameAr { get; set; }
+    public Guid? CityId { get; set; }
+    public string? CityNameAr { get; set; }
     public Guid? TeamId { get; set; }
     public string? TeamName { get; set; }
     public string? TeamRole { get; set; }
@@ -64,9 +69,9 @@ public class UpdateUserRequest
     public string? Avatar { get; set; }
     [JsonPropertyName("removeAvatar")]
     public bool RemoveAvatar { get; set; } = false;
-    public string? City { get; set; }
-    public string? Governorate { get; set; }
-    public string? Neighborhood { get; set; }
+    public Guid? GovernorateId { get; set; }
+    public Guid? CityId { get; set; }
+    public Guid? AreaId { get; set; }
     public int? Age { get; set; }
 }
 

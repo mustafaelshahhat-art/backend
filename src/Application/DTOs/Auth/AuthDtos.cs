@@ -11,9 +11,9 @@ public class RegisterRequest
     public string? Phone { get; set; }
     public string? NationalId { get; set; }
     public int? Age { get; set; }
-    public string? Governorate { get; set; }
-    public string? City { get; set; }
-    public string? Neighborhood { get; set; }
+    public Guid? GovernorateId { get; set; }
+    public Guid? CityId { get; set; }
+    public Guid? AreaId { get; set; }
     public string? IdFrontUrl { get; set; }
     public string? IdBackUrl { get; set; }
 }

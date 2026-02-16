@@ -58,19 +58,26 @@ public class UserService : IUserService
     public async Task<Application.Common.Models.PagedResult<UserDto>> GetPagedAsync(int pageNumber, int pageSize, string? role = null, CancellationToken ct = default)
     {
         if (pageSize > 100) pageSize = 100;
-        Expression<Func<User, bool>>? predicate = null;
-        if (!string.IsNullOrEmpty(role) && Enum.TryParse<UserRole>(role, true, out var userRole))
-        {
-            predicate = u => u.Role == userRole && u.IsEmailVerified;
-        }
-        else
-        {
-            predicate = u => u.IsEmailVerified;
-        }
 
-        var result = await _userRepository.GetPagedAsync(pageNumber, pageSize, predicate, q => q.OrderBy(u => u.Name), ct);
-        var dtos = _mapper.Map<List<UserDto>>(result.Items);
-        return new Application.Common.Models.PagedResult<UserDto>(dtos, result.TotalCount, pageNumber, pageSize);
+        var query = _userRepository.GetQueryable()
+            .AsNoTracking()
+            .Include(u => u.GovernorateNav)
+            .Include(u => u.CityNav)
+            .Include(u => u.AreaNav)
+            .Where(u => u.IsEmailVerified);
+
+        if (!string.IsNullOrEmpty(role) && Enum.TryParse<UserRole>(role, true, out var userRole))
+            query = query.Where(u => u.Role == userRole);
+
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
+            .OrderBy(u => u.Name)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        var dtos = _mapper.Map<List<UserDto>>(items);
+        return new Application.Common.Models.PagedResult<UserDto>(dtos, totalCount, pageNumber, pageSize);
     }
 
     public async Task<UserDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -78,6 +85,9 @@ public class UserService : IUserService
         // PROD-AUDIT: Use consolidated query with AsNoTracking. Avoid multiple DB roundtrips.
         var user = await _userRepository.GetQueryable()
             .AsNoTracking()
+            .Include(u => u.GovernorateNav)
+            .Include(u => u.CityNav)
+            .Include(u => u.AreaNav)
             .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
             
         if (user == null) return null;
@@ -153,9 +163,9 @@ public class UserService : IUserService
             user.Avatar = request.Avatar;
         }
         
-        if (!string.IsNullOrEmpty(request.City)) user.City = request.City;
-        if (!string.IsNullOrEmpty(request.Governorate)) user.Governorate = request.Governorate;
-        if (!string.IsNullOrEmpty(request.Neighborhood)) user.Neighborhood = request.Neighborhood;
+        if (request.GovernorateId.HasValue) user.GovernorateId = request.GovernorateId;
+        if (request.CityId.HasValue) user.CityId = request.CityId;
+        if (request.AreaId.HasValue) user.AreaId = request.AreaId;
         if (request.Age.HasValue) user.Age = request.Age;
 
         await _userRepository.UpdateAsync(user, ct);
@@ -288,7 +298,11 @@ public class UserService : IUserService
 
     public async Task<UserPublicDto?> GetPublicByIdAsync(Guid id, CancellationToken ct = default)
     {
-        var user = await _userRepository.GetByIdAsync(id, ct);
+        var user = await _userRepository.GetQueryable()
+            .AsNoTracking()
+            .Include(u => u.GovernorateNav)
+            .Include(u => u.CityNav)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
         if (user == null) return null;
         var dto = _mapper.Map<UserPublicDto>(user);
         if (user.TeamId.HasValue)
@@ -464,21 +478,6 @@ public class UserService : IUserService
             TotalAdmins = totalAdmins,
             IsLastAdmin = isLastAdmin
         };
-    }
-
-    public async Task<IEnumerable<string>> GetGovernoratesAsync(CancellationToken ct = default)
-    {
-        return await _userRepository.GetDistinctAsync(_ => true, u => u.Governorate);
-    }
-
-    public async Task<IEnumerable<string>> GetCitiesAsync(string governorate, CancellationToken ct = default)
-    {
-        return await _userRepository.GetDistinctAsync(u => u.Governorate == governorate, u => u.City);
-    }
-
-    public async Task<IEnumerable<string>> GetDistrictsAsync(string city, CancellationToken ct = default)
-    {
-        return await _userRepository.GetDistinctAsync(u => u.City == city, u => u.Neighborhood);
     }
 
     public async Task<string> UploadAvatarAsync(Guid userId, System.IO.Stream stream, string fileName, string contentType, CancellationToken ct = default)

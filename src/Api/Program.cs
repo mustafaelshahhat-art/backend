@@ -542,6 +542,9 @@ using (var scope = app.Services.CreateScope())
         // Initialize Activity Log Migration (Run once or on demand)
         // var migrationService = scope.ServiceProvider.GetRequiredService<Application.Services.ActivityLogMigrationService>();
         // await migrationService.MigrateLegacyLogsAsync();
+
+        // Seed location data (governorates, cities, areas)
+        Infrastructure.Data.LocationSeeder.Seed(dbContext, scope.ServiceProvider.GetRequiredService<ILogger<Program>>());
     }
     catch (Exception ex)
     {

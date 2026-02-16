@@ -33,11 +33,6 @@ public interface IUserService
     /// </summary>
     Task<AdminCountDto> GetAdminCountAsync(Guid? userId = null, CancellationToken ct = default);
 
-    // Location-based Discovery
-    Task<IEnumerable<string>> GetGovernoratesAsync(CancellationToken ct = default);
-    Task<IEnumerable<string>> GetCitiesAsync(string governorate, CancellationToken ct = default);
-    Task<IEnumerable<string>> GetDistrictsAsync(string city, CancellationToken ct = default);
-
     
     // Profile Management
     Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken ct = default);

@@ -30,6 +30,9 @@ public class AppDbContext : DbContext
     public DbSet<OutboxMessage> OutboxMessages { get; set; }
     public DbSet<IdempotentRequest> IdempotentRequests { get; set; }
     public DbSet<TeamStats> TeamStats { get; set; }
+    public DbSet<Governorate> Governorates { get; set; }
+    public DbSet<City> Cities { get; set; }
+    public DbSet<Area> Areas { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -272,9 +275,87 @@ public class AppDbContext : DbContext
             .IsUnique()
             .HasDatabaseName("UQ_Users_Email");
 
+        // Legacy composite index on deprecated text columns — kept for migration period
+#pragma warning disable CS0618
         modelBuilder.Entity<User>()
             .HasIndex(u => new { u.Governorate, u.City, u.Neighborhood })
             .HasDatabaseName("IX_Users_Location");
+#pragma warning restore CS0618
+
+        // ── Location Entities Configuration ──
+
+        // Governorate
+        modelBuilder.Entity<Governorate>(entity =>
+        {
+            entity.ToTable("Governorates");
+            entity.Property(g => g.NameAr).IsRequired().HasMaxLength(100);
+            entity.Property(g => g.NameEn).IsRequired().HasMaxLength(100);
+            entity.Property(g => g.IsActive).HasDefaultValue(true);
+            entity.Property(g => g.SortOrder).HasDefaultValue(0);
+            entity.HasIndex(g => g.NameAr).IsUnique().HasDatabaseName("UQ_Governorates_NameAr");
+            entity.HasIndex(g => g.NameEn).IsUnique().HasDatabaseName("UQ_Governorates_NameEn");
+            entity.HasIndex(g => g.IsActive).HasDatabaseName("IX_Governorates_IsActive");
+        });
+
+        // City
+        modelBuilder.Entity<City>(entity =>
+        {
+            entity.ToTable("Cities");
+            entity.Property(c => c.NameAr).IsRequired().HasMaxLength(100);
+            entity.Property(c => c.NameEn).IsRequired().HasMaxLength(100);
+            entity.Property(c => c.IsActive).HasDefaultValue(true);
+            entity.Property(c => c.SortOrder).HasDefaultValue(0);
+            entity.HasOne(c => c.Governorate)
+                  .WithMany(g => g.Cities)
+                  .HasForeignKey(c => c.GovernorateId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => c.GovernorateId).HasDatabaseName("IX_City_GovernorateId");
+            entity.HasIndex(c => new { c.GovernorateId, c.NameAr }).IsUnique().HasDatabaseName("UQ_City_Governorate_NameAr");
+            entity.HasIndex(c => c.IsActive).HasDatabaseName("IX_Cities_IsActive");
+        });
+
+        // Area
+        modelBuilder.Entity<Area>(entity =>
+        {
+            entity.ToTable("Areas");
+            entity.Property(a => a.NameAr).IsRequired().HasMaxLength(100);
+            entity.Property(a => a.NameEn).IsRequired().HasMaxLength(100);
+            entity.Property(a => a.IsActive).HasDefaultValue(true);
+            entity.Property(a => a.SortOrder).HasDefaultValue(0);
+            entity.HasOne(a => a.City)
+                  .WithMany(c => c.Areas)
+                  .HasForeignKey(a => a.CityId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(a => a.CityId).HasDatabaseName("IX_Area_CityId");
+            entity.HasIndex(a => new { a.CityId, a.NameAr }).IsUnique().HasDatabaseName("UQ_Area_City_NameAr");
+            entity.HasIndex(a => a.IsActive).HasDatabaseName("IX_Areas_IsActive");
+        });
+
+        // User → Location FKs
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasOne(u => u.GovernorateNav)
+                  .WithMany(g => g.Users)
+                  .HasForeignKey(u => u.GovernorateId)
+                  .OnDelete(DeleteBehavior.Restrict)
+                  .IsRequired(false);
+
+            entity.HasOne(u => u.CityNav)
+                  .WithMany(c => c.Users)
+                  .HasForeignKey(u => u.CityId)
+                  .OnDelete(DeleteBehavior.Restrict)
+                  .IsRequired(false);
+
+            entity.HasOne(u => u.AreaNav)
+                  .WithMany(a => a.Users)
+                  .HasForeignKey(u => u.AreaId)
+                  .OnDelete(DeleteBehavior.Restrict)
+                  .IsRequired(false);
+
+            entity.HasIndex(u => u.GovernorateId).HasDatabaseName("IX_User_GovernorateId");
+            entity.HasIndex(u => u.CityId).HasDatabaseName("IX_User_CityId");
+            entity.HasIndex(u => u.AreaId).HasDatabaseName("IX_User_AreaId");
+        });
 
         modelBuilder.Entity<Tournament>()
             .HasIndex(t => t.Name)

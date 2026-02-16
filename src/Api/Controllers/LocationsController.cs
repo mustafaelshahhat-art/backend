@@ -1,39 +1,48 @@
+using Application.DTOs.Locations;
 using Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers;
 
+/// <summary>
+/// Public location endpoints for cascading dropdowns (registration / profile).
+/// No auth required — lightweight cached responses.
+/// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-[Authorize]
+[AllowAnonymous]
 public class LocationsController : ControllerBase
 {
-    private readonly IUserService _userService;
+    private readonly ILocationService _locationService;
 
-    public LocationsController(IUserService userService)
+    public LocationsController(ILocationService locationService)
     {
-        _userService = userService;
+        _locationService = locationService;
     }
 
     [HttpGet("governorates")]
-    public async Task<ActionResult<IEnumerable<string>>> GetGovernorates(CancellationToken cancellationToken)
+    [ResponseCache(Duration = 300)] // 5-min HTTP cache
+    public async Task<ActionResult<IReadOnlyList<GovernorateDto>>> GetGovernorates(CancellationToken ct)
     {
-        var result = await _userService.GetGovernoratesAsync(cancellationToken);
+        var result = await _locationService.GetGovernoratesAsync(ct);
         return Ok(result);
     }
 
     [HttpGet("cities")]
-    public async Task<ActionResult<IEnumerable<string>>> GetCities([FromQuery] string governorateId, CancellationToken cancellationToken)
+    [ResponseCache(Duration = 300, VaryByQueryKeys = new[] { "governorateId" })]
+    public async Task<ActionResult<IReadOnlyList<CityDto>>> GetCities([FromQuery] Guid governorateId, CancellationToken ct)
     {
-        var result = await _userService.GetCitiesAsync(governorateId, cancellationToken);
+        var result = await _locationService.GetCitiesByGovernorateAsync(governorateId, ct);
         return Ok(result);
     }
 
-    [HttpGet("districts")]
-    public async Task<ActionResult<IEnumerable<string>>> GetDistricts([FromQuery] string cityId, CancellationToken cancellationToken)
+    [HttpGet("areas")]
+    [ResponseCache(Duration = 300, VaryByQueryKeys = new[] { "cityId" })]
+    public async Task<ActionResult<IReadOnlyList<AreaDto>>> GetAreas([FromQuery] Guid cityId, CancellationToken ct)
     {
-        var result = await _userService.GetDistrictsAsync(cityId, cancellationToken);
+        var result = await _locationService.GetAreasByCityAsync(cityId, ct);
         return Ok(result);
     }
 }
+

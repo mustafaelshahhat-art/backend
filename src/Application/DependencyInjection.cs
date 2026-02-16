@@ -35,6 +35,7 @@ public static class DependencyInjection
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<ITournamentLifecycleService, TournamentLifecycleService>();
         services.AddScoped<ISystemSettingsService, SystemSettingsService>();
+        services.AddScoped<ILocationService, LocationService>();
         services.AddScoped<ISearchService, SearchService>();
         services.AddScoped<ActivityLogMigrationService>();
 
