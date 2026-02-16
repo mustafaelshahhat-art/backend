@@ -33,6 +33,7 @@ public class AuthService : IAuthService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IRepository<Player> _playerRepository;
     private readonly IEmailQueueService _emailQueue;
+    private readonly ISystemSettingsService _systemSettingsService;
 
     public AuthService(
         IRepository<User> userRepository, 
@@ -48,7 +49,8 @@ public class AuthService : IAuthService
         ILogger<AuthService> logger,
         IServiceScopeFactory scopeFactory,
         IRepository<Player> playerRepository,
-        IEmailQueueService emailQueue)
+        IEmailQueueService emailQueue,
+        ISystemSettingsService systemSettingsService)
     {
         _userRepository = userRepository;
         _teamRepository = teamRepository;
@@ -63,6 +65,7 @@ public class AuthService : IAuthService
         _logger = logger;
         _scopeFactory = scopeFactory;
         _playerRepository = playerRepository;
+        _systemSettingsService = systemSettingsService;
         _emailQueue = emailQueue;
     }
 
@@ -180,6 +183,12 @@ public class AuthService : IAuthService
         if (user == null || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
         {
             throw new BadRequestException("البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى التأكد من بيانات تسجيل الدخول والمحاولة مرة أخرى.");
+        }
+
+        // MAINTENANCE MODE: Allow only admins to log in during maintenance
+        if (user.Role != UserRole.Admin && await _systemSettingsService.IsMaintenanceModeEnabledAsync(ct))
+        {
+            throw new ForbiddenException("النظام تحت الصيانة حالياً. الدخول متاح لمديري النظام فقط.");
         }
 
         // 1. SURGICAL FIX: Enforce Email Verification (Skip for Admins)

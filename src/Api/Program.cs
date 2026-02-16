@@ -167,24 +167,15 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend",
         policy =>
         {
-            if (builder.Environment.IsDevelopment())
-            {
-                policy.SetIsOriginAllowed(_ => true) // Allow any origin in Dev (LAN access)
-                      .AllowAnyHeader()
-                      .AllowAnyMethod()
-                      .AllowCredentials();
-            }
-            else
-            {
-                if (allowedOrigins != null && allowedOrigins.Length > 0)
-                {
-                    policy.WithOrigins(allowedOrigins);
-                }
-                
-                policy.AllowAnyHeader()
-                      .AllowAnyMethod()
-                      .AllowCredentials();
-            }
+            // Development: explicit localhost origins (no wildcard — safe with credentials)
+            var origins = builder.Environment.IsDevelopment()
+                ? new[] { "http://localhost:4200", "http://127.0.0.1:4200" }
+                : allowedOrigins ?? Array.Empty<string>();
+
+            policy.WithOrigins(origins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials();
         });
 });
 
@@ -382,27 +373,19 @@ catch (Exception ex)
 }
 
 // Configure the HTTP request pipeline.
-app.UseHttpsRedirection();
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>(); // Must be first — catches all downstream exceptions
 
+app.UseHttpsRedirection();
 app.UseResponseCompression();
 app.UseResponseCaching();
 app.UseOutputCache(); // PERF-FIX I4: Output Caching middleware
 
 // PERF-FIX B12: Removed duplicate inline security headers — consolidated into SecurityHeadersMiddleware
 
-//if (app.Environment.IsDevelopment())
-//{
 app.UseSwagger();
 app.UseSwaggerUI();
-//}
-//else 
-//{
-//    // PROD-AUDIT: Disable detailed exceptions
-//    app.UseExceptionHandler("/error");
-//    app.UseHsts();
-//}
 
+// CORS must be BEFORE any middleware that may short-circuit (auth, maintenance, etc.)
 app.UseCors("AllowFrontend");
 
 app.UseCookiePolicy();

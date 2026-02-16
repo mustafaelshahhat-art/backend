@@ -340,6 +340,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
 
     public List<TournamentStandingDto> CalculateStandings(IEnumerable<Match> allMatches, IEnumerable<TeamRegistration> teams)
     {
+        // Build a lookup for O(1) team resolution instead of O(N) FirstOrDefault
         var standings = teams.Select(t => new TournamentStandingDto 
         { 
             TeamId = t.TeamId, 
@@ -348,10 +349,15 @@ public class TournamentLifecycleService : ITournamentLifecycleService
             GroupId = t.GroupId
         }).ToList();
         
-        foreach(var m in allMatches.Where(mm => (mm.GroupId != null || mm.StageName == "League") && mm.Status == MatchStatus.Finished))
+        var standingsByTeam = standings.ToDictionary(s => s.TeamId);
+        
+        // Include matches that belong to group stage OR league play.
+        // League matches are created with GroupId=1 and StageName="League".
+        // Group Stage matches have a non-null GroupId and StageName="Group Stage".
+        foreach(var m in allMatches.Where(mm => (mm.GroupId != null || mm.StageName == "League" || mm.StageName == "Group Stage") && mm.Status == MatchStatus.Finished))
         {
-             var h = standings.FirstOrDefault(s => s.TeamId == m.HomeTeamId);
-             var a = standings.FirstOrDefault(s => s.TeamId == m.AwayTeamId);
+             standingsByTeam.TryGetValue(m.HomeTeamId, out var h);
+             standingsByTeam.TryGetValue(m.AwayTeamId, out var a);
              
              if (h != null) 
              { 
@@ -380,8 +386,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
              {
                  foreach(var e in m.Events)
                  {
-                     var teamStanding = standings.FirstOrDefault(s => s.TeamId == e.TeamId);
-                     if (teamStanding == null) continue;
+                     if (!standingsByTeam.TryGetValue(e.TeamId, out var teamStanding)) continue;
                      
                      if (e.Type == MatchEventType.YellowCard) teamStanding.YellowCards++;
                      else if (e.Type == MatchEventType.RedCard) teamStanding.RedCards++;
@@ -389,8 +394,15 @@ public class TournamentLifecycleService : ITournamentLifecycleService
              }
         }
         
+        // Trim form to last 5 results
+        foreach (var s in standings)
+        {
+            if (s.Form.Count > 5)
+                s.Form = s.Form.Skip(s.Form.Count - 5).ToList();
+        }
+        
         // Final Sort: Group > Points > GD > GF > (Lower) RedCards > (Lower) YellowCards
-        return standings
+        var sorted = standings
             .OrderBy(s => s.GroupId ?? 0)
             .ThenByDescending(s => s.Points)
             .ThenByDescending(s => s.GoalDifference)
@@ -398,6 +410,25 @@ public class TournamentLifecycleService : ITournamentLifecycleService
             .ThenBy(s => s.RedCards)
             .ThenBy(s => s.YellowCards)
             .ToList();
+        
+        // Assign rank per group (or overall for league)
+        int? currentGroup = int.MinValue;
+        int rank = 0;
+        for (int i = 0; i < sorted.Count; i++)
+        {
+            if (sorted[i].GroupId != currentGroup)
+            {
+                currentGroup = sorted[i].GroupId;
+                rank = 1;
+            }
+            else
+            {
+                rank++;
+            }
+            sorted[i].Rank = rank;
+        }
+        
+        return sorted;
     }
     
     private Match CreateMatch(Tournament t, Guid home, Guid away, DateTime date, int? group, int? round, string stage, CancellationToken ct)

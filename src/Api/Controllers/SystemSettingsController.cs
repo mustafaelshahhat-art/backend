@@ -45,14 +45,13 @@ public class SystemSettingsController : ControllerBase
     }
 
     /// <summary>
-    /// Public endpoint to check if maintenance mode is enabled.
-    /// Used by frontend to show maintenance message.
+    /// Admin-only maintenance status with full settings context.
+    /// For public access, use GET /api/v1/Status/maintenance
     /// </summary>
     [HttpGet("maintenance-status")]
-    [AllowAnonymous]
     public async Task<ActionResult<object>> GetMaintenanceStatus(CancellationToken cancellationToken)
     {
-        var isMaintenanceMode = await _settingsService.IsMaintenanceModeEnabledAsync(cancellationToken);
-        return Ok(new { maintenanceMode = isMaintenanceMode });
+        var settings = await _settingsService.GetSettingsAsync(cancellationToken);
+        return Ok(new { maintenanceMode = settings.MaintenanceMode, updatedAt = settings.UpdatedAt });
     }
 }

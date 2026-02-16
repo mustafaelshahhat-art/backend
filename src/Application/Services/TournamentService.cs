@@ -899,8 +899,11 @@ public class TournamentService : ITournamentService
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
 
-        // Get all matches
-        var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, ct);
+        // Get all matches WITH team navigation properties for name/logo mapping
+        var matches = await _matchRepository.FindAsync(
+            m => m.TournamentId == tournamentId,
+            new[] { "HomeTeam", "AwayTeam" },
+            ct);
         
         // Filter knockout matches
         // Legacy Compatibility: 'League' matches (RoundRobin) might have GroupId null but should Not be in bracket.

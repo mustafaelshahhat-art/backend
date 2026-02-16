@@ -10,10 +10,13 @@ public class MaintenanceModeMiddleware
 {
     private readonly RequestDelegate _next;
 
-    // Paths that are always allowed (maintenance status check)
+    // Paths that are always allowed even during maintenance
     private static readonly string[] AllowedPaths = new[]
     {
-        "/api/v1/admin/systemsettings/maintenance-status"
+        "/api/v1/status/",
+        "/api/v1/auth/login",
+        "/api/v1/auth/refresh-token",
+        "/health/"
     };
 
     public MaintenanceModeMiddleware(RequestDelegate next)
