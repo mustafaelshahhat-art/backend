@@ -30,7 +30,7 @@ public class TournamentsController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    [ResponseCache(Duration = 30, VaryByQueryKeys = new[] { "page", "pageSize" })]
+    [OutputCache(PolicyName = "TournamentList")]
     public async Task<ActionResult<Application.Common.Models.PagedResult<TournamentDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;

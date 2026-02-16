@@ -2,6 +2,7 @@ using Application.DTOs.Matches;
 using Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using Domain.Enums;
 
 namespace Api.Controllers;
@@ -24,7 +25,7 @@ public class MatchesController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    [ResponseCache(Duration = 15, VaryByQueryKeys = new[] { "page", "pageSize", "creatorId", "status", "teamId" })]
+    [OutputCache(PolicyName = "MatchList")]
     public async Task<ActionResult<Application.Common.Models.PagedResult<MatchDto>>> GetAll(
         [FromQuery] int page = 1, 
         [FromQuery] int pageSize = 10, 
@@ -42,7 +43,7 @@ public class MatchesController : ControllerBase
 
     [HttpGet("{id}")]
     [AllowAnonymous]
-    [ResponseCache(Duration = 10, VaryByQueryKeys = new[] { "id" })]
+    [OutputCache(PolicyName = "MatchDetail")]
     public async Task<ActionResult<MatchDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
         var match = await _matchService.GetByIdAsync(id, cancellationToken);

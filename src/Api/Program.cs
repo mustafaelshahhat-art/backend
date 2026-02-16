@@ -53,12 +53,27 @@ builder.Services.AddResponseCompression(options =>
     options.EnableForHttps = true;
 });
 
+// Response Caching service (required for [ResponseCache] attribute support)
+builder.Services.AddResponseCaching();
+
 // PERF-FIX I4: Output Caching for read-heavy endpoints
 builder.Services.AddOutputCache(options =>
 {
     options.AddBasePolicy(builder => builder.Expire(TimeSpan.FromSeconds(10)));
     options.AddPolicy("ShortCache", builder => builder.Expire(TimeSpan.FromSeconds(30)).Tag("short"));
     options.AddPolicy("MediumCache", builder => builder.Expire(TimeSpan.FromMinutes(2)).Tag("medium"));
+    options.AddPolicy("MatchList", builder => builder
+        .Expire(TimeSpan.FromSeconds(15))
+        .SetVaryByQuery("page", "pageSize", "creatorId", "status", "teamId")
+        .Tag("matches"));
+    options.AddPolicy("MatchDetail", builder => builder
+        .Expire(TimeSpan.FromSeconds(10))
+        .SetVaryByRouteValue("id")
+        .Tag("matches"));
+    options.AddPolicy("TournamentList", builder => builder
+        .Expire(TimeSpan.FromSeconds(30))
+        .SetVaryByQuery("page", "pageSize")
+        .Tag("tournaments"));
 });
 
 // Add services to the container.
@@ -367,7 +382,10 @@ catch (Exception ex)
 
 // Configure the HTTP request pipeline.
 app.UseHttpsRedirection();
+app.UseMiddleware<GlobalExceptionHandlerMiddleware>(); // Must be first — catches all downstream exceptions
+
 app.UseResponseCompression();
+app.UseResponseCaching();
 app.UseOutputCache(); // PERF-FIX I4: Output Caching middleware
 
 // PERF-FIX B12: Removed duplicate inline security headers — consolidated into SecurityHeadersMiddleware
@@ -384,7 +402,6 @@ app.UseSwaggerUI();
 //    app.UseHsts();
 //}
 
-app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 app.UseCors("AllowFrontend");
 
 app.UseCookiePolicy();
