@@ -1,4 +1,5 @@
 using Api.Middleware;
+using Microsoft.AspNetCore.Mvc;
 using Application;
 using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -60,6 +61,26 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<Infrastructure.Data.AppDbContext>();
 builder.Services.AddMemoryCache();
 
+// Custom Validation Response
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState
+            .Where(e => e.Value != null && e.Value.Errors.Count > 0)
+            .Select(e => new {
+                Field = e.Key,
+                Errors = e.Value!.Errors.Select(x => x.ErrorMessage).ToArray()
+            }).ToList();
+
+        var result = new {
+            code = "VALIDATION_ERROR",
+            message = "البيانات المرسلة غير صالحة. يرجى مراجعة الحقول.",
+            details = errors
+        };
+        return new BadRequestObjectResult(result);
+    };
+});
 // SignalR with optional Redis backplane
 try
 {
