@@ -37,7 +37,7 @@ public class AddMatchEventCommandHandler : IRequestHandler<AddMatchEventCommand,
 
         if (!Enum.TryParse<MatchEventType>(request.Request.Type, true, out var eventType))
         {
-            throw new BadRequestException("Invalid event type.");
+            throw new BadRequestException("نوع الحدث غير معروف. يرجى اختيار نوع صحيح (هدف، بطاقة، تبديل، إلخ).");
         }
 
         var matchEvent = new MatchEvent

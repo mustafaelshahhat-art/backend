@@ -1,6 +1,7 @@
 using MediatR;
 using Application.Interfaces;
 using Application.DTOs.Users;
+using Shared.Exceptions;
 using System;
 using System.IO;
 
@@ -18,7 +19,7 @@ public class UploadAvatarCommandHandler : IRequestHandler<UploadAvatarCommand, s
     public async Task<string> Handle(UploadAvatarCommand request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Base64Image))
-            throw new ArgumentException("Image data is required");
+            throw new BadRequestException("يرجى اختيار صورة لرفعها كصورة شخصية.");
 
         var base64Data = request.Base64Image;
         if (base64Data.Contains(","))
@@ -33,7 +34,7 @@ public class UploadAvatarCommandHandler : IRequestHandler<UploadAvatarCommand, s
         }
         catch
         {
-            throw new ArgumentException("Invalid image data");
+            throw new BadRequestException("صيغة الصورة غير صالحة. يرجى رفع صورة بصيغة JPG أو PNG أو GIF.");
         }
 
         using var stream = new MemoryStream(bytes);

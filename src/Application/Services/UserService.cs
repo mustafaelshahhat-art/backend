@@ -207,7 +207,7 @@ public class UserService : IUserService
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Suspended.ToString());
 
         // Persistent Notification
-        await _notificationService.SendNotificationByTemplateAsync(id, NotificationTemplates.ACCOUNT_SUSPENDED, new Dictionary<string, string>(), "all", ct);
+        await _notificationService.SendNotificationByTemplateAsync(id, NotificationTemplates.ACCOUNT_SUSPENDED, entityId: id, entityType: "user", ct: ct);
 
         // Full Update for Lists
         var dto = _mapper.Map<UserDto>(user);
@@ -227,7 +227,7 @@ public class UserService : IUserService
         await _realTimeNotifier.SendAccountStatusChangedAsync(id, UserStatus.Active.ToString());
 
         // Persistent Notification
-        await _notificationService.SendNotificationByTemplateAsync(id, NotificationTemplates.ACCOUNT_APPROVED, new Dictionary<string, string>(), "all", ct);
+        await _notificationService.SendNotificationByTemplateAsync(id, NotificationTemplates.ACCOUNT_APPROVED, entityId: id, entityType: "user", ct: ct);
 
         // Full Update for Lists
         var dto = _mapper.Map<UserDto>(user);
@@ -264,7 +264,7 @@ public class UserService : IUserService
 
         // Send notification or real-time update if needed
         await _realTimeNotifier.SendAccountStatusChangedAsync(userId, "PasswordChanged");
-        await _notificationService.SendNotificationByTemplateAsync(userId, NotificationTemplates.PASSWORD_CHANGED, new Dictionary<string, string>(), "all", ct);
+        await _notificationService.SendNotificationByTemplateAsync(userId, NotificationTemplates.PASSWORD_CHANGED, entityId: userId, entityType: "user", ct: ct);
     }
 
     public async Task<Application.Common.Models.PagedResult<UserPublicDto>> GetPublicPagedAsync(int pageNumber, int pageSize, string? role = null, CancellationToken ct = default)

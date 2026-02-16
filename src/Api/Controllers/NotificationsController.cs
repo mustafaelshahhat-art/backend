@@ -1,8 +1,9 @@
 using System;
-using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
+using Application.DTOs.Notifications;
 using Application.Interfaces;
-using Domain.Entities;
+using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -21,32 +22,68 @@ public class NotificationsController : ControllerBase
         _notificationService = notificationService;
     }
 
-    [HttpGet]
-    public async Task<ActionResult<Application.Common.Models.PagedResult<Notification>>> GetMyNotifications([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
+    private Guid? GetUserId()
     {
-        if (pageSize > 100) pageSize = 100;
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userId == null) return Unauthorized();
-
-        var notifications = await _notificationService.GetUserNotificationsAsync(Guid.Parse(userId), page, pageSize, cancellationToken);
-        return Ok(notifications);
+        var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return claim != null ? Guid.Parse(claim) : null;
     }
 
-    [HttpPost("{id}/read")]
-    public async Task<IActionResult> MarkAsRead(Guid id, CancellationToken cancellationToken)
+    /// <summary>GET /api/v1/notifications?page=1&amp;pageSize=20</summary>
+    [HttpGet]
+    public async Task<ActionResult<Application.Common.Models.PagedResult<NotificationDto>>> GetMyNotifications(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
     {
-        // Ideally verify ownership
-        await _notificationService.MarkAsReadAsync(id, cancellationToken);
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+        if (pageSize > 100) pageSize = 100;
+
+        var result = await _notificationService.GetUserNotificationsAsync(userId.Value, page, pageSize, null, null, ct);
+        return Ok(result);
+    }
+
+    /// <summary>GET /api/v1/notifications/unread-count</summary>
+    [HttpGet("unread-count")]
+    public async Task<ActionResult<int>> GetUnreadCount(CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        var count = await _notificationService.GetUnreadCountAsync(userId.Value, ct);
+        return Ok(new { count });
+    }
+
+    /// <summary>POST /api/v1/notifications/{id}/read</summary>
+    [HttpPost("{id}/read")]
+    public async Task<IActionResult> MarkAsRead(Guid id, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        await _notificationService.MarkAsReadAsync(id, userId.Value, ct);
         return NoContent();
     }
 
+    /// <summary>POST /api/v1/notifications/read-all</summary>
     [HttpPost("read-all")]
-    public async Task<IActionResult> MarkAllAsRead(CancellationToken cancellationToken)
+    public async Task<IActionResult> MarkAllAsRead(CancellationToken ct)
     {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var userId = GetUserId();
         if (userId == null) return Unauthorized();
 
-        await _notificationService.MarkAllAsReadAsync(Guid.Parse(userId), cancellationToken);
+        await _notificationService.MarkAllAsReadAsync(userId.Value, ct);
+        return NoContent();
+    }
+
+    /// <summary>DELETE /api/v1/notifications/{id}</summary>
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        await _notificationService.DeleteAsync(id, userId.Value, ct);
         return NoContent();
     }
 }

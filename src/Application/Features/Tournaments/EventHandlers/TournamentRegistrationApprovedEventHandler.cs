@@ -40,9 +40,7 @@ public class TournamentRegistrationApprovedEventHandler : INotificationHandler<T
                 { "teamName", notification.TeamName },
                 { "tournamentName", notification.TournamentName }
             },
-
-            "registration_approved",
-            cancellationToken
+            ct: cancellationToken
         );
 
         // 2. Notify Real-Time (Best effort, since it's now in the outbox processor)

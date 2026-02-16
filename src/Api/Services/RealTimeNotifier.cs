@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Application.DTOs.Notifications;
 using Application.Interfaces;
 using Domain.Entities;
 using Api.Hubs;
@@ -22,16 +23,14 @@ public class RealTimeNotifier : IRealTimeNotifier
         _logger = logger;
     }
 
-    public async Task SafeSendNotificationAsync(Guid userId, Notification notification, CancellationToken ct = default)
+    public async Task SafeSendNotificationAsync(Guid userId, NotificationDto notification, CancellationToken ct = default)
     {
         try
         {
-             // Assumes UserId is mapped to SignalR User Identifier
             await _hubContext.Clients.User(userId.ToString()).SendAsync("ReceiveNotification", notification, ct);
         }
         catch (Exception ex)
         {
-            // Log error but don't fail the operation
             _logger.LogError(ex, "Error sending real-time notification");
         }
     }
@@ -302,6 +301,20 @@ public class RealTimeNotifier : IRealTimeNotifier
     }
 
 
+
+    public async Task SendToRoleGroupAsync(string role, NotificationDto notification, CancellationToken ct = default)
+    {
+        try
+        {
+            await _hubContext.Clients.Group($"role:{role}")
+                .SendAsync("ReceiveNotification", notification, ct);
+            _logger.LogDebug("Sent notification to role group {Role}", role);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending notification to role group {Role}", role);
+        }
+    }
 
     public async Task SendSystemEventAsync(string type, object metadata, string? group = null, CancellationToken ct = default)
     {

@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Application.DTOs.Analytics;
-using Application.DTOs.Notifications;
 using Application.Interfaces;
 using AutoMapper;
 using Domain.Entities;
@@ -83,7 +81,9 @@ public class AnalyticsService : IAnalyticsService
             var teams = await _teamRepository.CountAsync(_ => true, ct);
             
             var matchesToday = await _matchRepository.CountAsync(m => m.Date.HasValue && m.Date.Value.Date == today, ct);
-            var loginsToday = await _activityRepository.CountAsync(a => a.Type == Common.ActivityConstants.USER_LOGIN && a.CreatedAt.Date == today, ct);
+            var loginsToday = await _activityRepository.CountAsync(a => 
+                (a.Type == Common.ActivityConstants.USER_LOGIN || a.Type == Common.ActivityConstants.GUEST_VISIT) 
+                && a.CreatedAt.Date == today, ct);
             
             var totalGoals = await _matchRepository.GetQueryable()
                 .Where(m => m.Status == Domain.Enums.MatchStatus.Finished)
@@ -122,45 +122,101 @@ public class AnalyticsService : IAnalyticsService
         };
     }
 
-    public async Task<Application.Common.Models.PagedResult<ActivityDto>> GetRecentActivitiesAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<ActivityDto>> GetRecentActivitiesAsync(
+        ActivityFilterParams filters, Guid? creatorId = null, CancellationToken ct = default)
     {
-        if (pageSize > 100) pageSize = 100;
+        var page = filters.Page < 1 ? 1 : filters.Page;
+        var pageSize = filters.PageSize > 100 ? 100 : (filters.PageSize < 1 ? 20 : filters.PageSize);
 
-        Expression<Func<Activity, bool>>? predicate = creatorId.HasValue ? a => a.UserId == creatorId.Value : null;
+        var query = _activityRepository.GetQueryable();
 
-        var (items, totalCount) = await _activityRepository.GetPagedAsync(
-            page,
-            pageSize,
-            predicate,
-            q => q.OrderByDescending(a => a.CreatedAt),
-            ct
-        );
-        
-        var dtos = items.Select(a => 
-        {
-            var localized = Common.ActivityConstants.GetLocalized(a.Type, null);
-            return new ActivityDto
+        // ── Apply filters ──
+        if (creatorId.HasValue)
+            query = query.Where(a => a.UserId == creatorId.Value);
+
+        if (filters.UserId.HasValue)
+            query = query.Where(a => a.UserId == filters.UserId.Value);
+
+        if (!string.IsNullOrEmpty(filters.ActorRole))
+            query = query.Where(a => a.ActorRole == filters.ActorRole);
+
+        if (!string.IsNullOrEmpty(filters.ActionType))
+            query = query.Where(a => a.Type == filters.ActionType);
+
+        if (!string.IsNullOrEmpty(filters.EntityType))
+            query = query.Where(a => a.EntityType == filters.EntityType);
+
+        if (filters.MinSeverity.HasValue)
+            query = query.Where(a => (int)a.Severity >= filters.MinSeverity.Value);
+
+        if (filters.FromDate.HasValue)
+            query = query.Where(a => a.CreatedAt >= filters.FromDate.Value);
+
+        if (filters.ToDate.HasValue)
+            query = query.Where(a => a.CreatedAt <= filters.ToDate.Value);
+
+        // ── Count + Page (DTO Projection — no entity loading) ──
+        var totalCount = await query.CountAsync(ct);
+
+        var dtos = await query
+            .OrderByDescending(a => a.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(a => new ActivityDto
             {
-                Type = localized.Category,
+                Id = a.Id,
+                ActionType = a.Type,
                 Message = a.Message,
                 Timestamp = a.CreatedAt,
-                Time = "", 
-                UserName = a.UserName
-            };
-        }).ToList();
+                Time = "",
+                UserName = a.UserName,
+                Severity = a.Severity == Domain.Enums.ActivitySeverity.Critical ? "critical"
+                         : a.Severity == Domain.Enums.ActivitySeverity.Warning ? "warning" : "info",
+                ActorRole = a.ActorRole,
+                EntityType = a.EntityType,
+                EntityId = a.EntityId,
+                EntityName = a.EntityName
+            })
+            .ToListAsync(ct);
+
+        // Enrich Arabic category from constants (in-memory — O(n) dictionary lookups)
+        foreach (var dto in dtos)
+        {
+            dto.Type = Common.ActivityConstants.Library.TryGetValue(dto.ActionType, out var meta)
+                ? meta.CategoryAr
+                : "نظام";
+        }
 
         return new Application.Common.Models.PagedResult<ActivityDto>(dtos, totalCount, page, pageSize);
     }
 
-    public Task LogActivityAsync(string type, string message, Guid? userId = null, string? userName = null, CancellationToken ct = default) // Modified method signature
+    // ── Logging (backward compat) ──
+
+    public Task LogActivityAsync(string type, string message, Guid? userId = null, string? userName = null, CancellationToken ct = default)
     {
-        _backgroundLogger.LogActivity(type, message, userId, userName); // Modified implementation
-        return Task.CompletedTask; // Modified implementation
+        _backgroundLogger.LogActivity(type, message, userId, userName);
+        return Task.CompletedTask;
     }
 
-    public Task LogActivityByTemplateAsync(string code, Dictionary<string, string> placeholders, Guid? userId = null, string? userName = null, CancellationToken ct = default) // Modified method signature
+    public Task LogActivityByTemplateAsync(string code, Dictionary<string, string> placeholders, Guid? userId = null, string? userName = null, CancellationToken ct = default)
     {
-        _backgroundLogger.LogActivityByTemplate(code, placeholders, userId, userName); // Modified implementation
-        return Task.CompletedTask; // Modified implementation
+        _backgroundLogger.LogActivityByTemplate(code, placeholders, userId, userName);
+        return Task.CompletedTask;
+    }
+
+    // ── Enriched logging ──
+
+    public Task LogActivityAsync(string type, string message, Guid? userId, string? userName,
+        string? actorRole, Guid? entityId, string? entityType, string? entityName, string? metadata, CancellationToken ct = default)
+    {
+        _backgroundLogger.LogActivity(type, message, userId, userName, actorRole, entityId, entityType, entityName, metadata);
+        return Task.CompletedTask;
+    }
+
+    public Task LogActivityByTemplateAsync(string code, Dictionary<string, string> placeholders, Guid? userId, string? userName,
+        string? actorRole, Guid? entityId, string? entityType, string? entityName, string? metadata, CancellationToken ct = default)
+    {
+        _backgroundLogger.LogActivityByTemplate(code, placeholders, userId, userName, actorRole, entityId, entityType, entityName, metadata);
+        return Task.CompletedTask;
     }
 }

@@ -1244,7 +1244,7 @@ public class TournamentService : ITournamentService
             var captain = team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
             if (captain != null && captain.UserId.HasValue)
             {
-                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.TOURNAMENT_ELIMINATED, new Dictionary<string, string> { { "teamName", team.Name }, { "tournamentName", tournament.Name } }, "tournament_elimination", ct);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.TOURNAMENT_ELIMINATED, new Dictionary<string, string> { { "teamName", team.Name }, { "tournamentName", tournament.Name } }, entityId: tournamentId, entityType: "tournament", ct: ct);
             }
         }
 

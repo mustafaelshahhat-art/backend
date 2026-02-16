@@ -31,7 +31,7 @@ public class NotificationHub : Hub
         // This prevents a normal user from subscribing to "Admin" notifications.
         if (Context.User == null || !Context.User.IsInRole(role))
         {
-            throw new HubException($"Unauthorized: You do not possess the role '{role}'.");
+            throw new HubException($"غير مصرح لك بالاشتراك في هذه الإشعارات.");
         }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, $"role:{role}");

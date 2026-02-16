@@ -72,17 +72,40 @@ public class AnalyticsController : ControllerBase
 
     [HttpGet("activities")]
     [Authorize]
-    public async Task<ActionResult<Application.Common.Models.PagedResult<ActivityDto>>> GetRecentActivity([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<ActivityDto>>> GetRecentActivity(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? actorRole = null,
+        [FromQuery] string? actionType = null,
+        [FromQuery] string? entityType = null,
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null,
+        [FromQuery] int? minSeverity = null,
+        [FromQuery] Guid? userId = null,
+        CancellationToken cancellationToken = default)
     {
-        if (pageSize > 100) pageSize = 100;
-        var (userId, userRole) = GetUserContext();
+        var (currentUserId, userRole) = GetUserContext();
         var isAdmin = userRole == UserRole.Admin.ToString();
         var isCreator = userRole == UserRole.TournamentCreator.ToString();
         
         if (!isAdmin && !isCreator) return Forbid();
 
-        Guid? creatorId = isCreator ? userId : null;
-        var activity = await _analyticsService.GetRecentActivitiesAsync(page, pageSize, creatorId, cancellationToken);
+        Guid? creatorId = isCreator ? currentUserId : null;
+
+        var filters = new ActivityFilterParams
+        {
+            Page = page,
+            PageSize = pageSize,
+            ActorRole = actorRole,
+            ActionType = actionType,
+            EntityType = entityType,
+            FromDate = fromDate,
+            ToDate = toDate,
+            MinSeverity = minSeverity,
+            UserId = userId
+        };
+
+        var activity = await _analyticsService.GetRecentActivitiesAsync(filters, creatorId, cancellationToken);
         return Ok(activity);
     }
 

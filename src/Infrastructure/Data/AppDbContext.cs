@@ -165,6 +165,18 @@ public class AppDbContext : DbContext
             .HasForeignKey(a => a.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Activity — enhanced column config
+        modelBuilder.Entity<Activity>()
+            .Property(a => a.Severity)
+            .HasConversion<int>()
+            .HasDefaultValue(Domain.Enums.ActivitySeverity.Info);
+        modelBuilder.Entity<Activity>()
+            .Property(a => a.ActorRole).HasMaxLength(50);
+        modelBuilder.Entity<Activity>()
+            .Property(a => a.EntityType).HasMaxLength(50);
+        modelBuilder.Entity<Activity>()
+            .Property(a => a.EntityName).HasMaxLength(200);
+
         // Tournament precision
         modelBuilder.Entity<Tournament>().Property(t => t.EntryFee).HasPrecision(18, 2);
         
@@ -219,6 +231,22 @@ public class AppDbContext : DbContext
             .HasForeignKey(n => n.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Enum → int storage
+        modelBuilder.Entity<Notification>()
+            .Property(n => n.Type)
+            .HasConversion<int>();
+        modelBuilder.Entity<Notification>()
+            .Property(n => n.Category)
+            .HasConversion<int>();
+        modelBuilder.Entity<Notification>()
+            .Property(n => n.Priority)
+            .HasConversion<int>();
+
+        modelBuilder.Entity<Notification>()
+            .Property(n => n.EntityType).HasMaxLength(50);
+        modelBuilder.Entity<Notification>()
+            .Property(n => n.ActionUrl).HasMaxLength(500);
+
         // 9. MatchEvent — own IsDeleted, no JOINs to Match→Teams
         modelBuilder.Entity<MatchEvent>().Property<bool>("IsDeleted").HasDefaultValue(false);
         modelBuilder.Entity<MatchEvent>().HasQueryFilter(me => 
@@ -264,6 +292,21 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Activity>()
             .HasIndex(a => a.Type)
             .HasDatabaseName("IX_Activities_Type");
+
+        modelBuilder.Entity<Activity>()
+            .HasIndex(a => a.CreatedAt)
+            .IsDescending()
+            .HasDatabaseName("IX_Activities_CreatedAt_Desc");
+
+        modelBuilder.Entity<Activity>()
+            .HasIndex(a => new { a.Severity, a.CreatedAt })
+            .IsDescending(false, true)
+            .HasDatabaseName("IX_Activities_Severity_CreatedAt");
+
+        modelBuilder.Entity<Activity>()
+            .HasIndex(a => new { a.EntityType, a.CreatedAt })
+            .IsDescending(false, true)
+            .HasDatabaseName("IX_Activities_EntityType_CreatedAt");
 
         modelBuilder.Entity<Match>()
             .HasIndex(m => m.Date)
@@ -338,6 +381,18 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Notification>()
             .HasIndex(n => new { n.UserId, n.IsRead })
             .HasDatabaseName("IX_Notifications_User_Read");
+
+        // Notification: category filter
+        modelBuilder.Entity<Notification>()
+            .HasIndex(n => new { n.UserId, n.Category, n.CreatedAt })
+            .IsDescending(false, false, true)
+            .HasDatabaseName("IX_Notifications_User_Category_CreatedAt");
+
+        // Notification: expiry cleanup
+        modelBuilder.Entity<Notification>()
+            .HasIndex(n => n.ExpiresAt)
+            .HasFilter("[ExpiresAt] IS NOT NULL")
+            .HasDatabaseName("IX_Notifications_ExpiresAt");
 
         modelBuilder.Entity<Tournament>()
             .HasIndex(t => t.Status)

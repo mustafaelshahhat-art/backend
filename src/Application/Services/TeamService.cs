@@ -154,7 +154,7 @@ public class TeamService : ITeamService
         var captain = team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
         if (captain != null && captain.UserId.HasValue)
         {
-            await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.ACCOUNT_SUSPENDED, null, "team_disabled", ct);
+            await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.ACCOUNT_SUSPENDED, entityId: teamId, entityType: "team", ct: ct);
         }
     }
 
@@ -177,7 +177,7 @@ public class TeamService : ITeamService
         var captain = team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
         if (captain != null && captain.UserId.HasValue)
         {
-            await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.TEAM_ACTIVATED, null, "team_activated", ct);
+            await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.TEAM_ACTIVATED, entityId: teamId, entityType: "team", ct: ct);
         }
     }
 
@@ -388,7 +388,7 @@ public class TeamService : ITeamService
             var captain = team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
             if (captain != null && captain.UserId.HasValue)
             {
-                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.JOIN_REQUEST_RECEIVED, new Dictionary<string, string> { { "playerName", user.Name } }, "join_request", ct);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.JOIN_REQUEST_RECEIVED, new Dictionary<string, string> { { "playerName", user.Name } }, entityId: teamId, entityType: "team", ct: ct);
             }
         }
 
@@ -488,7 +488,7 @@ public class TeamService : ITeamService
         await _notificationService.SendNotificationByTemplateAsync(request.UserId, 
             approve ? NotificationTemplates.PLAYER_JOINED_TEAM : NotificationTemplates.JOIN_REQUEST_REJECTED,
             new Dictionary<string, string> { { "teamName", team?.Name ?? "الفريق" } },
-            approve ? "join_accepted" : "join_rejected", ct);
+            entityId: teamId, entityType: "team", ct: ct);
 
          // Helper to return DTO
          return new JoinRequestDto
@@ -539,7 +539,7 @@ public class TeamService : ITeamService
         await _joinRequestRepository.AddAsync(joinRequest, ct);
 
         // 5. Notify Player
-        await _notificationService.SendNotificationByTemplateAsync(user.Id, NotificationTemplates.INVITE_RECEIVED, new Dictionary<string, string> { { "teamName", team.Name } }, "invite", ct);
+        await _notificationService.SendNotificationByTemplateAsync(user.Id, NotificationTemplates.INVITE_RECEIVED, new Dictionary<string, string> { { "teamName", team.Name } }, entityId: team.Id, entityType: "team", ct: ct);
 
         return new JoinRequestDto
         {
@@ -641,7 +641,7 @@ public class TeamService : ITeamService
             var captain = request.Team.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
             if (captain != null && captain.UserId.HasValue)
             {
-                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.INVITE_ACCEPTED, new Dictionary<string, string> { { "playerName", user.Name } }, "invite_accepted", ct);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.INVITE_ACCEPTED, new Dictionary<string, string> { { "playerName", user.Name } }, ct: ct);
             }
         }
 
@@ -674,7 +674,7 @@ public class TeamService : ITeamService
             if (captain != null && captain.UserId.HasValue)
             {
                 var user = await _userRepository.GetByIdAsync(userId, ct);
-                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.INVITE_REJECTED, new Dictionary<string, string> { { "playerName", user?.Name ?? "اللاعب" } }, "invite_rejected", ct);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.INVITE_REJECTED, new Dictionary<string, string> { { "playerName", user?.Name ?? "اللاعب" } }, ct: ct);
             }
         }
 
@@ -781,7 +781,7 @@ public class TeamService : ITeamService
                     await _realTimeNotifier.SendRemovedFromTeamAsync(targetUserId, teamId, playerId, ct);
                     
                     // Persistent Notification
-                    await _notificationService.SendNotificationByTemplateAsync(targetUserId, NotificationTemplates.PLAYER_REMOVED, new Dictionary<string, string> { { "teamName", team?.Name ?? "الفريق" } }, "team_removal", ct);
+                    await _notificationService.SendNotificationByTemplateAsync(targetUserId, NotificationTemplates.PLAYER_REMOVED, new Dictionary<string, string> { { "teamName", team?.Name ?? "الفريق" } }, entityId: teamId, entityType: "team", ct: ct);
                 }
             }
 

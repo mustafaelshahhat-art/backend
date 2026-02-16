@@ -34,7 +34,7 @@ public class GlobalExceptionHandlerMiddleware
         
         var statusCode = HttpStatusCode.InternalServerError;
         var errorCode = "INTERNAL_SERVER_ERROR";
-        var message = "An unexpected error occurred.";
+        var message = "حدث خطأ غير متوقع أثناء معالجة الطلب. يرجى المحاولة مرة أخرى بعد قليل.";
         object? details = null;
 
         switch (exception)
@@ -83,6 +83,17 @@ public class GlobalExceptionHandlerMiddleware
             case UnauthorizedAccessException ex:
                 statusCode = HttpStatusCode.Unauthorized;
                 errorCode = "UNAUTHORIZED";
+                message = ex.Message;
+                break;
+            case ArgumentException ex:
+                statusCode = HttpStatusCode.BadRequest;
+                errorCode = "BAD_REQUEST";
+                message = ex.Message;
+                _logger.LogWarning("Argument error: {Message}", ex.Message);
+                break;
+            case InvalidOperationException ex:
+                statusCode = HttpStatusCode.Conflict;
+                errorCode = "CONFLICT";
                 message = ex.Message;
                 break;
         }

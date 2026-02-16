@@ -70,7 +70,7 @@ public class AuthService : IAuthService
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Email))
         {
-            throw new BadRequestException("Email and Name are required.");
+            throw new BadRequestException("البريد الإلكتروني والاسم مطلوبان. يرجى ملء جميع الحقول المطلوبة.");
         }
 
         var email = request.Email.Trim().ToLower();
@@ -78,7 +78,7 @@ public class AuthService : IAuthService
 
         if (string.IsNullOrWhiteSpace(name))
         {
-            throw new BadRequestException("Name is required.");
+            throw new BadRequestException("الاسم مطلوب. يرجى إدخال اسمك الكامل.");
         }
 
         // PERF-FIX: Compare directly against normalized email — email is stored lowercase on write
@@ -86,7 +86,7 @@ public class AuthService : IAuthService
         var existingUser = await _userRepository.FindAsync(u => u.Email == email, true, ct);
         if (existingUser != null && existingUser.Any())
         {
-            throw new ConflictException("Email already exists.");
+            throw new ConflictException("البريد الإلكتروني مستخدم بالفعل. يرجى استخدام بريد إلكتروني آخر أو تسجيل الدخول بحسابك الحالي.");
         }
 
         // SECURITY: Force Player role for ALL public registrations.
@@ -154,7 +154,7 @@ public class AuthService : IAuthService
         { 
             { "name", user.Name },
             { "role", user.Role.ToString() }
-        }, "system", ct);
+        }, ct: ct);
         */
 
         return new AuthResponse
@@ -169,7 +169,7 @@ public class AuthService : IAuthService
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Email))
         {
-            throw new BadRequestException("Email is required.");
+            throw new BadRequestException("البريد الإلكتروني مطلوب. يرجى إدخال بريدك الإلكتروني لتسجيل الدخول.");
         }
 
         var email = request.Email.Trim().ToLower();
@@ -179,7 +179,7 @@ public class AuthService : IAuthService
 
         if (user == null || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
         {
-            throw new BadRequestException("Invalid email or password.");
+            throw new BadRequestException("البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى التأكد من بيانات تسجيل الدخول والمحاولة مرة أخرى.");
         }
 
         // 1. SURGICAL FIX: Enforce Email Verification (Skip for Admins)
@@ -261,7 +261,7 @@ public class AuthService : IAuthService
 
         if (user == null || user.RefreshTokenExpiryTime <= DateTime.UtcNow)
         {
-            throw new BadRequestException("Invalid or expired refresh token.");
+            throw new BadRequestException("انتهت صلاحية الجلسة. يرجى تسجيل الدخول مرة أخرى.");
         }
 
         var token = _jwtTokenGenerator.GenerateToken(user);
@@ -291,7 +291,7 @@ public class AuthService : IAuthService
         if (user == null) 
         {
             _logger.LogError($"[VerifyEmail] FAILURE: User not found for email: '{normalizedEmail}' (Original: '{email}')");
-            throw new NotFoundException($"User not found for email: {email}");
+            throw new NotFoundException("لم يتم العثور على حساب مرتبط بهذا البريد الإلكتروني. يرجى التأكد من البريد المدخل.");
         }
 
         _logger.LogInformation($"[VerifyEmail] User found: {user.Id}, IsEmailVerified: {user.IsEmailVerified}");
@@ -326,7 +326,7 @@ public class AuthService : IAuthService
                 { "email", user.Email },
                 { "role", user.Role.ToString() }
             }, 
-            "system", ct);
+            ct: ct);
     }
 
     public async Task ForgotPasswordAsync(string email, CancellationToken ct = default)
@@ -356,7 +356,7 @@ public class AuthService : IAuthService
     {
         var normalizedEmail = email?.Trim().ToLower() ?? string.Empty;
         var user = (await _userRepository.FindAsync(u => u.Email == normalizedEmail, ct)).FirstOrDefault();
-        if (user == null) throw new NotFoundException("User not found.");
+        if (user == null) throw new NotFoundException("لم يتم العثور على حساب مرتبط بهذا البريد الإلكتروني.");
 
         var isValid = await _otpService.VerifyOtpAsync(user.Id, otp, "PASSWORD_RESET", ct);
         if (!isValid) throw new BadRequestException("كود التفعيل غير صحيح أو منتهي الصلاحية.");

@@ -119,7 +119,7 @@ public class MatchService : IMatchService
             var captain = homeTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
             if (captain != null && captain.UserId.HasValue)
             {
-                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_STARTED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" } }, "match", ct);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_STARTED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" } }, entityId: id, entityType: "match", ct: ct);
             }
         }
         
@@ -128,7 +128,7 @@ public class MatchService : IMatchService
             var captain = awayTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
             if (captain != null && captain.UserId.HasValue)
             {
-                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_STARTED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" } }, "match", ct);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_STARTED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" } }, entityId: id, entityType: "match", ct: ct);
             }
         }
 
@@ -169,7 +169,7 @@ public class MatchService : IMatchService
             var captain = homeTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
             if (captain != null && captain.UserId.HasValue)
             {
-                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_ENDED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "score", $"{match.HomeScore}-{match.AwayScore}" } }, "match", ct);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_ENDED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "score", $"{match.HomeScore}-{match.AwayScore}" } }, entityId: id, entityType: "match", ct: ct);
             }
         }
 
@@ -178,7 +178,7 @@ public class MatchService : IMatchService
             var captain = awayTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
             if (captain != null && captain.UserId.HasValue)
             {
-                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_ENDED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "score", $"{match.HomeScore}-{match.AwayScore}" } }, "match", ct);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_ENDED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "score", $"{match.HomeScore}-{match.AwayScore}" } }, entityId: id, entityType: "match", ct: ct);
             }
         }
 
@@ -199,7 +199,7 @@ public class MatchService : IMatchService
         // Convert string Type to Enum
         if (!Enum.TryParse<MatchEventType>(request.Type, true, out var eventType))
         {
-            throw new BadRequestException("Invalid event type.");
+            throw new BadRequestException("نوع الحدث غير معروف. يرجى اختيار نوع صحيح (هدف، بطاقة، تبديل، إلخ).");
         }
 
         var matchEvent = new MatchEvent
@@ -251,7 +251,7 @@ public class MatchService : IMatchService
             var captain = homeTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
             if (captain != null && captain.UserId.HasValue)
             {
-                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match", ct);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, entityId: id, entityType: "match", ct: ct);
             }
         }
 
@@ -260,7 +260,7 @@ public class MatchService : IMatchService
             var captain = awayTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
             if (captain != null && captain.UserId.HasValue)
             {
-                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match", ct);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, entityId: id, entityType: "match", ct: ct);
             }
         }
 
@@ -310,7 +310,7 @@ public class MatchService : IMatchService
             var captain = homeTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
             if (captain != null && captain.UserId.HasValue)
             {
-                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match", ct);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, entityId: matchId, entityType: "match", ct: ct);
             }
         }
 
@@ -319,7 +319,7 @@ public class MatchService : IMatchService
             var captain = awayTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
             if (captain != null && captain.UserId.HasValue)
             {
-                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, "match", ct);
+                await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_EVENT_ADDED, placeholders, entityId: matchId, entityType: "match", ct: ct);
             }
         }
 
@@ -387,7 +387,7 @@ public class MatchService : IMatchService
                 var captain = homeTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
                 if (captain != null && captain.UserId.HasValue)
                 {
-                    await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, "match", ct);
+                    await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", awayTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, entityId: id, entityType: "match", ct: ct);
                 }
             }
 
@@ -396,7 +396,7 @@ public class MatchService : IMatchService
                 var captain = awayTeam.Players.FirstOrDefault(p => p.TeamRole == TeamRole.Captain);
                 if (captain != null && captain.UserId.HasValue)
                 {
-                    await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, "match", ct);
+                    await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, NotificationTemplates.MATCH_SCORE_CHANGED, new Dictionary<string, string> { { "opponent", homeTeam?.Name ?? "الخصم" }, { "score", scoreStr } }, entityId: id, entityType: "match", ct: ct);
                 }
             }
 
@@ -433,7 +433,7 @@ public class MatchService : IMatchService
                 if (captain != null && captain.UserId.HasValue)
                 {
                     placeholders["opponent"] = awayTeam?.Name ?? "الخصم";
-                    await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, templateKey, placeholders, "match", ct);
+                    await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, templateKey, placeholders, entityId: id, entityType: "match", ct: ct);
                 }
             }
                 if (awayTeam != null) {
@@ -441,7 +441,7 @@ public class MatchService : IMatchService
                  if (captain != null && captain.UserId.HasValue)
                  {
                      placeholders["opponent"] = homeTeam?.Name ?? "الخصم";
-                     await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, templateKey, placeholders, "match", ct);
+                     await _notificationService.SendNotificationByTemplateAsync(captain.UserId.Value, templateKey, placeholders, entityId: id, entityType: "match", ct: ct);
                  }
             }
 

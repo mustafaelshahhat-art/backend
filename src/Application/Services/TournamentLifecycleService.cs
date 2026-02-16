@@ -218,7 +218,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
 
         // Notify
         await _analyticsService.LogActivityByTemplateAsync("KNOCKOUT_STARTED", new Dictionary<string, string> { { "tournamentName", tournament.Name } }, null, "System", ct);
-        await _notificationService.SendNotificationAsync(Guid.Empty, "بدء الأدوار الإقصائية", $"تأهلت الفرق وبدأت الأدوار الإقصائية لبطولة {tournament.Name}", "all", ct);
+        await _notificationService.SendNotificationAsync(Guid.Empty, "بدء الأدوار الإقصائية", $"تأهلت الفرق وبدأت الأدوار الإقصائية لبطولة {tournament.Name}", NotificationCategory.Tournament, ct: ct);
         
         // Notify Real-Time
         await _notifier.SendMatchesGeneratedAsync(_mapper.Map<IEnumerable<MatchDto>>(newMatches));
@@ -333,7 +333,7 @@ public class TournamentLifecycleService : ITournamentLifecycleService
          
          await _analyticsService.LogActivityByTemplateAsync("TOURNAMENT_FINALIZED", new Dictionary<string, string> { { "tournamentName", tournament.Name }, { "winnerName", winnerTeam?.Name ?? "Unknown" } }, null, "نظام", ct);
          
-         await _notificationService.SendNotificationAsync(Guid.Empty, "القمة انتهت!", $"انتهت بطولة {tournament.Name} رسمياً وتوج فريق {winnerTeam?.Name} باللقب!", "admin_broadcast", ct);
+         await _notificationService.SendNotificationAsync(Guid.Empty, "القمة انتهت!", $"انتهت بطولة {tournament.Name} رسمياً وتوج فريق {winnerTeam?.Name} باللقب!", NotificationCategory.Tournament, NotificationType.Success, ct: ct);
          
          await _notifier.SendTournamentUpdatedAsync(_mapper.Map<TournamentDto>(tournament));
     }
