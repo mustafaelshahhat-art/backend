@@ -197,6 +197,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TeamJoinRequest>().Property<bool>("IsDeleted").HasDefaultValue(false);
         modelBuilder.Entity<TeamJoinRequest>().HasQueryFilter(r =>
             !EF.Property<bool>(r, "IsDeleted"));
+        modelBuilder.Entity<TeamJoinRequest>().Property(r => r.Status).HasMaxLength(50);
 
         // 7.5 TournamentPlayer — own IsDeleted, no JOINs to Player/Team
         modelBuilder.Entity<TournamentPlayer>().Property<bool>("IsDeleted").HasDefaultValue(false);
