@@ -424,9 +424,12 @@ public class TournamentService : ITournamentService
                 throw new ConflictException("انتهى موعد التسجيل في البطولة.");
             }
 
-            // ATOMIC CAPACITY CHECK
+            // ATOMIC CAPACITY CHECK — exclude rejected/withdrawn registrations
             bool isActive = tournament.Status == TournamentStatus.Active;
-            bool isFull = tournament.Registrations.Count >= tournament.MaxTeams;
+            int activeRegistrations = tournament.Registrations.Count(r => 
+                r.Status != RegistrationStatus.Rejected && 
+                r.Status != RegistrationStatus.Withdrawn);
+            bool isFull = activeRegistrations >= tournament.MaxTeams;
 
             if (isFull && !tournament.AllowLateRegistration)
             {
@@ -935,53 +938,38 @@ public class TournamentService : ITournamentService
         if (effectiveMode == TournamentMode.GroupsKnockoutSingle || effectiveMode == TournamentMode.GroupsKnockoutHomeAway)
         {
             if (tournament.NumberOfGroups < 1) tournament.NumberOfGroups = 1;
-            
-            var groups = new List<List<Guid>>();
-            for (int i = 0; i < tournament.NumberOfGroups; i++) groups.Add(new List<Guid>());
 
-            if (tournament.HasOpeningTeams)
-            {
-                var openingTeamA = tournament.OpeningTeamAId!.Value;
-                var openingTeamB = tournament.OpeningTeamBId!.Value;
-                var remainingTeams = teamIds.Where(id => id != openingTeamA && id != openingTeamB).ToList();
+            // Shuffle teams for random distribution
+            var shuffledTeams = teamIds.OrderBy(x => random.Next()).ToList();
 
-                // Lock opening match to Group 1 to ensure it's Match #1 of Round 1
-                int openingGroupIndex = 0; 
-                groups[openingGroupIndex].Add(openingTeamA);
-                groups[openingGroupIndex].Add(openingTeamB);
+            // Use deterministic distribution algorithm — guarantees:
+            // - No empty groups (group count = min(N, G))
+            // - Max difference between groups is 1 team
+            // - Opening teams locked to group 1
+            var distribution = Domain.Services.GroupDistributionAlgorithm.Distribute(
+                shuffledTeams,
+                tournament.NumberOfGroups,
+                tournament.HasOpeningTeams ? tournament.OpeningTeamAId : null,
+                tournament.HasOpeningTeams ? tournament.OpeningTeamBId : null);
 
-                var shuffledRemaining = remainingTeams.OrderBy(x => random.Next()).ToList();
-                for (int i = 0; i < shuffledRemaining.Count; i++)
-                {
-                    int targetGroup = 0;
-                    int minCount = groups[0].Count;
-                    for (int g = 1; g < tournament.NumberOfGroups; g++)
-                    {
-                        if (groups[g].Count < minCount)
-                        {
-                            minCount = groups[g].Count;
-                            targetGroup = g;
-                        }
-                    }
-                    groups[targetGroup].Add(shuffledRemaining[i]);
-                }
-            }
-            else
+            // Validate distribution invariants
+            var validation = Domain.Services.GroupDistributionAlgorithm.Validate(
+                distribution, shuffledTeams, tournament.NumberOfGroups);
+            if (!validation.IsValid)
+                throw new InvalidOperationException($"Group distribution failed: {string.Join("; ", validation.Errors)}");
+
+            // Convert to indexed list for match generation
+            var groups = Enumerable.Range(1, distribution.Count)
+                .Select(g => distribution[g])
+                .ToList();
+
+            // Persistent Group Assignment (in-memory, saved by caller's UpdateAsync)
+            foreach (var (groupId, groupTeamIds) in distribution)
             {
-                var shuffledTeams = teamIds.OrderBy(x => random.Next()).ToList();
-                for (int i = 0; i < shuffledTeams.Count; i++)
-                {
-                    groups[i % tournament.NumberOfGroups].Add(shuffledTeams[i]);
-                }
-            }
-            
-            // Persistent Group Assignment
-            for (int g = 0; g < groups.Count; g++)
-            {
-                foreach (var teamId in groups[g])
+                foreach (var teamId in groupTeamIds)
                 {
                     var reg = tournament.Registrations.FirstOrDefault(r => r.TeamId == teamId);
-                    if (reg != null) reg.GroupId = g + 1;
+                    if (reg != null) reg.GroupId = groupId;
                 }
             }
 

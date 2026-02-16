@@ -11,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 using AutoMapper;
@@ -23,6 +24,7 @@ public class TournamentServiceTests
     private readonly Mock<IRepository<TeamRegistration>> _registrationRepoMock;
     private readonly Mock<IRepository<Team>> _teamRepoMock;
     private readonly Mock<IMapper> _mapperMock;
+    private readonly Mock<IDistributedLock> _distributedLockMock;
     private readonly TournamentService _service;
 
     public TournamentServiceTests()
@@ -31,6 +33,15 @@ public class TournamentServiceTests
         _registrationRepoMock = new Mock<IRepository<TeamRegistration>>();
         _teamRepoMock = new Mock<IRepository<Team>>();
         _mapperMock = new Mock<IMapper>();
+        _distributedLockMock = new Mock<IDistributedLock>();
+
+        // Default: lock always succeeds
+        _distributedLockMock
+            .Setup(l => l.AcquireLockAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _distributedLockMock
+            .Setup(l => l.ReleaseLockAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         _service = new TournamentService(
             _tournamentRepoMock.Object,
@@ -43,7 +54,7 @@ public class TournamentServiceTests
             new Mock<IRealTimeNotifier>().Object,
             new Mock<global::Domain.Interfaces.IRepository<global::Domain.Entities.TournamentPlayer>>().Object,
             new Mock<ITournamentLifecycleService>().Object,
-            new Mock<IDistributedLock>().Object
+            _distributedLockMock.Object
         );
     }
 

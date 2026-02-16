@@ -58,12 +58,16 @@ public class ResetScheduleCommandHandler : IRequestHandler<ResetScheduleCommand,
             tournament.OpeningMatchId = null;
             await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
 
-            // Clear GroupIds from registrations
-            var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == request.TournamentId, cancellationToken);
+            // Clear GroupIds from registrations — batch update (single SaveChanges)
+            var registrations = (await _registrationRepository.FindAsync(
+                r => r.TournamentId == request.TournamentId, cancellationToken)).ToList();
             foreach (var reg in registrations)
             {
                 reg.GroupId = null;
-                await _registrationRepository.UpdateAsync(reg, cancellationToken);
+            }
+            if (registrations.Any())
+            {
+                await _registrationRepository.UpdateRangeAsync(registrations, cancellationToken);
             }
 
             return Unit.Value;

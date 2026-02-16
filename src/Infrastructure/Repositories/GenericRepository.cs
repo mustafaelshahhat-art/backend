@@ -186,10 +186,10 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
 
     public async Task<(IEnumerable<T> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<T, bool>>? predicate = null, Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null, CancellationToken ct = default, params Expression<Func<T, object>>[] includes)
     {
-        // PROD-AUDIT: Enforce page bounds
+        // PROD-AUDIT: Enforce page bounds — cap at 500 to support large tournaments
         if (pageNumber < 1) pageNumber = 1;
         if (pageSize < 1) pageSize = 1;
-        if (pageSize > 100) pageSize = 100;
+        if (pageSize > 500) pageSize = 500;
 
         IQueryable<T> query = _dbSet.AsNoTracking();
 

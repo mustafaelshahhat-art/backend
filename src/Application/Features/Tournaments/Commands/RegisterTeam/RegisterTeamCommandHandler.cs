@@ -55,9 +55,12 @@ public class RegisterTeamCommandHandler : IRequestHandler<RegisterTeamCommand, T
                 throw new ConflictException("انتهى موعد التسجيل في البطولة.");
             }
 
-            // ATOMIC CAPACITY CHECK
+            // ATOMIC CAPACITY CHECK — exclude rejected/withdrawn registrations
             bool isActive = tournament.Status == TournamentStatus.Active;
-            bool isFull = tournament.Registrations.Count >= tournament.MaxTeams;
+            int activeRegistrations = tournament.Registrations.Count(r => 
+                r.Status != RegistrationStatus.Rejected && 
+                r.Status != RegistrationStatus.Withdrawn);
+            bool isFull = activeRegistrations >= tournament.MaxTeams;
 
             if (isFull && !tournament.AllowLateRegistration)
             {

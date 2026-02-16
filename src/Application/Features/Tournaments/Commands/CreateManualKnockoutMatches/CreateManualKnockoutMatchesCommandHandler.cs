@@ -115,6 +115,11 @@ public class CreateManualKnockoutMatchesCommandHandler : IRequestHandler<CreateM
             }
 
             await _matchRepository.AddRangeAsync(matches, cancellationToken);
+
+            // Activate tournament after successful knockout pairing
+            tournament.ChangeStatus(TournamentStatus.Active);
+            await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
+
             return _mapper.Map<IEnumerable<MatchDto>>(matches);
         }
         finally
