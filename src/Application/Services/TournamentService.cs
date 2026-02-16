@@ -1139,7 +1139,7 @@ public class TournamentService : ITournamentService
 
     public async Task<Application.Common.Models.PagedResult<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId, int page, int pageSize, int? groupId = null, CancellationToken ct = default)
     {
-        if (pageSize > 100) pageSize = 100;
+        if (pageSize > 200) pageSize = 200;
 
         // 1. Get all matches with events
         var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, new[] { "Events" }, ct);

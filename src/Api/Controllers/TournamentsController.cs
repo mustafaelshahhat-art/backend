@@ -287,9 +287,9 @@ public class TournamentsController : ControllerBase
     [HttpGet("{id}/standings")]
     [AllowAnonymous]
     [OutputCache(PolicyName = "ShortCache")]
-    public async Task<ActionResult<Application.Common.Models.PagedResult<TournamentStandingDto>>> GetStandings(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] int? groupId = null, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<TournamentStandingDto>>> GetStandings(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 100, [FromQuery] int? groupId = null, CancellationToken cancellationToken = default)
     {
-        if (pageSize > 100) pageSize = 100;
+        if (pageSize > 200) pageSize = 200;
         var standings = await _tournamentService.GetStandingsAsync(id, page, pageSize, groupId, cancellationToken);
         return Ok(standings);
     }
@@ -297,7 +297,7 @@ public class TournamentsController : ControllerBase
     [HttpGet("{id}/groups")]
     [AllowAnonymous]
     [OutputCache(PolicyName = "ShortCache")]
-    public async Task<ActionResult<Application.Common.Models.PagedResult<GroupDto>>> GetGroups(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<GroupDto>>> GetGroups(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
         var groups = await _tournamentService.GetGroupsAsync(id, page, pageSize, cancellationToken);
