@@ -118,16 +118,18 @@ public class AssignTeamsToGroupsCommandHandler : IRequestHandler<AssignTeamsToGr
                 }
             }
 
-            // Persistence
+            // Persistence — batch update (single SaveChanges round-trip)
+            var registrationsToUpdate = new List<TeamRegistration>();
             foreach (var assignment in request.Assignments)
             {
                 foreach (var teamId in assignment.TeamIds)
                 {
                     var registration = allRegistrations.First(r => r.TeamId == teamId);
                     registration.GroupId = assignment.GroupId;
-                    await _registrationRepository.UpdateAsync(registration, cancellationToken);
+                    registrationsToUpdate.Add(registration);
                 }
             }
+            await _registrationRepository.UpdateRangeAsync(registrationsToUpdate, cancellationToken);
 
             return Unit.Value;
         }

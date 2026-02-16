@@ -179,9 +179,9 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("{id}/registrations")]
     [Authorize(Policy = "RequireTournamentOwner")]
-    public async Task<ActionResult<Application.Common.Models.PagedResult<TeamRegistrationDto>>> GetRegistrations(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<TeamRegistrationDto>>> GetRegistrations(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 100, CancellationToken cancellationToken = default)
     {
-        if (pageSize > 100) pageSize = 100;
+        if (pageSize > 200) pageSize = 200;
         var registrations = await _tournamentService.GetRegistrationsAsync(id, page, pageSize, cancellationToken);
         return Ok(registrations);
     }
@@ -252,9 +252,9 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("payments/pending")]
     [Authorize(Policy = "RequireCreator")]
-    public async Task<ActionResult<Application.Common.Models.PagedResult<PendingPaymentResponse>>> GetPendingPayments([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<PendingPaymentResponse>>> GetPendingPayments([FromQuery] int page = 1, [FromQuery] int pageSize = 100, CancellationToken cancellationToken = default)
     {
-        if (pageSize > 100) pageSize = 100;
+        if (pageSize > 200) pageSize = 200;
         var (userId, userRole) = GetUserContext();
         Guid? creatorId = (userRole == UserRole.TournamentCreator.ToString()) ? userId : null;
 
@@ -264,9 +264,9 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("payments/all")]
     [Authorize(Policy = "RequireCreator")]
-    public async Task<ActionResult<Application.Common.Models.PagedResult<PendingPaymentResponse>>> GetAllPaymentRequests([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<PendingPaymentResponse>>> GetAllPaymentRequests([FromQuery] int page = 1, [FromQuery] int pageSize = 100, CancellationToken cancellationToken = default)
     {
-        if (pageSize > 100) pageSize = 100;
+        if (pageSize > 200) pageSize = 200;
         var (userId, userRole) = GetUserContext();
         Guid? creatorId = (userRole == UserRole.TournamentCreator.ToString()) ? userId : null;
 

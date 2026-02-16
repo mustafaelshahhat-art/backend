@@ -542,7 +542,7 @@ public class TournamentService : ITournamentService
 
     public async Task<Application.Common.Models.PagedResult<TeamRegistrationDto>> GetRegistrationsAsync(Guid tournamentId, int page, int pageSize, CancellationToken ct = default)
     {
-        if (pageSize > 100) pageSize = 100;
+        if (pageSize > 200) pageSize = 200;
         
         var (items, totalCount) = await _registrationRepository.GetPagedAsync(
             page, 
@@ -747,7 +747,7 @@ public class TournamentService : ITournamentService
 
     public async Task<Application.Common.Models.PagedResult<PendingPaymentResponse>> GetPendingPaymentsAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
     {
-        if (pageSize > 100) pageSize = 100;
+        if (pageSize > 200) pageSize = 200;
 
         var (items, totalCount) = await _registrationRepository.GetPagedAsync(
             page,
@@ -772,7 +772,7 @@ public class TournamentService : ITournamentService
 
     public async Task<Application.Common.Models.PagedResult<PendingPaymentResponse>> GetAllPaymentRequestsAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
     {
-        if (pageSize > 100) pageSize = 100;
+        if (pageSize > 200) pageSize = 200;
 
         var (items, totalCount) = await _registrationRepository.GetPagedAsync(
             page,
