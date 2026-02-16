@@ -14,6 +14,7 @@ using System.Security.Claims;
 using Domain.Interfaces;
 using Domain.Entities;
 using Shared.Exceptions;
+using Microsoft.AspNetCore.StaticFiles;
 
 using Serilog;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -416,7 +417,42 @@ app.UseSerilogRequestLogging(options =>
     };
 });
 
-app.UseStaticFiles();
+// Serve static files from wwwroot with correct MIME types and caching
+var staticFileProvider = new FileExtensionContentTypeProvider();
+// Ensure modern file types are mapped correctly
+staticFileProvider.Mappings[".js"] = "application/javascript";
+staticFileProvider.Mappings[".mjs"] = "application/javascript";
+staticFileProvider.Mappings[".css"] = "text/css";
+staticFileProvider.Mappings[".json"] = "application/json";
+staticFileProvider.Mappings[".wasm"] = "application/wasm";
+staticFileProvider.Mappings[".webmanifest"] = "application/manifest+json";
+staticFileProvider.Mappings[".webp"] = "image/webp";
+staticFileProvider.Mappings[".avif"] = "image/avif";
+staticFileProvider.Mappings[".woff2"] = "font/woff2";
+staticFileProvider.Mappings[".woff"] = "font/woff";
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = staticFileProvider,
+    OnPrepareResponse = ctx =>
+    {
+        var path = ctx.File.Name;
+        // Hashed filenames (e.g., main-ICDGF477.js) are immutable — cache aggressively
+        if (path.Contains('-') && (path.EndsWith(".js") || path.EndsWith(".css") || path.EndsWith(".woff2")))
+        {
+            ctx.Context.Response.Headers[Microsoft.Net.Http.Headers.HeaderNames.CacheControl] = "public, max-age=31536000, immutable";
+        }
+        else if (path.EndsWith(".html"))
+        {
+            // Never cache index.html — must always get fresh version to pick up new hashes
+            ctx.Context.Response.Headers[Microsoft.Net.Http.Headers.HeaderNames.CacheControl] = "no-cache, no-store, must-revalidate";
+        }
+        else
+        {
+            ctx.Context.Response.Headers[Microsoft.Net.Http.Headers.HeaderNames.CacheControl] = "public, max-age=86400";
+        }
+    }
+});
 app.UseMiddleware<FallbackImageMiddleware>();
 
 app.UseMiddleware<SecurityHeadersMiddleware>();
@@ -434,7 +470,7 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions
 });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
-    Predicate = check => check.Tags.Contains("ready") || true // Check DB, etc.
+    Predicate = check => check.Tags.Contains("ready")
 });
 app.MapHub<Api.Hubs.NotificationHub>("/hubs/notifications");
 app.MapHub<Api.Hubs.MatchChatHub>("/hubs/chat");

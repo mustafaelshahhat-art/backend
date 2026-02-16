@@ -354,14 +354,18 @@ public class AuthService : IAuthService
 
     public async Task ResetPasswordAsync(string email, string otp, string newPassword, CancellationToken ct = default)
     {
-        var user = (await _userRepository.FindAsync(u => u.Email == email, ct)).FirstOrDefault();
+        var normalizedEmail = email?.Trim().ToLower() ?? string.Empty;
+        var user = (await _userRepository.FindAsync(u => u.Email == normalizedEmail, ct)).FirstOrDefault();
         if (user == null) throw new NotFoundException("User not found.");
 
         var isValid = await _otpService.VerifyOtpAsync(user.Id, otp, "PASSWORD_RESET", ct);
         if (!isValid) throw new BadRequestException("كود التفعيل غير صحيح أو منتهي الصلاحية.");
 
-        // Check if new password is same as current
-        user.RefreshToken = null; 
+        // Actually reset the password
+        user.PasswordHash = _passwordHasher.HashPassword(newPassword);
+        // Invalidate all existing sessions
+        user.RefreshToken = null;
+        user.TokenVersion++;
         
         await _userRepository.UpdateAsync(user, ct);
     }

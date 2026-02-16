@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
+using Application.DTOs.Matches;
 using Application.Interfaces;
-using Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 
 namespace Api.Controllers;
 
@@ -21,11 +23,23 @@ public class MatchChatController : ControllerBase
 
     [HttpGet("{id}/chat")]
     [Authorize]
-    [ResponseCache(Duration = 5)]
-    public async Task<ActionResult<IEnumerable<MatchMessage>>> GetChatHistory(Guid id, [FromQuery] int pageSize = 50, [FromQuery] int page = 1, CancellationToken cancellationToken = default)
+    [OutputCache(PolicyName = "ShortCache")]
+    public async Task<ActionResult<IEnumerable<MatchMessageDto>>> GetChatHistory(Guid id, [FromQuery] int pageSize = 50, [FromQuery] int page = 1, CancellationToken cancellationToken = default)
     {
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 1;
         if (pageSize > 200) pageSize = 200;
         var messages = await _messageRepository.GetByMatchIdAsync(id, pageSize, page, cancellationToken);
-        return Ok(messages);
+        var dtos = messages.Select(m => new MatchMessageDto
+        {
+            Id = m.Id,
+            MatchId = m.MatchId,
+            SenderId = m.SenderId,
+            SenderName = m.SenderName,
+            Role = m.Role,
+            Content = m.Content,
+            Timestamp = m.Timestamp
+        });
+        return Ok(dtos);
     }
 }
