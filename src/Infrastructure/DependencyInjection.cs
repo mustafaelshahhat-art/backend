@@ -24,25 +24,18 @@ public static class DependencyInjection
         try
         {
             // PROD-AUDIT: Distributed Safety
-            // Use SQL Fallback in Development for convenience, enforce Redis in Production for performance.
-            if (isProduction)
-            {
-                useRedis = true; // Always attempt Redis in Prod
-            }
-            else
-            {
-                // In Dev, check if Redis is actually reachable before configuring it
-                var checkOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
-                checkOptions.AbortOnConnectFail = true;
-                checkOptions.ConnectTimeout = 2000; // Fast fail check
-                using var checkConn = StackExchange.Redis.ConnectionMultiplexer.Connect(checkOptions);
-                useRedis = checkConn.IsConnected;
-            }
+            // Attempt Redis connection, fallback to SQL if unavailable (even in Production)
+            var checkOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
+            checkOptions.AbortOnConnectFail = true;
+            checkOptions.ConnectTimeout = 3000; // Fast fail check
+            using var checkConn = StackExchange.Redis.ConnectionMultiplexer.Connect(checkOptions);
+            useRedis = checkConn.IsConnected;
         }
         catch
         {
             useRedis = false;
-            if (isProduction) throw; // Fail fast in prod
+            // Fallback to SQL-based caching and locking (even in Production)
+            // Log warning but don't fail startup
         }
 
         if (useRedis)

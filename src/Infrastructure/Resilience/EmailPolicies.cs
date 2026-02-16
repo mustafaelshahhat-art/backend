@@ -10,9 +10,9 @@ public static class EmailPolicies
 {
     public static IAsyncPolicy GetResiliencePolicy(ILogger logger)
     {
-        // 1. Timeout Policy: 10 seconds per attempt
+        // 1. Timeout Policy: 30 seconds per attempt
         var timeoutPolicy = Policy
-            .TimeoutAsync(TimeSpan.FromSeconds(10));
+            .TimeoutAsync(TimeSpan.FromSeconds(30));
 
         // 2. Retry Policy: Exponential backoff (2s, 4s, 8s)
         var retryPolicy = Policy
