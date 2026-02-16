@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260216125004_PerfFix_DenormalizeIsDeleted")]
+    partial class PerfFix_DenormalizeIsDeleted
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -195,9 +198,6 @@ namespace Infrastructure.Migrations
                     b.HasIndex("TournamentId", "Status")
                         .HasDatabaseName("IX_Matches_Tournament_Status");
 
-                    b.HasIndex("TournamentId", "Status", "Date")
-                        .HasDatabaseName("IX_Matches_Tournament_Status_Date");
-
                     b.ToTable("Matches");
                 });
 
@@ -301,9 +301,6 @@ namespace Infrastructure.Migrations
                     b.HasIndex("MatchId")
                         .HasDatabaseName("IX_MatchMessages_MatchId");
 
-                    b.HasIndex("MatchId", "Timestamp")
-                        .HasDatabaseName("IX_MatchMessages_Match_Timestamp");
-
                     b.ToTable("MatchMessages");
                 });
 
@@ -345,10 +342,6 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "CreatedAt")
-                        .IsDescending(false, true)
-                        .HasDatabaseName("IX_Notifications_User_CreatedAt");
-
                     b.HasIndex("UserId", "IsRead")
                         .HasDatabaseName("IX_Notifications_User_Read");
 
@@ -385,7 +378,7 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -395,8 +388,7 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "Type", "IsUsed")
-                        .HasDatabaseName("IX_Otps_User_Type_IsUsed");
+                    b.HasIndex("UserId");
 
                     b.ToTable("Otps");
                 });
@@ -661,9 +653,6 @@ namespace Infrastructure.Migrations
                     b.HasIndex("TeamId", "Status")
                         .HasDatabaseName("IX_TeamJoinRequests_Team_Status");
 
-                    b.HasIndex("UserId", "Status")
-                        .HasDatabaseName("IX_TeamJoinRequests_User_Status");
-
                     b.ToTable("TeamJoinRequests");
                 });
 
@@ -723,9 +712,6 @@ namespace Infrastructure.Migrations
                         .HasDatabaseName("IX_TeamRegistration_Status");
 
                     b.HasIndex("TeamId");
-
-                    b.HasIndex("TournamentId", "Status")
-                        .HasDatabaseName("IX_TeamRegistration_Tournament_Status");
 
                     b.HasIndex("TournamentId", "TeamId")
                         .IsUnique()
@@ -966,8 +952,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("PlayerId");
 
-                    b.HasIndex("RegistrationId")
-                        .HasDatabaseName("IX_TournamentPlayers_RegistrationId");
+                    b.HasIndex("RegistrationId");
 
                     b.HasIndex("TeamId");
 
@@ -1034,7 +1019,7 @@ namespace Infrastructure.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("RefreshToken")
-                        .HasColumnType("nvarchar(450)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("RefreshTokenExpiryTime")
                         .HasColumnType("datetime2");
@@ -1068,10 +1053,6 @@ namespace Infrastructure.Migrations
                     b.HasIndex("Email")
                         .IsUnique()
                         .HasDatabaseName("UQ_Users_Email");
-
-                    b.HasIndex("RefreshToken")
-                        .HasDatabaseName("IX_Users_RefreshToken_Filtered")
-                        .HasFilter("[RefreshToken] IS NOT NULL");
 
                     b.HasIndex("Governorate", "City", "Neighborhood")
                         .HasDatabaseName("IX_Users_Location");

@@ -133,6 +133,11 @@ public static class DependencyInjection
         services.AddHostedService<Infrastructure.BackgroundJobs.OutboxProcessor>();
         services.AddHostedService<Infrastructure.BackgroundJobs.IdempotencyCleanupService>();
 
+        // PERF-FIX B4: Channel-based email queue replaces Task.Run fire-and-forget
+        services.AddSingleton<Infrastructure.BackgroundJobs.EmailQueueService>();
+        services.AddSingleton<IEmailQueueService>(sp => sp.GetRequiredService<Infrastructure.BackgroundJobs.EmailQueueService>());
+        services.AddHostedService(sp => sp.GetRequiredService<Infrastructure.BackgroundJobs.EmailQueueService>());
+
         return services;
     }
 }

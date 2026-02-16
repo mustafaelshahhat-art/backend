@@ -30,6 +30,7 @@ public class TeamService : ITeamService
     private readonly IRealTimeNotifier _realTimeNotifier;
     private readonly ITournamentLifecycleService _lifecycleService;
     private readonly ISystemSettingsService _systemSettingsService;
+    private readonly ITransactionManager _transactionManager;
 
     public TeamService(
         IRepository<Team> teamRepository,
@@ -44,7 +45,8 @@ public class TeamService : ITeamService
         INotificationService notificationService,
         IRealTimeNotifier realTimeNotifier,
         ITournamentLifecycleService lifecycleService,
-        ISystemSettingsService systemSettingsService)
+        ISystemSettingsService systemSettingsService,
+        ITransactionManager transactionManager)
     {
         _teamRepository = teamRepository;
         _userRepository = userRepository;
@@ -59,6 +61,7 @@ public class TeamService : ITeamService
         _realTimeNotifier = realTimeNotifier;
         _lifecycleService = lifecycleService;
         _systemSettingsService = systemSettingsService;
+        _transactionManager = transactionManager;
     }
 
     public async Task<Application.Common.Models.PagedResult<TeamDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? captainId = null, Guid? playerId = null, CancellationToken ct = default)
@@ -278,12 +281,13 @@ public class TeamService : ITeamService
     public async Task DeleteAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default)
     {
         await ValidateManagementRights(id, userId, userRole, ct);
-        await _teamRepository.BeginTransactionAsync(ct);
-        try
+
+        // PERF-FIX D9: Use ITransactionManager with retry strategy instead of raw Begin/Commit/Rollback
+        var (memberUserIds, affectedTournamentIds) = await _transactionManager.ExecuteInTransactionAsync(async () =>
         {
             // 2. Unlink Users (Set TeamId = null)
             var users = await _userRepository.FindAsync(u => u.TeamId == id, ct);
-            var memberUserIds = users.Select(u => u.Id).ToList();
+            var memberIds = users.Select(u => u.Id).ToList();
 
             if (users.Any())
             {
@@ -309,15 +313,15 @@ public class TeamService : ITeamService
 
             // 5. Delete TeamRegistrations and collect affected tournaments
             var registrations = await _registrationRepository.FindAsync(r => r.TeamId == id, ct);
-            var affectedTournamentIds = registrations.Select(r => r.TournamentId).Distinct().ToList();
+            var tournamentIds = registrations.Select(r => r.TournamentId).Distinct().ToList();
 
             if (registrations.Any())
             {
                 var approvedOrPending = registrations.Where(r => r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.PendingPaymentReview).ToList();
                 if (approvedOrPending.Any())
                 {
-                    var tournamentIds = approvedOrPending.Select(r => r.TournamentId).Distinct().ToList();
-                    var tournaments = await _tournamentRepository.FindAsync(t => tournamentIds.Contains(t.Id), ct);
+                    var tIds = approvedOrPending.Select(r => r.TournamentId).Distinct().ToList();
+                    var tournaments = await _tournamentRepository.FindAsync(t => tIds.Contains(t.Id), ct);
                     foreach (var tournament in tournaments)
                     {
                         var affectedCount = approvedOrPending.Count(r => r.TournamentId == tournament.Id);
@@ -331,27 +335,22 @@ public class TeamService : ITeamService
             // 6. Delete Team
             await _teamRepository.DeleteAsync(id, ct);
 
-            await _teamRepository.CommitTransactionAsync(ct);
+            return (memberIds, tournamentIds);
+        }, ct);
 
-            // 7. Notify all members (Specific) AND Global List (General)
-            await _realTimeNotifier.SendTeamDeletedAsync(id, memberUserIds, ct);
-            await _realTimeNotifier.SendTeamDeletedAsync(id, ct);
+        // 7. Notify all members (Specific) AND Global List (General)
+        await _realTimeNotifier.SendTeamDeletedAsync(id, memberUserIds, ct);
+        await _realTimeNotifier.SendTeamDeletedAsync(id, ct);
 
-            // 8. Emit TournamentUpdated for each affected tournament
-            foreach (var tournamentId in affectedTournamentIds)
-            {
-                var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
-                if (tournament != null)
-                {
-                    var dto = _mapper.Map<Application.DTOs.Tournaments.TournamentDto>(tournament);
-                    await _realTimeNotifier.SendTournamentUpdatedAsync(dto, ct);
-                }
-            }
-        }
-        catch (Exception)
+        // 8. Emit TournamentUpdated for each affected tournament
+        foreach (var tournamentId in affectedTournamentIds)
         {
-            await _teamRepository.RollbackTransactionAsync(ct);
-            throw;
+            var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
+            if (tournament != null)
+            {
+                var dto = _mapper.Map<Application.DTOs.Tournaments.TournamentDto>(tournament);
+                await _realTimeNotifier.SendTournamentUpdatedAsync(dto, ct);
+            }
         }
     }
 

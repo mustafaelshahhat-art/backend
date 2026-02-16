@@ -17,13 +17,20 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
     {
         var requestName = typeof(TRequest).Name;
 
-        _logger.LogInformation("Processing Request: {Name} {@Request}",
-            requestName, request);
+        // PERF-FIX B6: Guard destructuring behind IsEnabled to avoid expensive serialization
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Processing Request: {Name} {@Request}",
+                requestName, request);
+        }
 
         var response = await next();
 
-        _logger.LogInformation("Completed Request: {Name} with Response: {@Response}",
-            requestName, response);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Completed Request: {Name} with Response: {@Response}",
+                requestName, response);
+        }
 
         return response;
     }

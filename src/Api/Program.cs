@@ -19,10 +19,14 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// PROD-AUDIT: Global Request Size Limit
+// PROD-AUDIT: Global Request Size Limit + PERF-FIX I2: Kestrel thread tuning
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
     serverOptions.Limits.MaxRequestBodySize = 10 * 1024 * 1024; // 10 MB
+    serverOptions.Limits.MaxConcurrentConnections = 400;
+    serverOptions.Limits.MaxConcurrentUpgradedConnections = 200; // WebSockets/SignalR
+    serverOptions.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(120);
+    serverOptions.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(30);
 });
 
 // PROD-AUDIT: Structured Logging
@@ -46,6 +50,14 @@ if (string.IsNullOrEmpty(jwtSecret) || jwtSecret.Length < 16)
 builder.Services.AddResponseCompression(options =>
 {
     options.EnableForHttps = true;
+});
+
+// PERF-FIX I4: Output Caching for read-heavy endpoints
+builder.Services.AddOutputCache(options =>
+{
+    options.AddBasePolicy(builder => builder.Expire(TimeSpan.FromSeconds(10)));
+    options.AddPolicy("ShortCache", builder => builder.Expire(TimeSpan.FromSeconds(30)).Tag("short"));
+    options.AddPolicy("MediumCache", builder => builder.Expire(TimeSpan.FromMinutes(2)).Tag("medium"));
 });
 
 // Add services to the container.
@@ -110,16 +122,32 @@ builder.Services.AddCors(options =>
         });
 });
 
-// Rate Limiting
+// Rate Limiting — PERF-FIX: Add GlobalLimiter so all endpoints are protected
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddFixedWindowLimiter(policyName: "fixed", options =>
+    
+    // Global limiter: 100 requests/min per user or IP
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value 
+                          ?? context.Connection.RemoteIpAddress?.ToString() 
+                          ?? "anonymous",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 100,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 2
+            }));
+
+    // Strict limiter for auth endpoints: 10 requests/min
+    options.AddFixedWindowLimiter(policyName: "auth", options =>
     {
-        options.PermitLimit = 100;
+        options.PermitLimit = 10;
         options.Window = TimeSpan.FromMinutes(1);
-        options.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
-        options.QueueLimit = 2;
+        options.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        options.QueueLimit = 0;
     });
 });
 
@@ -307,17 +335,9 @@ else
 // Configure the HTTP request pipeline.
 app.UseHttpsRedirection();
 app.UseResponseCompression();
+app.UseOutputCache(); // PERF-FIX I4: Output Caching middleware
 
-// Security Headers Middleware
-app.Use(async (context, next) =>
-{
-    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
-    context.Response.Headers.Append("X-Frame-Options", "DENY");
-    context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
-    context.Response.Headers.Append("Referrer-Policy", "no-referrer");
-    context.Response.Headers.Append("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;");
-    await next();
-});
+// PERF-FIX B12: Removed duplicate inline security headers — consolidated into SecurityHeadersMiddleware
 
 if (app.Environment.IsDevelopment())
 {

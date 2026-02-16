@@ -45,11 +45,30 @@ public class MatchService : IMatchService
         _lifecycleService = lifecycleService;
     }
 
-    public async Task<Application.Common.Models.PagedResult<MatchDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
+    public async Task<Application.Common.Models.PagedResult<MatchDto>> GetPagedAsync(int pageNumber, int pageSize, Guid? creatorId = null, string? status = null, Guid? teamId = null, CancellationToken ct = default)
     {
-        System.Linq.Expressions.Expression<Func<Match, bool>> filter = creatorId.HasValue 
-            ? m => m.Tournament!.CreatorUserId == creatorId 
-            : null;
+        // PERF-FIX: Build server-side filter combining all criteria — eliminates 100-record client-side filtering
+        System.Linq.Expressions.Expression<Func<Match, bool>>? filter = null;
+        
+        // Parse status string to enum if provided
+        MatchStatus? parsedStatus = null;
+        if (!string.IsNullOrEmpty(status) && Enum.TryParse<MatchStatus>(status, true, out var s))
+            parsedStatus = s;
+
+        if (creatorId.HasValue && parsedStatus.HasValue && teamId.HasValue)
+            filter = m => m.Tournament!.CreatorUserId == creatorId && m.Status == parsedStatus.Value && (m.HomeTeamId == teamId.Value || m.AwayTeamId == teamId.Value);
+        else if (creatorId.HasValue && parsedStatus.HasValue)
+            filter = m => m.Tournament!.CreatorUserId == creatorId && m.Status == parsedStatus.Value;
+        else if (creatorId.HasValue && teamId.HasValue)
+            filter = m => m.Tournament!.CreatorUserId == creatorId && (m.HomeTeamId == teamId.Value || m.AwayTeamId == teamId.Value);
+        else if (parsedStatus.HasValue && teamId.HasValue)
+            filter = m => m.Status == parsedStatus.Value && (m.HomeTeamId == teamId.Value || m.AwayTeamId == teamId.Value);
+        else if (creatorId.HasValue)
+            filter = m => m.Tournament!.CreatorUserId == creatorId;
+        else if (parsedStatus.HasValue)
+            filter = m => m.Status == parsedStatus.Value;
+        else if (teamId.HasValue)
+            filter = m => m.HomeTeamId == teamId.Value || m.AwayTeamId == teamId.Value;
 
         var result = await _matchRepository.GetPagedAsync(pageNumber, pageSize, filter, q => q.OrderByDescending(m => m.Date), ct, m => m.HomeTeam!, m => m.AwayTeam!, m => m.Tournament!);
         
@@ -74,7 +93,7 @@ public class MatchService : IMatchService
     public async Task<MatchDto> StartMatchAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default)
     {
         await ValidateManagementRights(id, userId, userRole, ct);
-        var match = await _matchRepository.GetByIdAsync(id, ct);
+        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam.Players", "AwayTeam.Players" }, ct);
         if (match == null) throw new NotFoundException(nameof(Match), id);
 
         match.Status = MatchStatus.Live;
@@ -91,8 +110,9 @@ public class MatchService : IMatchService
         await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Live.ToString() }, $"match:{id}", ct);
         await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Live.ToString() }, "role:Admin", ct);
         
-        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
-        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
+        // PERF-FIX D6: Teams already loaded with match — no extra queries
+        var homeTeam = match.HomeTeam;
+        var awayTeam = match.AwayTeam;
 
         if (homeTeam != null)
         {
@@ -120,7 +140,7 @@ public class MatchService : IMatchService
     public async Task<MatchDto> EndMatchAsync(Guid id, Guid userId, string userRole, CancellationToken ct = default)
     {
         await ValidateManagementRights(id, userId, userRole, ct);
-        var match = await _matchRepository.GetByIdAsync(id, ct);
+        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam.Players", "AwayTeam.Players" }, ct);
         if (match == null) throw new NotFoundException(nameof(Match), id);
 
         match.SetStatus(MatchStatus.Finished);
@@ -140,8 +160,9 @@ public class MatchService : IMatchService
         await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Finished.ToString() }, $"match:{id}", ct);
         await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = id, Status = MatchStatus.Finished.ToString() }, "role:Admin", ct);
 
-        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
-        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
+        // PERF-FIX D6: Teams already loaded with match — no extra queries
+        var homeTeam = match.HomeTeam;
+        var awayTeam = match.AwayTeam;
 
         if (homeTeam != null)
         {
@@ -172,7 +193,7 @@ public class MatchService : IMatchService
     public async Task<MatchDto> AddEventAsync(Guid id, AddMatchEventRequest request, Guid userId, string userRole, CancellationToken ct = default)
     {
         await ValidateManagementRights(id, userId, userRole, ct);
-        var match = await _matchRepository.GetByIdAsync(id, ct);
+        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam.Players", "AwayTeam.Players" }, ct);
         if (match == null) throw new NotFoundException(nameof(Match), id);
 
         // Convert string Type to Enum
@@ -218,9 +239,9 @@ public class MatchService : IMatchService
         var events = await _eventRepository.FindAsync(e => e.MatchId == id, new[] { "Player" }, ct);
         match.Events = events.ToList();
 
-        // Notify
-        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
-        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
+        // PERF-FIX D6: Teams already loaded with match — no extra queries
+        var homeTeam = match.HomeTeam;
+        var awayTeam = match.AwayTeam;
         string eventLabel = eventType == MatchEventType.Goal ? "هدف" : eventType == MatchEventType.YellowCard ? "بطاقة صفراء" : "بطاقة حمراء";
         
         var placeholders = new Dictionary<string, string> { { "eventType", eventLabel } };
@@ -252,7 +273,7 @@ public class MatchService : IMatchService
     public async Task<MatchDto> RemoveEventAsync(Guid matchId, Guid eventId, Guid userId, string userRole, CancellationToken ct = default)
     {
         await ValidateManagementRights(matchId, userId, userRole, ct);
-        var match = await _matchRepository.GetByIdAsync(matchId, ct);
+        var match = await _matchRepository.GetByIdAsync(matchId, new[] { "HomeTeam.Players", "AwayTeam.Players" }, ct);
         if (match == null) throw new NotFoundException(nameof(Match), matchId);
 
         var matchEvent = await _eventRepository.GetByIdAsync(eventId, ct);
@@ -280,9 +301,9 @@ public class MatchService : IMatchService
             ct
         );
 
-        // Notify
-        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
-        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
+        // PERF-FIX D6: Teams already loaded with match — no extra queries
+        var homeTeam = match.HomeTeam;
+        var awayTeam = match.AwayTeam;
         var placeholders = new Dictionary<string, string> { { "eventType", "تعديل في الأحداث" } };
         if (homeTeam != null)
         {
@@ -317,7 +338,7 @@ public class MatchService : IMatchService
     public async Task<MatchDto> UpdateAsync(Guid id, UpdateMatchRequest request, Guid userId, string userRole, CancellationToken ct = default)
     {
         await ValidateManagementRights(id, userId, userRole, ct);
-        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam", "AwayTeam" }, ct);
+        var match = await _matchRepository.GetByIdAsync(id, new[] { "HomeTeam.Players", "AwayTeam.Players" }, ct);
         if (match == null) throw new NotFoundException(nameof(Match), id);
 
 
@@ -342,9 +363,9 @@ public class MatchService : IMatchService
 
         await _matchRepository.UpdateAsync(match, ct);
 
-        // Handle Notifications & Logging
-        var homeTeam = await _teamRepository.GetByIdAsync(match.HomeTeamId, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
-        var awayTeam = await _teamRepository.GetByIdAsync(match.AwayTeamId, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
+        // PERF-FIX D6: Teams already loaded with match — no extra queries
+        var homeTeam = match.HomeTeam;
+        var awayTeam = match.AwayTeam;
 
         // 1. Score Update
         if (scoreChanged)
@@ -500,11 +521,8 @@ public class MatchService : IMatchService
             }
         }
 
-        // Save all matches
-        foreach (var match in matches)
-        {
-            await _matchRepository.AddAsync(match, ct);
-        }
+        // PERF-FIX: Batch insert all matches in single roundtrip
+        await _matchRepository.AddRangeAsync(matches, ct);
 
         await _analyticsService.LogActivityByTemplateAsync(
             ActivityConstants.TOURNAMENT_GENERATED, 

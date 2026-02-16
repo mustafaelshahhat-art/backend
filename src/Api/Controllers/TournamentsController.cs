@@ -4,6 +4,7 @@ using Application.Interfaces;
 using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 
 namespace Api.Controllers;
 
@@ -29,6 +30,7 @@ public class TournamentsController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
+    [ResponseCache(Duration = 30, VaryByQueryKeys = new[] { "page", "pageSize" })]
     public async Task<ActionResult<Application.Common.Models.PagedResult<TournamentDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
@@ -284,6 +286,7 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("{id}/standings")]
     [AllowAnonymous]
+    [OutputCache(PolicyName = "ShortCache")]
     public async Task<ActionResult<Application.Common.Models.PagedResult<TournamentStandingDto>>> GetStandings(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] int? groupId = null, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
@@ -293,6 +296,7 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("{id}/groups")]
     [AllowAnonymous]
+    [OutputCache(PolicyName = "ShortCache")]
     public async Task<ActionResult<Application.Common.Models.PagedResult<GroupDto>>> GetGroups(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
@@ -302,6 +306,7 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("{id}/bracket")]
     [AllowAnonymous]
+    [OutputCache(PolicyName = "ShortCache")]
     public async Task<ActionResult<BracketDto>> GetBracket(Guid id, CancellationToken cancellationToken)
     {
         var bracket = await _tournamentService.GetBracketAsync(id, cancellationToken);

@@ -37,7 +37,9 @@ public class TournamentBackgroundService : BackgroundService
     private async Task DoWorkAsync(CancellationToken stoppingToken)
     {
         const string lockKey = "tournament_events_processor";
-        var distributedLock = _scopeFactory.CreateScope().ServiceProvider.GetRequiredService<IDistributedLock>();
+        // PERF-FIX B13: Wrap scope in using to prevent scope leak
+        using var lockScope = _scopeFactory.CreateScope();
+        var distributedLock = lockScope.ServiceProvider.GetRequiredService<IDistributedLock>();
         
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try

@@ -1223,9 +1223,9 @@ public class TournamentService : ITournamentService
                 match.HomeScore = 3;
                 match.AwayScore = 0;
             }
-            
-            await _matchRepository.UpdateAsync(match, ct);
         }
+        // PERF-FIX: Batch update all matches in single roundtrip
+        await _matchRepository.UpdateRangeAsync(matches, ct);
 
         var team = await _teamRepository.GetByIdAsync(teamId, new System.Linq.Expressions.Expression<Func<Team, object>>[] { t => t.Players }, ct);
         await _analyticsService.LogActivityByTemplateAsync(
@@ -1394,7 +1394,8 @@ public class TournamentService : ITournamentService
 
         // Cleanup participation
         var participations = await _tournamentPlayerRepository.FindAsync(tp => tp.RegistrationId == registration.Id, ct);
-        foreach (var p in participations) await _tournamentPlayerRepository.DeleteAsync(p, ct);
+        // PERF-FIX: Batch delete all participations in single roundtrip
+        await _tournamentPlayerRepository.DeleteRangeAsync(participations, ct);
 
         tournament.CurrentTeams--;
         await _tournamentRepository.UpdateAsync(tournament, ct);

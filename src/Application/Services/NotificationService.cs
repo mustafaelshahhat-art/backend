@@ -28,19 +28,26 @@ public class NotificationService : INotificationService
 
     public async Task SendNotificationAsync(Guid userId, string title, string message, string type = "system", CancellationToken ct = default)
     {
-        // Broadcast to all active admins (used by admin_broadcast notifications).
+        // PERF-FIX B7: Batch admin broadcast — single DB round-trip + parallel SignalR fan-out
         if (userId == Guid.Empty)
         {
             var admins = await _userRepository.FindAsync(u => u.Role == UserRole.Admin && u.Status == UserStatus.Active, ct);
-            foreach (var admin in admins)
+            var adminList = admins.ToList();
+            if (adminList.Count == 0) return;
+
+            var notifications = adminList.Select(a => CreateNotification(a.Id, title, message, type)).ToList();
+            await _repository.AddRangeAsync(notifications, ct);
+
+            var signalRTasks = new List<Task>(adminList.Count * 2);
+            for (int i = 0; i < adminList.Count; i++)
             {
-                var adminNotification = CreateNotification(admin.Id, title, message, type);
-                await _repository.AddAsync(adminNotification, ct);
-                await _notifier.SafeSendNotificationAsync(admin.Id, adminNotification, ct);
-                
-                // Lightweight System Event
-                await _notifier.SendSystemEventAsync("NOTIFICATION_CREATED", new { UserId = admin.Id, NotificationId = adminNotification.Id }, $"user:{admin.Id}", ct);
+                var admin = adminList[i];
+                var adminNotif = notifications[i];
+                signalRTasks.Add(_notifier.SafeSendNotificationAsync(admin.Id, adminNotif, ct));
+                signalRTasks.Add(_notifier.SendSystemEventAsync("NOTIFICATION_CREATED",
+                    new { UserId = admin.Id, NotificationId = adminNotif.Id }, $"user:{admin.Id}", ct));
             }
+            await Task.WhenAll(signalRTasks);
             return;
         }
 

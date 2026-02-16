@@ -167,6 +167,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Tournament>().ToTable(tb => tb.UseSqlOutputClause(false));
 
         // Soft Delete Configuration & Propagation
+        // PERF-FIX: All entities get their OWN IsDeleted shadow property.
+        // This eliminates forced JOINs from navigation-property-based query filters.
+        // The IsDeleted flag is cascaded in SaveChangesAsync when a Team is soft-deleted.
         
         // 1. User - Hard Deleted to allow email reuse
 
@@ -175,32 +178,30 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Team>().HasQueryFilter(t => 
             !EF.Property<bool>(t, "IsDeleted"));
 
-        // 3. Player (Principal: Team)
+        // 3. Player (Principal: Team) — own IsDeleted, no JOIN to Team
         modelBuilder.Entity<Player>().Property<bool>("IsDeleted");
         modelBuilder.Entity<Player>().HasQueryFilter(p => 
-            !EF.Property<bool>(p, "IsDeleted") && 
-            !EF.Property<bool>(p.Team!, "IsDeleted"));
+            !EF.Property<bool>(p, "IsDeleted"));
 
-        // 4. Match (Principals: HomeTeam, AwayTeam)
-        // Match does not have its own IsDeleted, but relies on Teams
+        // 4. Match — own IsDeleted shadow property, no JOINs to HomeTeam/AwayTeam
+        modelBuilder.Entity<Match>().Property<bool>("IsDeleted").HasDefaultValue(false);
         modelBuilder.Entity<Match>().HasQueryFilter(m => 
-            !EF.Property<bool>(m.HomeTeam!, "IsDeleted") && 
-            !EF.Property<bool>(m.AwayTeam!, "IsDeleted"));
+            !EF.Property<bool>(m, "IsDeleted"));
 
-        // 5. TeamRegistration (Principal: Team)
+        // 5. TeamRegistration — own IsDeleted, no JOIN to Team
+        modelBuilder.Entity<TeamRegistration>().Property<bool>("IsDeleted").HasDefaultValue(false);
         modelBuilder.Entity<TeamRegistration>().HasQueryFilter(tr => 
-            !EF.Property<bool>(tr.Team!, "IsDeleted"));
+            !EF.Property<bool>(tr, "IsDeleted"));
 
-
-
-        // 7. TeamJoinRequest (Principal: Team - User is hard-deleted)
+        // 7. TeamJoinRequest — own IsDeleted, no JOIN to Team
+        modelBuilder.Entity<TeamJoinRequest>().Property<bool>("IsDeleted").HasDefaultValue(false);
         modelBuilder.Entity<TeamJoinRequest>().HasQueryFilter(r =>
-            !EF.Property<bool>(r.Team!, "IsDeleted"));
+            !EF.Property<bool>(r, "IsDeleted"));
 
-        // 7.5 TournamentPlayer (Principal: Player/Team)
+        // 7.5 TournamentPlayer — own IsDeleted, no JOINs to Player/Team
+        modelBuilder.Entity<TournamentPlayer>().Property<bool>("IsDeleted").HasDefaultValue(false);
         modelBuilder.Entity<TournamentPlayer>().HasQueryFilter(tp =>
-            !EF.Property<bool>(tp.Player!, "IsDeleted") &&
-            !EF.Property<bool>(tp.Team!, "IsDeleted"));
+            !EF.Property<bool>(tp, "IsDeleted"));
 
         // 8. Notification (Cascade delete when User is hard deleted)
         modelBuilder.Entity<Notification>()
@@ -209,15 +210,15 @@ public class AppDbContext : DbContext
             .HasForeignKey(n => n.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // 9. MatchEvent (Principal: Match -> Teams)
+        // 9. MatchEvent — own IsDeleted, no JOINs to Match→Teams
+        modelBuilder.Entity<MatchEvent>().Property<bool>("IsDeleted").HasDefaultValue(false);
         modelBuilder.Entity<MatchEvent>().HasQueryFilter(me => 
-            !EF.Property<bool>(me.Match!.HomeTeam!, "IsDeleted") && 
-            !EF.Property<bool>(me.Match!.AwayTeam!, "IsDeleted"));
+            !EF.Property<bool>(me, "IsDeleted"));
 
-        // 10. MatchMessage (Principal: Match -> Teams)
+        // 10. MatchMessage — own IsDeleted, no JOINs to Match→Teams
+        modelBuilder.Entity<MatchMessage>().Property<bool>("IsDeleted").HasDefaultValue(false);
         modelBuilder.Entity<MatchMessage>().HasQueryFilter(mm => 
-            !EF.Property<bool>(mm.Match!.HomeTeam!, "IsDeleted") && 
-            !EF.Property<bool>(mm.Match!.AwayTeam!, "IsDeleted"));
+            !EF.Property<bool>(mm, "IsDeleted"));
 
         // 11. OTP
         modelBuilder.Entity<Otp>()
@@ -371,9 +372,52 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TeamJoinRequest>()
             .HasIndex(r => r.UserId)
             .HasDatabaseName("IX_TeamJoinRequests_UserId");
+
+        // PHASE 2: MISSING PERFORMANCE INDEXES (D4+D5)
+        // Notification: user inbox ordered by date (covers GetByUserIdAsync hot path)
+        modelBuilder.Entity<Notification>()
+            .HasIndex(n => new { n.UserId, n.CreatedAt })
+            .IsDescending(false, true)
+            .HasDatabaseName("IX_Notifications_User_CreatedAt");
+
+        // MatchMessage: chat history ordered by timestamp
+        modelBuilder.Entity<MatchMessage>()
+            .HasIndex(mm => new { mm.MatchId, mm.Timestamp })
+            .HasDatabaseName("IX_MatchMessages_Match_Timestamp");
+
+        // Otp: lookup by userId + type + active status
+        modelBuilder.Entity<Otp>()
+            .HasIndex(o => new { o.UserId, o.Type, o.IsUsed })
+            .HasDatabaseName("IX_Otps_User_Type_IsUsed");
+
+        // User: refresh token lookup (filtered — only non-null)
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.RefreshToken)
+            .HasFilter("[RefreshToken] IS NOT NULL")
+            .HasDatabaseName("IX_Users_RefreshToken_Filtered");
+
+        // TeamRegistration: tournament + status (covers registration approval queries)
+        modelBuilder.Entity<TeamRegistration>()
+            .HasIndex(tr => new { tr.TournamentId, tr.Status })
+            .HasDatabaseName("IX_TeamRegistration_Tournament_Status");
+
+        // TournamentPlayer: by registrationId (FK lookup)
+        modelBuilder.Entity<TournamentPlayer>()
+            .HasIndex(tp => tp.RegistrationId)
+            .HasDatabaseName("IX_TournamentPlayers_RegistrationId");
+
+        // Match: covering index for listing (tournament + status + date)
+        modelBuilder.Entity<Match>()
+            .HasIndex(m => new { m.TournamentId, m.Status, m.Date })
+            .HasDatabaseName("IX_Matches_Tournament_Status_Date");
+
+        // TeamJoinRequests: user + status (covers "my pending requests")
+        modelBuilder.Entity<TeamJoinRequest>()
+            .HasIndex(r => new { r.UserId, r.Status })
+            .HasDatabaseName("IX_TeamJoinRequests_User_Status");
     }
 
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         foreach (var entry in ChangeTracker.Entries<BaseEntity>())
         {
@@ -390,6 +434,8 @@ public class AppDbContext : DbContext
         }
         
         // Handle Soft Delete for Team, Player (Users are now Hard Deleted to allow email reuse)
+        // PERF-FIX: Cascade IsDeleted to dependent entities so query filters don't need JOINs
+        var teamsBeingDeleted = new List<Guid>();
         foreach (var entry in ChangeTracker.Entries())
         {
             if (entry.State == EntityState.Deleted && 
@@ -397,6 +443,53 @@ public class AppDbContext : DbContext
             {
                 entry.State = EntityState.Modified;
                 entry.Property("IsDeleted").CurrentValue = true;
+                
+                if (entry.Entity is Team team)
+                {
+                    teamsBeingDeleted.Add(team.Id);
+                }
+            }
+        }
+        
+        // Cascade IsDeleted to all entities that depend on soft-deleted teams
+        if (teamsBeingDeleted.Count > 0)
+        {
+            // Mark Players as deleted — use IgnoreQueryFilters to find all regardless of current filter state
+            var players = await Players.IgnoreQueryFilters().Where(p => teamsBeingDeleted.Contains(p.TeamId) && !EF.Property<bool>(p, "IsDeleted")).ToListAsync(cancellationToken);
+            foreach (var p in players) Entry(p).Property("IsDeleted").CurrentValue = true;
+            
+            // Mark Matches as deleted (home or away team deleted)
+            var matches = await Matches.IgnoreQueryFilters()
+                .Where(m => (teamsBeingDeleted.Contains(m.HomeTeamId) || teamsBeingDeleted.Contains(m.AwayTeamId)) && !EF.Property<bool>(m, "IsDeleted"))
+                .ToListAsync(cancellationToken);
+            foreach (var m in matches) Entry(m).Property("IsDeleted").CurrentValue = true;
+            
+            var matchIds = matches.Select(m => m.Id).ToList();
+            if (matchIds.Count > 0)
+            {
+                // Mark MatchEvents as deleted
+                var events = await MatchEvents.IgnoreQueryFilters().Where(e => matchIds.Contains(e.MatchId) && !EF.Property<bool>(e, "IsDeleted")).ToListAsync(cancellationToken);
+                foreach (var e in events) Entry(e).Property("IsDeleted").CurrentValue = true;
+                
+                // Mark MatchMessages as deleted
+                var messages = await MatchMessages.IgnoreQueryFilters().Where(msg => matchIds.Contains(msg.MatchId) && !EF.Property<bool>(msg, "IsDeleted")).ToListAsync(cancellationToken);
+                foreach (var msg in messages) Entry(msg).Property("IsDeleted").CurrentValue = true;
+            }
+            
+            // Mark TeamRegistrations as deleted
+            var regs = await TeamRegistrations.IgnoreQueryFilters().Where(r => teamsBeingDeleted.Contains(r.TeamId) && !EF.Property<bool>(r, "IsDeleted")).ToListAsync(cancellationToken);
+            foreach (var r in regs) Entry(r).Property("IsDeleted").CurrentValue = true;
+            
+            // Mark TeamJoinRequests as deleted
+            var joinRequests = await TeamJoinRequests.IgnoreQueryFilters().Where(r => teamsBeingDeleted.Contains(r.TeamId) && !EF.Property<bool>(r, "IsDeleted")).ToListAsync(cancellationToken);
+            foreach (var r in joinRequests) Entry(r).Property("IsDeleted").CurrentValue = true;
+            
+            // Mark TournamentPlayers as deleted (via player's team)
+            var playerIds = players.Select(p => p.Id).ToList();
+            if (playerIds.Count > 0)
+            {
+                var tournamentPlayers = await TournamentPlayers.IgnoreQueryFilters().Where(tp => playerIds.Contains(tp.PlayerId) && !EF.Property<bool>(tp, "IsDeleted")).ToListAsync(cancellationToken);
+                foreach (var tp in tournamentPlayers) Entry(tp).Property("IsDeleted").CurrentValue = true;
             }
         }
 
@@ -429,6 +522,6 @@ public class AppDbContext : DbContext
             this.OutboxMessages.AddRange(outboxMessages);
         }
 
-        return base.SaveChangesAsync(cancellationToken);
+        return await base.SaveChangesAsync(cancellationToken);
     }
 }

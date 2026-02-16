@@ -210,7 +210,8 @@ public class TournamentLifecycleService : ITournamentLifecycleService
              matchDate = matchDate.AddHours(2);
         }
         
-        foreach(var m in newMatches) await _matchRepository.AddAsync(m, ct);
+        // PERF-FIX: Batch insert all matches in single roundtrip
+        await _matchRepository.AddRangeAsync(newMatches, ct);
         
         tournament.ChangeStatus(TournamentStatus.Active);
         await _tournamentRepository.UpdateAsync(tournament, ct);
@@ -298,7 +299,8 @@ public class TournamentLifecycleService : ITournamentLifecycleService
              }
         }
         
-        foreach(var m in newMatches) await _matchRepository.AddAsync(m, ct);
+        // PERF-FIX: Batch insert all matches in single roundtrip
+        await _matchRepository.AddRangeAsync(newMatches, ct);
         
         // Notify Real-Time
         await _notifier.SendMatchesGeneratedAsync(_mapper.Map<IEnumerable<MatchDto>>(newMatches));

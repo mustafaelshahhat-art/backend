@@ -32,6 +32,7 @@ public class AuthService : IAuthService
     private readonly ILogger<AuthService> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IRepository<Player> _playerRepository;
+    private readonly IEmailQueueService _emailQueue;
 
     public AuthService(
         IRepository<User> userRepository, 
@@ -46,7 +47,8 @@ public class AuthService : IAuthService
         IEmailService emailService,
         ILogger<AuthService> logger,
         IServiceScopeFactory scopeFactory,
-        IRepository<Player> playerRepository)
+        IRepository<Player> playerRepository,
+        IEmailQueueService emailQueue)
     {
         _userRepository = userRepository;
         _teamRepository = teamRepository;
@@ -61,6 +63,7 @@ public class AuthService : IAuthService
         _logger = logger;
         _scopeFactory = scopeFactory;
         _playerRepository = playerRepository;
+        _emailQueue = emailQueue;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
@@ -78,7 +81,9 @@ public class AuthService : IAuthService
             throw new BadRequestException("Name is required.");
         }
 
-        var existingUser = await _userRepository.FindAsync(u => u.Email.ToLower() == email, true, ct);
+        // PERF-FIX: Compare directly against normalized email — email is stored lowercase on write
+        // This allows SQL Server to use the UQ_Users_Email index instead of full table scan
+        var existingUser = await _userRepository.FindAsync(u => u.Email == email, true, ct);
         if (existingUser != null && existingUser.Any())
         {
             throw new ConflictException("Email already exists.");
@@ -133,28 +138,15 @@ public class AuthService : IAuthService
         // OTP generation is fast (DB), keep it sync to ensure it exists
         var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY", ct);
         
-        // FIRE-AND-FORGET Email: Move to background to make registration instant
-        _ = Task.Run(async () => 
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
-            try 
-            {
-                var body = EmailTemplateHelper.CreateOtpTemplate(
-                    "تفعيل حسابك الجديد", 
-                    user.Name, 
-                    "شكراً لانضمامك إلينا! يرجى استخدام الرمز التالي لتفعيل حسابك والبدء في استخدام المنصة.", 
-                    otp, 
-                    "10 دقائق"
-                );
-                await emailSvc.SendEmailAsync(user.Email, "تأكيد بريدك الإلكتروني – RAMADAN GANA", body);
-            }
-            catch (Exception ex)
-            {
-                // Silently log email failure; user can still use "Resend" on verification page
-                _logger.LogError(ex, "Failed to send registration OTP email to {Email}", user.Email);
-            }
-        });
+        // PERF-FIX B4: Enqueue to channel-based background service instead of Task.Run
+        var emailBody = EmailTemplateHelper.CreateOtpTemplate(
+            "تفعيل حسابك الجديد", 
+            user.Name, 
+            "شكراً لانضمامك إلينا! يرجى استخدام الرمز التالي لتفعيل حسابك والبدء في استخدام المنصة.", 
+            otp, 
+            "10 دقائق"
+        );
+        await _emailQueue.EnqueueAsync(user.Email, "تأكيد بريدك الإلكتروني – RAMADAN GANA", emailBody, ct);
 
         /* MOVED TO VERIFY EMAIL
         // Persistent Notification for Admins
@@ -181,7 +173,8 @@ public class AuthService : IAuthService
         }
 
         var email = request.Email.Trim().ToLower();
-        var users = await _userRepository.FindAsync(u => u.Email.ToLower() == email, ct);
+        // PERF-FIX: Compare directly — email is stored lowercase, avoids full table scan
+        var users = await _userRepository.FindAsync(u => u.Email == email, ct);
         var user = users.FirstOrDefault();
 
         if (user == null || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
@@ -292,7 +285,8 @@ public class AuthService : IAuthService
         
         _logger.LogInformation($"[VerifyEmail] Attempting verification. Original: '{email}', Normalized: '{normalizedEmail}', OTP: '{otp}'");
 
-        var user = (await _userRepository.FindAsync(u => u.Email.ToLower() == normalizedEmail, ct)).FirstOrDefault();
+        // PERF-FIX: Compare directly — email is stored lowercase, avoids full table scan
+        var user = (await _userRepository.FindAsync(u => u.Email == normalizedEmail, ct)).FirstOrDefault();
         
         if (user == null) 
         {
@@ -347,27 +341,15 @@ public class AuthService : IAuthService
 
         var otp = await _otpService.GenerateOtpAsync(user.Id, "PASSWORD_RESET", ct);
 
-        // FIRE-AND-FORGET Email: Move to background to make request instant
-        _ = Task.Run(async () => 
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
-            try 
-            {
-                var body = EmailTemplateHelper.CreateOtpTemplate(
-                    "إعادة تعيين كلمة المرور", 
-                    user.Name, 
-                    "لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بك. يرجى استخدام الرمز التالي للمتابعة.", 
-                    otp, 
-                    "10 دقائق"
-                );
-                await emailSvc.SendEmailAsync(user.Email, "طلب إعادة تعيين كلمة المرور – RAMADAN GANA", body);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send password reset OTP email to {Email}", user.Email);
-            }
-        });
+        // PERF-FIX B4: Enqueue to channel-based background service instead of Task.Run
+        var body = EmailTemplateHelper.CreateOtpTemplate(
+            "إعادة تعيين كلمة المرور", 
+            user.Name, 
+            "لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بك. يرجى استخدام الرمز التالي للمتابعة.", 
+            otp, 
+            "10 دقائق"
+        );
+        await _emailQueue.EnqueueAsync(user.Email, "طلب إعادة تعيين كلمة المرور – RAMADAN GANA", body, ct);
     }
 
     public async Task ResetPasswordAsync(string email, string otp, string newPassword, CancellationToken ct = default)

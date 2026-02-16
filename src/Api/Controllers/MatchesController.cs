@@ -24,10 +24,17 @@ public class MatchesController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    public async Task<ActionResult<Application.Common.Models.PagedResult<MatchDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] Guid? creatorId = null, CancellationToken cancellationToken = default)
+    [ResponseCache(Duration = 15, VaryByQueryKeys = new[] { "page", "pageSize", "creatorId", "status", "teamId" })]
+    public async Task<ActionResult<Application.Common.Models.PagedResult<MatchDto>>> GetAll(
+        [FromQuery] int page = 1, 
+        [FromQuery] int pageSize = 10, 
+        [FromQuery] Guid? creatorId = null, 
+        [FromQuery] string? status = null,
+        [FromQuery] Guid? teamId = null,
+        CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var matches = await _matchService.GetPagedAsync(page, pageSize, creatorId, cancellationToken);
+        var matches = await _matchService.GetPagedAsync(page, pageSize, creatorId, status, teamId, cancellationToken);
         return Ok(matches);
     }
 
@@ -35,6 +42,7 @@ public class MatchesController : ControllerBase
 
     [HttpGet("{id}")]
     [AllowAnonymous]
+    [ResponseCache(Duration = 10, VaryByQueryKeys = new[] { "id" })]
     public async Task<ActionResult<MatchDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
         var match = await _matchService.GetByIdAsync(id, cancellationToken);
