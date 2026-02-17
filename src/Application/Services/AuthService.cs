@@ -149,7 +149,7 @@ public class AuthService : IAuthService
             otp, 
             "10 دقائق"
         );
-        await _emailQueue.EnqueueAsync(user.Email, "تأكيد بريدك الإلكتروني – RAMADAN GANA", emailBody, ct);
+        await _emailQueue.EnqueueAsync(user.Email, "تأكيد بريدك الإلكتروني – Kora Zone 365", emailBody, ct);
 
         /* MOVED TO VERIFY EMAIL
         // Persistent Notification for Admins
@@ -213,7 +213,7 @@ public class AuthService : IAuthService
                             otp, 
                             "10 دقائق"
                         );
-                        await emailSvc.SendEmailAsync(user.Email, "تفعيل حسابك – RAMADAN GANA", body);
+                        await emailSvc.SendEmailAsync(user.Email, "تفعيل حسابك – Kora Zone 365", body);
                     } catch {  }
                 });
             }
@@ -358,7 +358,7 @@ public class AuthService : IAuthService
             otp, 
             "10 دقائق"
         );
-        await _emailQueue.EnqueueAsync(user.Email, "طلب إعادة تعيين كلمة المرور – RAMADAN GANA", body, ct);
+        await _emailQueue.EnqueueAsync(user.Email, "طلب إعادة تعيين كلمة المرور – Kora Zone 365", body, ct);
     }
 
     public async Task ResetPasswordAsync(string email, string otp, string newPassword, CancellationToken ct = default)
@@ -419,7 +419,7 @@ public class AuthService : IAuthService
                 : "لقد طلبت إعادة إرسال رمز استعادة الحساب. يرجى استخدامه لتعيين كلمة مرور جديدة.";
 
             var body = EmailTemplateHelper.CreateOtpTemplate(title, user.Name, message, otp, "10 دقائق");
-            await _emailService.SendEmailAsync(user.Email, $"{subject} – RAMADAN GANA", body, ct);
+            await _emailService.SendEmailAsync(user.Email, $"{subject} – Kora Zone 365", body, ct);
         }
         catch 
         {

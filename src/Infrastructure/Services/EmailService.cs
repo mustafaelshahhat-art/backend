@@ -37,8 +37,8 @@ public class EmailService : IEmailService
             gmailUser.Length > 5 ? gmailUser.Substring(0, 5) : "HIDDEN");
 
         // 2. UX: Enhanced Sender Identity
-        var fromName = "RAMADAN GANA | التحقق من الحساب";
-        if (subject.Contains("تعيين")) fromName = "RAMADAN GANA | استعادة الحساب";
+        var fromName = "Kora Zone 365 | التحقق من الحساب";
+        if (subject.Contains("تعيين")) fromName = "Kora Zone 365 | استعادة الحساب";
 
         try
         {

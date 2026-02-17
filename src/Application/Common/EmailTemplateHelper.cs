@@ -33,7 +33,7 @@ public static class EmailTemplateHelper
 <body>
     <div class=""wrapper"">
         <div class=""header"">
-            <h1>RAMADAN GANA</h1>
+            <h1>KORA ZONE 365</h1>
         </div>
         <div class=""body"">
             <h2>{title}</h2>
@@ -46,7 +46,7 @@ public static class EmailTemplateHelper
             <p class=""ignore-text"">إذا لم تكن قد طلبت هذا الرمز، يرجى تجاهل هذا البريد الإلكتروني.</p>
         </div>
         <div class=""footer"">
-            <p>© {DateTime.Now.Year} <span class=""brand"">RAMADAN GANA</span>. جميع الحقوق محفوظة.</p>
+            <p>© {DateTime.Now.Year} <span class=""brand"">KORA ZONE 365</span>. جميع الحقوق محفوظة.</p>
         </div>
     </div>
 </body>

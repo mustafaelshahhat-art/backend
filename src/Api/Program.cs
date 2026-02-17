@@ -220,7 +220,7 @@ builder.Services.AddScoped<Application.Interfaces.ICurrentUserAccessor, Infrastr
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Ramadan Tournament API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Kora Zone 365 API", Version = "v1" });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme.",
