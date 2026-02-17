@@ -3,7 +3,7 @@
 ## معلومات Production
 
 ### الروابط
-- **Backend API:** https://korazoneapi.runasp.net/
+- **Backend API:** https://korazon365.runasp.net/
 - **Frontend:** https://korazone365.com
 - **Frontend (www):** https://www.korazone365.com
 
@@ -120,19 +120,19 @@ MultipleActiveResultSets=True;
 
 ### Health Check
 ```bash
-GET https://korazoneapi.runasp.net/health/live
+GET https://korazon365.runasp.net/health/live
 ```
 **المتوقع:** 200 OK - "Healthy"
 
 ### Swagger UI
 ```
-https://korazoneapi.runasp.net/swagger
+https://korazon365.runasp.net/swagger
 ```
 **المتوقع:** واجهة Swagger مع جميع Endpoints
 
 ### تسجيل الدخول كـ Admin
 ```bash
-POST https://korazoneapi.runasp.net/api/auth/login
+POST https://korazon365.runasp.net/api/auth/login
 Content-Type: application/json
 
 {
@@ -185,12 +185,12 @@ dotnet ef database update --project src/Infrastructure --startup-project src/Api
 
 ### Notification Hub
 ```
-wss://korazoneapi.runasp.net/hubs/notifications
+wss://korazon365.runasp.net/hubs/notifications
 ```
 
 ### Match Chat Hub
 ```
-wss://korazoneapi.runasp.net/hubs/chat
+wss://korazon365.runasp.net/hubs/chat
 ```
 
 **ملاحظة:** SignalR يعمل مع In-Memory backplane (بدون Redis)
@@ -221,8 +221,8 @@ wss://korazoneapi.runasp.net/hubs/chat
 ```typescript
 export const environment = {
   production: true,
-  apiUrl: 'https://korazoneapi.runasp.net/api',
-  hubUrl: 'https://korazoneapi.runasp.net'
+  apiUrl: 'https://korazon365.runasp.net/api',
+  hubUrl: 'https://korazon365.runasp.net'
 };
 ```
 
@@ -271,8 +271,8 @@ dotnet publish --configuration Release --output ./publish
 ## الدعم
 
 ### روابط مفيدة
-- **Swagger:** https://korazoneapi.runasp.net/swagger
-- **Health:** https://korazoneapi.runasp.net/health/ready
+- **Swagger:** https://korazon365.runasp.net/swagger
+- **Health:** https://korazon365.runasp.net/health/ready
 - **Frontend:** https://korazone365.com
 
 ### معلومات تسجيل الدخول الافتراضية
@@ -286,5 +286,5 @@ dotnet publish --configuration Release --output ./publish
 
 **تاريخ الإعداد:** 16 فبراير 2026  
 **حالة التطبيق:** ✅ جاهز للنشر  
-**Backend URL:** https://korazoneapi.runasp.net/  
+**Backend URL:** https://korazon365.runasp.net/  
 **Frontend URL:** https://korazone365.com
