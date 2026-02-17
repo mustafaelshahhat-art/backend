@@ -13,6 +13,7 @@ using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Shared.Exceptions;
 
 namespace Application.Services;
@@ -30,6 +31,7 @@ public class TournamentService : ITournamentService
     private readonly IRepository<TournamentPlayer> _tournamentPlayerRepository;
     private readonly ITournamentLifecycleService _lifecycleService;
     private readonly IDistributedLock _distributedLock;
+    private readonly IMemoryCache _memoryCache;
 
     public TournamentService(
         IRepository<Tournament> tournamentRepository,
@@ -42,7 +44,8 @@ public class TournamentService : ITournamentService
         IRealTimeNotifier notifier,
         IRepository<TournamentPlayer> tournamentPlayerRepository,
         ITournamentLifecycleService lifecycleService,
-        IDistributedLock distributedLock)
+        IDistributedLock distributedLock,
+        IMemoryCache memoryCache)
     {
         _tournamentRepository = tournamentRepository;
         _registrationRepository = registrationRepository;
@@ -55,6 +58,7 @@ public class TournamentService : ITournamentService
         _tournamentPlayerRepository = tournamentPlayerRepository;
         _lifecycleService = lifecycleService;
         _distributedLock = distributedLock;
+        _memoryCache = memoryCache;
     }
 
     public async Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int page, int pageSize, Guid? creatorId = null, bool includeDrafts = false, CancellationToken ct = default)
@@ -232,16 +236,29 @@ public class TournamentService : ITournamentService
 
     public async Task<TournamentDto?> GetActiveByTeamAsync(Guid teamId, CancellationToken ct = default)
     {
-        var activeTournament = await _registrationRepository.GetQueryable()
-            .AsNoTracking()
-            .Include(r => r.Tournament)
+        // PERF: Select() projection — old code loaded full Tournament entity then mapped all 50+ fields via AutoMapper
+        // Frontend only needs basic tournament info when checking active tournament for a team
+        var projected = await _registrationRepository.GetQueryable()
             .Where(r => r.TeamId == teamId && 
                         r.Status == RegistrationStatus.Approved && 
                         r.Tournament!.Status == TournamentStatus.Active)
-            .Select(r => r.Tournament)
+            .Select(r => new TournamentDto
+            {
+                Id = r.Tournament!.Id,
+                Name = r.Tournament.Name,
+                Status = r.Tournament.Status.ToString(),
+                StartDate = r.Tournament.StartDate,
+                EndDate = r.Tournament.EndDate,
+                ImageUrl = r.Tournament.ImageUrl,
+                Format = r.Tournament.Format.ToString(),
+                MaxTeams = r.Tournament.MaxTeams,
+                CurrentTeams = r.Tournament.CurrentTeams,
+                Location = r.Tournament.Location ?? string.Empty,
+                CreatorUserId = r.Tournament.CreatorUserId
+            })
             .FirstOrDefaultAsync(ct);
 
-        return activeTournament != null ? _mapper.Map<TournamentDto>(activeTournament) : null;
+        return projected;
     }
 
     public async Task<TeamRegistrationDto?> GetRegistrationByTeamAsync(Guid tournamentId, Guid teamId, CancellationToken ct = default)
@@ -541,7 +558,7 @@ public class TournamentService : ITournamentService
 
     public async Task<Application.Common.Models.PagedResult<TeamRegistrationDto>> GetRegistrationsAsync(Guid tournamentId, int page, int pageSize, CancellationToken ct = default)
     {
-        if (pageSize > 200) pageSize = 200;
+        if (pageSize > 100) pageSize = 100;
         
         var (items, totalCount) = await _registrationRepository.GetPagedAsync(
             page, 
@@ -746,54 +763,96 @@ public class TournamentService : ITournamentService
 
     public async Task<Application.Common.Models.PagedResult<PendingPaymentResponse>> GetPendingPaymentsAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
     {
-        if (pageSize > 200) pageSize = 200;
+        if (pageSize > 100) pageSize = 100;
 
-        var (items, totalCount) = await _registrationRepository.GetPagedAsync(
-            page,
-            pageSize,
-            r => r.Status == RegistrationStatus.PendingPaymentReview && 
-                (!creatorId.HasValue || r.Tournament!.CreatorUserId == creatorId.Value),
-            q => q.OrderByDescending(r => r.CreatedAt),
-            ct,
-            r => r.Team!, 
-            r => r.Tournament!, 
-            r => r.Team!.Players
-        );
-        
-        var dtos = items.Select(r => new PendingPaymentResponse
-        {
-            Registration = _mapper.Map<TeamRegistrationDto>(r),
-            Tournament = _mapper.Map<TournamentDto>(r.Tournament)
-        }).ToList();
+        // PERF: Select() projection — avoid Include(Team.Players, Tournament) which loaded full 50+ field TournamentDto per row
+        var query = _registrationRepository.GetQueryable()
+            .Where(r => r.Status == RegistrationStatus.PendingPaymentReview && 
+                (!creatorId.HasValue || r.Tournament!.CreatorUserId == creatorId.Value));
 
-        return new Application.Common.Models.PagedResult<PendingPaymentResponse>(dtos, totalCount, page, pageSize);
+        var totalCount = await query.CountAsync(ct);
+
+        var projected = await query
+            .OrderByDescending(r => r.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(r => new PendingPaymentResponse
+            {
+                Registration = new TeamRegistrationDto
+                {
+                    Id = r.Id,
+                    TeamId = r.TeamId,
+                    TeamName = r.Team != null ? r.Team.Name : string.Empty,
+                    CaptainName = r.Team != null ? r.Team.Players.Where(p => p.TeamRole == Domain.Enums.TeamRole.Captain).Select(p => p.Name).FirstOrDefault() ?? string.Empty : string.Empty,
+                    Status = r.Status.ToString(),
+                    PaymentReceiptUrl = r.PaymentReceiptUrl,
+                    SenderNumber = r.SenderNumber,
+                    RejectionReason = r.RejectionReason,
+                    PaymentMethod = r.PaymentMethod,
+                    RegisteredAt = r.CreatedAt,
+                    TournamentId = r.TournamentId
+                },
+                Tournament = new TournamentDto
+                {
+                    Id = r.Tournament != null ? r.Tournament.Id : Guid.Empty,
+                    Name = r.Tournament != null ? r.Tournament.Name : string.Empty,
+                    EntryFee = r.Tournament != null ? r.Tournament.EntryFee : 0,
+                    WalletNumber = r.Tournament != null ? r.Tournament.WalletNumber : null,
+                    InstaPayNumber = r.Tournament != null ? r.Tournament.InstaPayNumber : null,
+                    PaymentMethodsJson = r.Tournament != null ? r.Tournament.PaymentMethodsJson : null
+                }
+            })
+            .ToListAsync(ct);
+
+        return new Application.Common.Models.PagedResult<PendingPaymentResponse>(projected, totalCount, page, pageSize);
     }
 
     public async Task<Application.Common.Models.PagedResult<PendingPaymentResponse>> GetAllPaymentRequestsAsync(int page, int pageSize, Guid? creatorId = null, CancellationToken ct = default)
     {
-        if (pageSize > 200) pageSize = 200;
+        if (pageSize > 100) pageSize = 100;
 
-        var (items, totalCount) = await _registrationRepository.GetPagedAsync(
-            page,
-            pageSize,
-            r => (r.Status == RegistrationStatus.PendingPaymentReview || 
+        // PERF: Select() projection — same slim pattern as GetPendingPaymentsAsync
+        var query = _registrationRepository.GetQueryable()
+            .Where(r => (r.Status == RegistrationStatus.PendingPaymentReview || 
                   r.Status == RegistrationStatus.Approved || 
                   r.Status == RegistrationStatus.Rejected) &&
-                 (!creatorId.HasValue || r.Tournament!.CreatorUserId == creatorId.Value),
-            q => q.OrderByDescending(r => r.CreatedAt),
-            ct,
-            r => r.Team!, 
-            r => r.Tournament!, 
-            r => r.Team!.Players
-        );
-        
-        var dtos = items.Select(r => new PendingPaymentResponse
-        {
-            Registration = _mapper.Map<TeamRegistrationDto>(r),
-            Tournament = _mapper.Map<TournamentDto>(r.Tournament)
-        }).ToList();
+                 (!creatorId.HasValue || r.Tournament!.CreatorUserId == creatorId.Value));
 
-        return new Application.Common.Models.PagedResult<PendingPaymentResponse>(dtos, totalCount, page, pageSize);
+        var totalCount = await query.CountAsync(ct);
+
+        var projected = await query
+            .OrderByDescending(r => r.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(r => new PendingPaymentResponse
+            {
+                Registration = new TeamRegistrationDto
+                {
+                    Id = r.Id,
+                    TeamId = r.TeamId,
+                    TeamName = r.Team != null ? r.Team.Name : string.Empty,
+                    CaptainName = r.Team != null ? r.Team.Players.Where(p => p.TeamRole == Domain.Enums.TeamRole.Captain).Select(p => p.Name).FirstOrDefault() ?? string.Empty : string.Empty,
+                    Status = r.Status.ToString(),
+                    PaymentReceiptUrl = r.PaymentReceiptUrl,
+                    SenderNumber = r.SenderNumber,
+                    RejectionReason = r.RejectionReason,
+                    PaymentMethod = r.PaymentMethod,
+                    RegisteredAt = r.CreatedAt,
+                    TournamentId = r.TournamentId
+                },
+                Tournament = new TournamentDto
+                {
+                    Id = r.Tournament != null ? r.Tournament.Id : Guid.Empty,
+                    Name = r.Tournament != null ? r.Tournament.Name : string.Empty,
+                    EntryFee = r.Tournament != null ? r.Tournament.EntryFee : 0,
+                    WalletNumber = r.Tournament != null ? r.Tournament.WalletNumber : null,
+                    InstaPayNumber = r.Tournament != null ? r.Tournament.InstaPayNumber : null,
+                    PaymentMethodsJson = r.Tournament != null ? r.Tournament.PaymentMethodsJson : null
+                }
+            })
+            .ToListAsync(ct);
+
+        return new Application.Common.Models.PagedResult<PendingPaymentResponse>(projected, totalCount, page, pageSize);
     }
 
     public async Task<IEnumerable<MatchDto>> GenerateMatchesAsync(Guid tournamentId, Guid userId, string userRole, CancellationToken ct = default)
@@ -895,24 +954,32 @@ public class TournamentService : ITournamentService
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
 
-        // Get all matches WITH team navigation properties for name mapping
-        var matches = await _matchRepository.FindAsync(
-            m => m.TournamentId == tournamentId,
-            new[] { "HomeTeam", "AwayTeam" },
-            ct);
-        
-        // Filter knockout matches
-        // Legacy Compatibility: 'League' matches (RoundRobin) might have GroupId null but should Not be in bracket.
-        // Explicit Knockout: GroupId is null AND StageName is NOT 'League' or 'Group Stage'.
-        
-        var knockoutMatches = matches
-            .Where(m => m.GroupId == null && m.StageName != "League" && m.StageName != "Group Stage")
+        // PERF: Select() projection — only fetch fields needed for bracket display, not full Team entities
+        var matchDtos = await _matchRepository.GetQueryable()
+            .AsNoTracking()
+            .Where(m => m.TournamentId == tournamentId && m.GroupId == null && m.StageName != "League" && m.StageName != "Group Stage")
             .OrderBy(m => m.RoundNumber)
-            .ToList();
-        
+            .Select(m => new MatchDto
+            {
+                Id = m.Id,
+                TournamentId = m.TournamentId,
+                HomeTeamId = m.HomeTeamId,
+                HomeTeamName = m.HomeTeam != null ? m.HomeTeam.Name : string.Empty,
+                AwayTeamId = m.AwayTeamId,
+                AwayTeamName = m.AwayTeam != null ? m.AwayTeam.Name : string.Empty,
+                HomeScore = m.HomeScore,
+                AwayScore = m.AwayScore,
+                GroupId = m.GroupId,
+                RoundNumber = m.RoundNumber,
+                StageName = m.StageName,
+                Status = m.Status.ToString(),
+                Date = m.Date
+            })
+            .ToListAsync(ct);
+
         var bracket = new BracketDto();
-        var rounds = knockoutMatches.GroupBy(m => m.RoundNumber ?? 0).OrderBy(g => g.Key);
-        
+        var rounds = matchDtos.GroupBy(m => m.RoundNumber ?? 0).OrderBy(g => g.Key);
+
         foreach (var group in rounds)
         {
             var roundName = group.FirstOrDefault()?.StageName ?? $"Round {group.Key}";
@@ -920,10 +987,10 @@ public class TournamentService : ITournamentService
             {
                 RoundNumber = group.Key,
                 Name = roundName,
-                Matches = _mapper.Map<List<MatchDto>>(group.ToList())
+                Matches = group.ToList()
             });
         }
-        
+
         return bracket;
     }
 
@@ -1138,25 +1205,35 @@ public class TournamentService : ITournamentService
 
     public async Task<Application.Common.Models.PagedResult<TournamentStandingDto>> GetStandingsAsync(Guid tournamentId, int page, int pageSize, int? groupId = null, CancellationToken ct = default)
     {
-        if (pageSize > 200) pageSize = 200;
+        if (pageSize > 100) pageSize = 100;
 
-        // 1. Get all matches with events
-        var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, new[] { "Events" }, ct);
-        var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
+        // PERF: Cache standings per tournament for 60s — avoids re-querying matches + recalculating on every request
+        var cacheKey = $"standings:{tournamentId}";
+        if (!_memoryCache.TryGetValue(cacheKey, out List<TournamentStandingDto>? allStandings) || allStandings == null)
+        {
+            // 1. Get all matches with events
+            var matches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, new[] { "Events" }, ct);
 
-        // 2. Get all relevant registrations
-        var registrations = await _registrationRepository.FindAsync(
-            r => r.TournamentId == tournamentId && 
-            (r.Status == RegistrationStatus.Approved || 
-             r.Status == RegistrationStatus.Withdrawn ||
-             r.Status == RegistrationStatus.Eliminated),
-            new[] { "Team" }
-        );
-        
-        // 3. Delegate to Lifecycle Service
-        var allStandings = _lifecycleService.CalculateStandings(matches, registrations);
+            // 2. Get all relevant registrations
+            var registrations = await _registrationRepository.FindAsync(
+                r => r.TournamentId == tournamentId && 
+                (r.Status == RegistrationStatus.Approved || 
+                 r.Status == RegistrationStatus.Withdrawn ||
+                 r.Status == RegistrationStatus.Eliminated),
+                new[] { "Team" }
+            );
+            
+            // 3. Delegate to Lifecycle Service
+            allStandings = _lifecycleService.CalculateStandings(matches, registrations);
 
-        // 4. Filter by group if requested
+            // 4. Cache for 60 seconds (Size estimate: ~200 bytes per standing entry)
+            var cacheOpts = new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions()
+                .SetAbsoluteExpiration(TimeSpan.FromSeconds(60));
+            cacheOpts.Size = Math.Max(1024, allStandings.Count * 200);
+            _memoryCache.Set(cacheKey, allStandings, cacheOpts);
+        }
+
+        // 5. Filter by group if requested
         var query = allStandings.AsQueryable();
         if (groupId.HasValue)
         {

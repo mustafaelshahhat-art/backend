@@ -3,6 +3,7 @@ using Application.Interfaces;
 using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using System.Security.Claims;
 using Application.DTOs.Tournaments;
 
@@ -21,6 +22,7 @@ public class TeamsController : ControllerBase
     }
 
     [HttpGet]
+    [OutputCache(PolicyName = "TeamList")]
     public async Task<ActionResult<Application.Common.Models.PagedResult<TeamDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] Guid? captainId = null, [FromQuery] Guid? playerId = null, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
@@ -29,6 +31,7 @@ public class TeamsController : ControllerBase
     }
 
     [HttpGet("{id}")]
+    [OutputCache(PolicyName = "TeamDetail")]
     public async Task<ActionResult<TeamDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
         var team = await _teamService.GetByIdAsync(id, cancellationToken);

@@ -66,6 +66,7 @@ public class MatchChatHub : Hub
                 hasAccess = await VerifyMatchAccessAsync(matchId, userId);
                 var cacheOptions = new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions()
                     .SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
+                cacheOptions.Size = 64; // Boolean + cache key overhead
                 
                 _cache.Set(cacheKey, hasAccess, cacheOptions);
             }

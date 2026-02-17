@@ -58,88 +58,121 @@ public class UserService : IUserService
 
         var query = _userRepository.GetQueryable()
             .AsNoTracking()
-            .Include(u => u.GovernorateNav)
-            .Include(u => u.CityNav)
-            .Include(u => u.AreaNav)
             .Where(u => u.IsEmailVerified);
 
         if (!string.IsNullOrEmpty(role) && Enum.TryParse<UserRole>(role, true, out var userRole))
             query = query.Where(u => u.Role == userRole);
 
         var totalCount = await query.CountAsync(ct);
-        var items = await query
+
+        // PERF: Select() projection — eliminates Include(GovernorateNav, CityNav, AreaNav) entity materialization
+        var dtos = await query
             .OrderBy(u => u.Name)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
+            .Select(u => new UserDto
+            {
+                Id = u.Id,
+                DisplayId = u.DisplayId,
+                Name = u.Name,
+                Email = u.Email,
+                Role = u.Role.ToString(),
+                Status = u.Status.ToString(),
+                Phone = u.Phone,
+                Age = u.Age,
+                GovernorateId = u.GovernorateId,
+                GovernorateNameAr = u.GovernorateNav != null ? u.GovernorateNav.NameAr : null,
+                CityId = u.CityId,
+                CityNameAr = u.CityNav != null ? u.CityNav.NameAr : null,
+                AreaId = u.AreaId,
+                AreaNameAr = u.AreaNav != null ? u.AreaNav.NameAr : null,
+                TeamId = u.TeamId,
+                IsEmailVerified = u.IsEmailVerified,
+                CreatedAt = u.CreatedAt
+            })
             .ToListAsync(ct);
 
-        var dtos = _mapper.Map<List<UserDto>>(items);
         return new Application.Common.Models.PagedResult<UserDto>(dtos, totalCount, pageNumber, pageSize);
     }
 
     public async Task<UserDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        // PROD-AUDIT: Use consolidated query with AsNoTracking. Avoid multiple DB roundtrips.
-        var user = await _userRepository.GetQueryable()
+        // PERF: Consolidated — 4 sequential DB queries → 1 projection + 1 activities query (max 2 roundtrips)
+        var userProjection = await _userRepository.GetQueryable()
             .AsNoTracking()
-            .Include(u => u.GovernorateNav)
-            .Include(u => u.CityNav)
-            .Include(u => u.AreaNav)
-            .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
-            
-        if (user == null) return null;
-
-        var dto = _mapper.Map<UserDto>(user);
-
-        // Fetch Team Details and Recent Activities in parallel or consolidated
-        if (user.TeamId.HasValue)
-        {
-            var team = await _teamRepository.GetQueryable()
-                .AsNoTracking()
-                .Include(t => t.Players)
-                .FirstOrDefaultAsync(t => t.Id == user.TeamId.Value);
-
-            if (team != null)
+            .Where(u => u.Id == id)
+            .Select(u => new UserDto
             {
-                var player = team.Players.FirstOrDefault(p => p.UserId == id);
-                dto.TeamName = team.Name;
-                dto.TeamRole = player?.TeamRole.ToString();
-            }
-        }
-        else
-        {
-            var ownedTeam = (await _teamRepository.GetQueryable()
-                .AsNoTracking()
-                .Include(t => t.Players)
-                .FirstOrDefaultAsync(t => t.Players.Any(p => p.UserId == id && p.TeamRole == TeamRole.Captain)));
-            
-            if (ownedTeam != null)
-            {
-                dto.TeamId = ownedTeam.Id;
-                dto.TeamName = ownedTeam.Name;
-                dto.TeamRole = TeamRole.Captain.ToString();
-            }
-        }
+                Id = u.Id,
+                DisplayId = u.DisplayId,
+                Name = u.Name,
+                Email = u.Email,
+                Role = u.Role.ToString(),
+                Status = u.Status.ToString(),
+                Phone = u.Phone,
+                Age = u.Age,
+                NationalId = u.NationalId,
+                GovernorateId = u.GovernorateId,
+                GovernorateNameAr = u.GovernorateNav != null ? u.GovernorateNav.NameAr : null,
+                CityId = u.CityId,
+                CityNameAr = u.CityNav != null ? u.CityNav.NameAr : null,
+                AreaId = u.AreaId,
+                AreaNameAr = u.AreaNav != null ? u.AreaNav.NameAr : null,
+                IdFrontUrl = u.IdFrontUrl,
+                IdBackUrl = u.IdBackUrl,
+                TeamId = u.TeamId,
+                IsEmailVerified = u.IsEmailVerified,
+                CreatedAt = u.CreatedAt
+            })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        // Populate ALL joined team IDs for multi-team support (e.g., chat auth, dashboard)
-        var joinedTeams = await _teamRepository.GetQueryable()
+        if (userProjection == null) return null;
+
+        // Single query to get all team info: team name, role, and all joined team IDs
+        var teamInfo = await _teamRepository.GetQueryable()
             .AsNoTracking()
             .Where(t => t.Players.Any(p => p.UserId == id))
-            .Select(t => t.Id)
+            .Select(t => new
+            {
+                t.Id,
+                t.Name,
+                PlayerRole = t.Players.Where(p => p.UserId == id).Select(p => p.TeamRole).FirstOrDefault()
+            })
             .ToListAsync(cancellationToken);
-        
-        dto.JoinedTeamIds = joinedTeams;
 
-        var activities = await _activityRepository.GetQueryable()
+        if (teamInfo.Count > 0)
+        {
+            userProjection.JoinedTeamIds = teamInfo.Select(t => t.Id).ToList();
+
+            // Find primary team (the one matching TeamId, or the one where user is captain)
+            var primaryTeam = userProjection.TeamId.HasValue 
+                ? teamInfo.FirstOrDefault(t => t.Id == userProjection.TeamId.Value)
+                : teamInfo.FirstOrDefault(t => t.PlayerRole == TeamRole.Captain);
+
+            if (primaryTeam != null)
+            {
+                userProjection.TeamId = primaryTeam.Id;
+                userProjection.TeamName = primaryTeam.Name;
+                userProjection.TeamRole = primaryTeam.PlayerRole.ToString();
+            }
+        }
+
+        // Activities — single lightweight query with projection
+        userProjection.Activities = await _activityRepository.GetQueryable()
             .AsNoTracking()
             .Where(a => a.UserId == id)
             .OrderByDescending(a => a.CreatedAt)
             .Take(10)
+            .Select(a => new UserActivityDto
+            {
+                Id = a.Id,
+                Type = a.Type,
+                Message = a.Message,
+                CreatedAt = a.CreatedAt
+            })
             .ToListAsync(cancellationToken);
-            
-        dto.Activities = _mapper.Map<List<UserActivityDto>>(activities);
 
-        return dto;
+        return userProjection;
     }
 
     public async Task<UserDto> UpdateAsync(Guid id, UpdateUserRequest request, CancellationToken ct = default)

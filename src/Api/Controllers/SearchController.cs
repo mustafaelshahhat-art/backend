@@ -1,6 +1,7 @@
 using Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using System.Security.Claims;
 
 namespace Api.Controllers;
@@ -18,6 +19,7 @@ public class SearchController : ControllerBase
     }
 
     [HttpGet]
+    [OutputCache(PolicyName = "SearchResults")]
     public async Task<IActionResult> Search([FromQuery] string q, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;

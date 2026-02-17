@@ -33,9 +33,12 @@ public class SearchService : ISearchService
         if (string.IsNullOrEmpty(normalizedQuery)) return new SearchResponse();
 
         var routePrefix = GetRoutePrefix(role);
-        int limitPerCategory = 20; // Fetch small set per category for unified view
+        int limitPerCategory = 20;
 
-        // 1. Search Tournaments (SARGABLE Prefix Match)
+        // NOTE: Sequential is required — all repositories share the same scoped DbContext (not thread-safe).
+        // Already optimized with Select() projection — no entity materialization.
+
+        // 1. Tournaments (SARGABLE prefix match)
         var tournamentResults = await _tournamentRepository.GetQueryable()
             .AsNoTracking()
             .Where(t => t.Name.StartsWith(normalizedQuery))
@@ -52,7 +55,7 @@ public class SearchService : ISearchService
             })
             .ToListAsync(ct);
 
-        // 2. Search Teams
+        // 2. Teams
         var teamResults = await _teamRepository.GetQueryable()
             .AsNoTracking()
             .Where(t => t.Name.StartsWith(normalizedQuery))
@@ -69,7 +72,7 @@ public class SearchService : ISearchService
             })
             .ToListAsync(ct);
 
-        // 3. Search Users (Admin only)
+        // 3. Users (Admin only)
         var userResults = new List<SearchResultItem>();
         if (role == "Admin")
         {

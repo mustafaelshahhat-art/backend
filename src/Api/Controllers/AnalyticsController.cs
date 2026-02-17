@@ -5,6 +5,7 @@ using Application.Services;
 using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using System.Security.Claims;
 
 namespace Api.Controllers;
@@ -38,6 +39,7 @@ public class AnalyticsController : ControllerBase
 
     [HttpGet("overview")]
     [Authorize]
+    [OutputCache(PolicyName = "Analytics")]
     public async Task<ActionResult> GetOverview([FromQuery] Guid? teamId = null, CancellationToken cancellationToken = default)
     {
         var (userId, userRole) = GetUserContext();

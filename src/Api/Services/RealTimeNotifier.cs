@@ -76,7 +76,24 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.Group($"match:{match.Id}").SendAsync("MatchUpdated", match, ct);
+            // PERF: Send match without full Events list over SignalR — clients refetch if needed
+            var slim = new {
+                match.Id,
+                match.TournamentId,
+                match.HomeTeamId,
+                match.HomeTeamName,
+                match.AwayTeamId,
+                match.AwayTeamName,
+                match.HomeScore,
+                match.AwayScore,
+                match.GroupId,
+                match.RoundNumber,
+                match.StageName,
+                match.Status,
+                match.Date,
+                EventCount = match.Events?.Count ?? 0
+            };
+            await _hubContext.Clients.Group($"match:{match.Id}").SendAsync("MatchUpdated", slim, ct);
         }
         catch (Exception ex)
         {
@@ -88,7 +105,22 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.Group($"tournament:{match.TournamentId}").SendAsync("MatchCreated", match, ct);
+            var slim = new {
+                match.Id,
+                match.TournamentId,
+                match.HomeTeamId,
+                match.HomeTeamName,
+                match.AwayTeamId,
+                match.AwayTeamName,
+                match.HomeScore,
+                match.AwayScore,
+                match.GroupId,
+                match.RoundNumber,
+                match.StageName,
+                match.Status,
+                match.Date
+            };
+            await _hubContext.Clients.Group($"tournament:{match.TournamentId}").SendAsync("MatchCreated", slim, ct);
         }
         catch (Exception ex)
         {
@@ -103,11 +135,27 @@ public class RealTimeNotifier : IRealTimeNotifier
             var firstMatch = matches.FirstOrDefault();
             if (firstMatch != null)
             {
-                await _hubContext.Clients.Group($"tournament:{firstMatch.TournamentId}").SendAsync("MatchesGenerated", matches, ct);
+                // PERF: Send slim match list without Events
+                var slimMatches = matches.Select(m => new {
+                    m.Id,
+                    m.TournamentId,
+                    m.HomeTeamId,
+                    m.HomeTeamName,
+                    m.AwayTeamId,
+                    m.AwayTeamName,
+                    m.HomeScore,
+                    m.AwayScore,
+                    m.GroupId,
+                    m.RoundNumber,
+                    m.StageName,
+                    m.Status,
+                    m.Date
+                });
+                await _hubContext.Clients.Group($"tournament:{firstMatch.TournamentId}").SendAsync("MatchesGenerated", slimMatches, ct);
             }
             else
             {
-                await _hubContext.Clients.All.SendAsync("MatchesGenerated", matches, ct);
+                await _hubContext.Clients.All.SendAsync("MatchesGenerated", Array.Empty<object>(), ct);
             }
         }
         catch (Exception ex)
@@ -132,7 +180,25 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.Group($"tournament:{tournament.Id}").SendAsync("TournamentUpdated", tournament, ct);
+            // PERF: Send slim tournament — strip Registrations, Rules, Prizes, Description, payment fields
+            var slim = new {
+                tournament.Id,
+                tournament.Name,
+                tournament.Status,
+                tournament.Mode,
+                tournament.StartDate,
+                tournament.EndDate,
+                tournament.MaxTeams,
+                tournament.CurrentTeams,
+                tournament.Format,
+                tournament.WinnerTeamId,
+                tournament.WinnerTeamName,
+                tournament.ImageUrl,
+                tournament.RequiresAdminIntervention,
+                tournament.CreatedAt,
+                tournament.UpdatedAt
+            };
+            await _hubContext.Clients.Group($"tournament:{tournament.Id}").SendAsync("TournamentUpdated", slim, ct);
         }
         catch (Exception ex)
         {
@@ -144,7 +210,23 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("TournamentCreated", tournament, ct);
+            // PERF: Slim tournament for Clients.All broadcast
+            var slim = new {
+                tournament.Id,
+                tournament.Name,
+                tournament.Status,
+                tournament.Mode,
+                tournament.StartDate,
+                tournament.EndDate,
+                tournament.MaxTeams,
+                tournament.CurrentTeams,
+                tournament.Format,
+                tournament.ImageUrl,
+                tournament.Location,
+                tournament.EntryFee,
+                tournament.CreatedAt
+            };
+            await _hubContext.Clients.All.SendAsync("TournamentCreated", slim, ct);
         }
         catch (Exception ex)
         {
@@ -233,7 +315,18 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("TeamCreated", team, ct);
+            // PERF: Strip Players list from Clients.All broadcast
+            var slim = new {
+                team.Id,
+                team.Name,
+                team.CaptainName,
+                team.Founded,
+                team.City,
+                team.IsActive,
+                team.PlayerCount,
+                team.MaxPlayers
+            };
+            await _hubContext.Clients.All.SendAsync("TeamCreated", slim, ct);
         }
         catch (Exception ex)
         {
@@ -245,7 +338,19 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.All.SendAsync("TeamUpdated", team, ct);
+            // PERF: Strip Players list from Clients.All broadcast
+            var slim = new {
+                team.Id,
+                team.Name,
+                team.CaptainName,
+                team.Founded,
+                team.City,
+                team.IsActive,
+                team.PlayerCount,
+                team.MaxPlayers,
+                team.Stats
+            };
+            await _hubContext.Clients.All.SendAsync("TeamUpdated", slim, ct);
         }
         catch (Exception ex)
         {
@@ -282,7 +387,15 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.Group($"tournament:{tournament.Id}").SendAsync("RegistrationApproved", tournament, ct);
+            // PERF: Only send essential fields for registration status change
+            var slim = new {
+                tournament.Id,
+                tournament.Name,
+                tournament.Status,
+                tournament.CurrentTeams,
+                tournament.MaxTeams
+            };
+            await _hubContext.Clients.Group($"tournament:{tournament.Id}").SendAsync("RegistrationApproved", slim, ct);
         }
         catch (Exception ex)
         {
@@ -294,7 +407,14 @@ public class RealTimeNotifier : IRealTimeNotifier
     {
         try
         {
-            await _hubContext.Clients.Group($"tournament:{tournament.Id}").SendAsync("RegistrationRejected", tournament, ct);
+            var slim = new {
+                tournament.Id,
+                tournament.Name,
+                tournament.Status,
+                tournament.CurrentTeams,
+                tournament.MaxTeams
+            };
+            await _hubContext.Clients.Group($"tournament:{tournament.Id}").SendAsync("RegistrationRejected", slim, ct);
         }
         catch (Exception ex)
         {

@@ -5,6 +5,7 @@ using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
 using FluentAssertions;
+using Microsoft.Extensions.Caching.Memory;
 using Moq;
 using Shared.Exceptions;
 using System;
@@ -54,7 +55,8 @@ public class TournamentServiceTests
             new Mock<IRealTimeNotifier>().Object,
             new Mock<global::Domain.Interfaces.IRepository<global::Domain.Entities.TournamentPlayer>>().Object,
             new Mock<ITournamentLifecycleService>().Object,
-            _distributedLockMock.Object
+            _distributedLockMock.Object,
+            new MemoryCache(new MemoryCacheOptions())
         );
     }
 

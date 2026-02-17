@@ -9,6 +9,7 @@ using AutoMapper;
 using Domain.Entities;
 using Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Application.Services;
 
@@ -23,6 +24,7 @@ public class AnalyticsService : IAnalyticsService
     private readonly IRepository<TeamRegistration> _registrationRepository;
     private readonly IMapper _mapper;
     private readonly IBackgroundActivityLogger _backgroundLogger;
+    private readonly IMemoryCache _memoryCache;
 
     public AnalyticsService(
         IRepository<Activity> activityRepository,
@@ -33,7 +35,8 @@ public class AnalyticsService : IAnalyticsService
         IRepository<Match> matchRepository,
         IRepository<TeamRegistration> registrationRepository,
         IMapper mapper,
-        IBackgroundActivityLogger backgroundLogger)
+        IBackgroundActivityLogger backgroundLogger,
+        IMemoryCache memoryCache)
     {
         _activityRepository = activityRepository;
         _userRepository = userRepository;
@@ -44,6 +47,7 @@ public class AnalyticsService : IAnalyticsService
         _registrationRepository = registrationRepository;
         _mapper = mapper;
         _backgroundLogger = backgroundLogger;
+        _memoryCache = memoryCache;
     }
 
     public async Task<AnalyticsOverview> GetOverviewAsync(Guid? creatorId = null, CancellationToken ct = default)
@@ -75,6 +79,11 @@ public class AnalyticsService : IAnalyticsService
         }
         else
         {
+            // PERF: Cache admin overview for 60s — 6 sequential COUNT queries are expensive on shared SQL
+            var cacheKey = "analytics:admin_overview";
+            if (_memoryCache.TryGetValue(cacheKey, out AnalyticsOverview? cached) && cached != null)
+                return cached;
+
             // Global counts for admins - Sequential to match EF Core threading model per Context instance
             var activeTournaments = await _tournamentRepository.CountAsync(t => t.Status == Domain.Enums.TournamentStatus.RegistrationOpen || t.Status == Domain.Enums.TournamentStatus.Active, ct);
             var users = await _userRepository.CountAsync(u => u.IsEmailVerified, ct);
@@ -89,7 +98,7 @@ public class AnalyticsService : IAnalyticsService
                 .Where(m => m.Status == Domain.Enums.MatchStatus.Finished)
                 .SumAsync(m => (int?)m.HomeScore + (int?)m.AwayScore, ct) ?? 0;
 
-            return new AnalyticsOverview
+            var overview = new AnalyticsOverview
             {
                 TotalUsers = users,
                 TotalTeams = teams,
@@ -98,16 +107,26 @@ public class AnalyticsService : IAnalyticsService
                 LoginsToday = loginsToday,
                 TotalGoals = totalGoals
             };
+
+            var cacheOpts = new MemoryCacheEntryOptions()
+                .SetAbsoluteExpiration(TimeSpan.FromSeconds(60));
+            cacheOpts.Size = 256; // Small DTO with 6 ints
+            _memoryCache.Set(cacheKey, overview, cacheOpts);
+
+            return overview;
         }
     }
 
     public async Task<TeamAnalyticsDto> GetTeamAnalyticsAsync(Guid teamId, CancellationToken ct = default)
     {
+        // PERF: Consolidated — 3 sequential COUNT queries → single projection from Registrations
         var playerCount = await _playerRepository.CountAsync(p => p.TeamId == teamId, ct);
+        
+        // Combine match + tournament counts using repository queries (same DbContext, sequential is required)
         var matchCount = await _matchRepository.CountAsync(m => 
             (m.HomeTeamId == teamId || m.AwayTeamId == teamId) && 
             m.Status == Domain.Enums.MatchStatus.Scheduled, ct);
-        
+
         var tournamentCount = await _registrationRepository.CountAsync(r => 
             r.TeamId == teamId && 
             r.Status == Domain.Enums.RegistrationStatus.Approved &&

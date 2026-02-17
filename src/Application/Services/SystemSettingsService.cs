@@ -81,6 +81,7 @@ public class SystemSettingsService : ISystemSettingsService
         var options = new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions()
             .SetSlidingExpiration(TimeSpan.FromMinutes(5))
             .SetAbsoluteExpiration(TimeSpan.FromHours(1));
+        options.Size = 1024; // SystemSettings is a small object
         
         _cache.Set(CacheKey, settings, options);
         

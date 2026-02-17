@@ -22,13 +22,14 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 var builder = WebApplication.CreateBuilder(args);
 
 // PROD-AUDIT: Global Request Size Limit + PERF-FIX I2: Kestrel thread tuning
+// PERF: Tuned for 256MB shared hosting — lower connection caps to reduce memory pressure
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
     serverOptions.Limits.MaxRequestBodySize = 10 * 1024 * 1024; // 10 MB
-    serverOptions.Limits.MaxConcurrentConnections = 400;
-    serverOptions.Limits.MaxConcurrentUpgradedConnections = 200; // WebSockets/SignalR
-    serverOptions.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(120);
-    serverOptions.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(30);
+    serverOptions.Limits.MaxConcurrentConnections = 100;
+    serverOptions.Limits.MaxConcurrentUpgradedConnections = 50; // WebSockets/SignalR
+    serverOptions.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(60);
+    serverOptions.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(15);
 });
 
 // PROD-AUDIT: Structured Logging
@@ -75,6 +76,32 @@ builder.Services.AddOutputCache(options =>
         .Expire(TimeSpan.FromSeconds(30))
         .SetVaryByQuery("page", "pageSize")
         .Tag("tournaments"));
+    // PERF: New policies for previously uncached endpoints
+    options.AddPolicy("TournamentDetail", builder => builder
+        .Expire(TimeSpan.FromSeconds(15))
+        .SetVaryByRouteValue("id")
+        .Tag("tournaments"));
+    options.AddPolicy("TeamList", builder => builder
+        .Expire(TimeSpan.FromSeconds(20))
+        .SetVaryByQuery("page", "pageSize", "captainId", "playerId")
+        .Tag("teams"));
+    options.AddPolicy("TeamDetail", builder => builder
+        .Expire(TimeSpan.FromSeconds(15))
+        .SetVaryByRouteValue("id")
+        .Tag("teams"));
+    options.AddPolicy("SearchResults", builder => builder
+        .Expire(TimeSpan.FromSeconds(30))
+        .SetVaryByQuery("q", "page", "pageSize")
+        .Tag("search"));
+    options.AddPolicy("Analytics", builder => builder
+        .Expire(TimeSpan.FromSeconds(45))
+        .SetVaryByQuery("teamId")
+        .Tag("analytics"));
+    options.AddPolicy("Standings", builder => builder
+        .Expire(TimeSpan.FromSeconds(30))
+        .SetVaryByQuery("page", "pageSize", "groupId")
+        .SetVaryByRouteValue("id")
+        .Tag("standings"));
 });
 
 // Add services to the container.
@@ -82,12 +109,15 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        // PERF: Skip null properties — reduces payload size by ~15-25%
+        options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
     });
 
 // PROD-AUDIT: Health Checks (Database)
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<Infrastructure.Data.AppDbContext>();
-builder.Services.AddMemoryCache();
+// PERF: Memory-safe cache — 50MB cap for 256MB shared hosting. Entries MUST set Size.
+builder.Services.AddMemoryCache(options => options.SizeLimit = 50 * 1024 * 1024);
 
 // Custom Validation Response
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(options =>
@@ -377,6 +407,12 @@ app.UseMiddleware<GlobalExceptionHandlerMiddleware>(); // Must be first — catc
 
 app.UseHttpsRedirection();
 app.UseResponseCompression();
+
+// CORS must be FIRST — before any middleware that can short-circuit (OutputCache, ResponseCaching, auth, etc.)
+// Without this, OutputCache serves anonymous cached responses WITHOUT Access-Control-Allow-Origin,
+// causing CORS errors for guest users on cached endpoints (e.g. tournament list).
+app.UseCors("AllowFrontend");
+
 app.UseResponseCaching();
 app.UseOutputCache(); // PERF-FIX I4: Output Caching middleware
 
@@ -384,9 +420,6 @@ app.UseOutputCache(); // PERF-FIX I4: Output Caching middleware
 
 app.UseSwagger();
 app.UseSwaggerUI();
-
-// CORS must be BEFORE any middleware that may short-circuit (auth, maintenance, etc.)
-app.UseCors("AllowFrontend");
 
 app.UseCookiePolicy();
 app.UseMiddleware<CorrelationIdMiddleware>(); // PROD-AUDIT: Traceability

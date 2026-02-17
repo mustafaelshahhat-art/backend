@@ -76,6 +76,7 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("{id}")]
     [AllowAnonymous]
+    [OutputCache(PolicyName = "TournamentDetail")]
     public async Task<ActionResult<TournamentDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
@@ -181,7 +182,7 @@ public class TournamentsController : ControllerBase
     [Authorize(Policy = "RequireTournamentOwner")]
     public async Task<ActionResult<Application.Common.Models.PagedResult<TeamRegistrationDto>>> GetRegistrations(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 100, CancellationToken cancellationToken = default)
     {
-        if (pageSize > 200) pageSize = 200;
+        if (pageSize > 100) pageSize = 100;
         var registrations = await _tournamentService.GetRegistrationsAsync(id, page, pageSize, cancellationToken);
         return Ok(registrations);
     }
@@ -254,7 +255,7 @@ public class TournamentsController : ControllerBase
     [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<Application.Common.Models.PagedResult<PendingPaymentResponse>>> GetPendingPayments([FromQuery] int page = 1, [FromQuery] int pageSize = 100, CancellationToken cancellationToken = default)
     {
-        if (pageSize > 200) pageSize = 200;
+        if (pageSize > 100) pageSize = 100;
         var (userId, userRole) = GetUserContext();
         Guid? creatorId = (userRole == UserRole.TournamentCreator.ToString()) ? userId : null;
 
@@ -266,7 +267,7 @@ public class TournamentsController : ControllerBase
     [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<Application.Common.Models.PagedResult<PendingPaymentResponse>>> GetAllPaymentRequests([FromQuery] int page = 1, [FromQuery] int pageSize = 100, CancellationToken cancellationToken = default)
     {
-        if (pageSize > 200) pageSize = 200;
+        if (pageSize > 100) pageSize = 100;
         var (userId, userRole) = GetUserContext();
         Guid? creatorId = (userRole == UserRole.TournamentCreator.ToString()) ? userId : null;
 
@@ -286,10 +287,10 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("{id}/standings")]
     [AllowAnonymous]
-    [OutputCache(PolicyName = "ShortCache")]
+    [OutputCache(PolicyName = "Standings")]
     public async Task<ActionResult<Application.Common.Models.PagedResult<TournamentStandingDto>>> GetStandings(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 100, [FromQuery] int? groupId = null, CancellationToken cancellationToken = default)
     {
-        if (pageSize > 200) pageSize = 200;
+        if (pageSize > 100) pageSize = 100;
         var standings = await _tournamentService.GetStandingsAsync(id, page, pageSize, groupId, cancellationToken);
         return Ok(standings);
     }
