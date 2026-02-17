@@ -68,6 +68,7 @@ public class TournamentsController : ControllerBase
 
     [HttpGet("{id}/matches")]
     [AllowAnonymous]
+    [OutputCache(PolicyName = "MatchList")]
     public async Task<ActionResult<IEnumerable<MatchDto>>> GetMatches(Guid id, CancellationToken cancellationToken)
     {
         var matches = await _matchService.GetMatchesByTournamentAsync(id, cancellationToken);

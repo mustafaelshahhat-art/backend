@@ -63,6 +63,8 @@ public class TournamentService : ITournamentService
 
     public async Task<Application.Common.Models.PagedResult<TournamentDto>> GetPagedAsync(int page, int pageSize, Guid? creatorId = null, bool includeDrafts = false, CancellationToken ct = default)
     {
+        if (pageSize > 100) pageSize = 100;
+
         var query = _tournamentRepository.GetQueryable().AsNoTracking();
 
         if (creatorId.HasValue)
@@ -326,7 +328,7 @@ public class TournamentService : ITournamentService
 
     public async Task<TournamentDto> UpdateAsync(Guid id, UpdateTournamentRequest request, Guid userId, string userRole, CancellationToken ct = default)
     {
-        var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "Registrations.Team", "Registrations.Team.Players", "WinnerTeam" }, ct);
+        var tournament = await _tournamentRepository.GetByIdAsync(id, new[] { "Registrations", "WinnerTeam" }, ct);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), id);
         ValidateOwnership(tournament, userId, userRole, ct);
 
