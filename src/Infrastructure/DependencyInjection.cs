@@ -19,23 +19,27 @@ public static class DependencyInjection
             ?? "localhost:6379";
 
         bool useRedis = false;
-        var isProduction = configuration["ASPNETCORE_ENVIRONMENT"] == "Production";
 
-        try
+        // Skip Redis probe entirely if connection string is empty
+        if (!string.IsNullOrWhiteSpace(redisConnectionString))
         {
-            // PROD-AUDIT: Distributed Safety
-            // Attempt Redis connection, fallback to SQL if unavailable (even in Production)
-            var checkOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
-            checkOptions.AbortOnConnectFail = true;
-            checkOptions.ConnectTimeout = 3000; // Fast fail check
-            using var checkConn = StackExchange.Redis.ConnectionMultiplexer.Connect(checkOptions);
-            useRedis = checkConn.IsConnected;
-        }
-        catch
-        {
-            useRedis = false;
-            // Fallback to SQL-based caching and locking (even in Production)
-            // Log warning but don't fail startup
+            try
+            {
+                // PROD-AUDIT: Distributed Safety
+                // Attempt Redis connection, fallback to SQL if unavailable (even in Production)
+                var checkOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
+                checkOptions.AbortOnConnectFail = true;
+                checkOptions.ConnectTimeout = 3000; // Fast fail check
+                using var checkConn = StackExchange.Redis.ConnectionMultiplexer.Connect(checkOptions);
+                useRedis = checkConn.IsConnected;
+            }
+            catch (Exception ex)
+            {
+                useRedis = false;
+                // PROD-FIX: Log the fallback so operators know Redis is down
+                // Note: Serilog may not be fully configured yet, use Console as fallback
+                Console.Error.WriteLine($"[WARN] Redis unavailable at '{redisConnectionString}': {ex.Message}. Falling back to SQL distributed lock and in-memory cache.");
+            }
         }
 
         if (useRedis)
@@ -52,7 +56,7 @@ public static class DependencyInjection
             services.AddStackExchangeRedisCache(options =>
             {
                 options.Configuration = redisConnectionString;
-                options.InstanceName = "RamadanAPI_";
+                options.InstanceName = "KoraZone365_";
             });
         }
         else

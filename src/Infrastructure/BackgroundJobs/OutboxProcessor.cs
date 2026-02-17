@@ -23,6 +23,11 @@ public class OutboxProcessor : BackgroundService
     private const int BatchSize = 20;
     private const int MaxRetries = 3;
 
+    // Adaptive polling: fast when busy, slow when idle
+    private static readonly TimeSpan MinDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan MaxDelay = TimeSpan.FromSeconds(30);
+    private TimeSpan _currentDelay = TimeSpan.FromSeconds(5);
+
     public OutboxProcessor(IServiceScopeFactory scopeFactory, ILogger<OutboxProcessor> logger, IDomainEventTypeCache typeCache)
     {
         _scopeFactory = scopeFactory;
@@ -36,18 +41,31 @@ public class OutboxProcessor : BackgroundService
         {
             try
             {
-                await ProcessOutboxMessagesAsync(stoppingToken);
+                var processed = await ProcessOutboxMessagesAsync(stoppingToken);
+
+                // Adaptive polling: ramp down when idle, ramp up when busy
+                if (processed > 0)
+                {
+                    _currentDelay = MinDelay; // Messages found — poll quickly
+                }
+                else
+                {
+                    // No messages — exponentially back off up to MaxDelay
+                    _currentDelay = TimeSpan.FromMilliseconds(
+                        Math.Min(_currentDelay.TotalMilliseconds * 2, MaxDelay.TotalMilliseconds));
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while processing outbox messages.");
+                _currentDelay = MaxDelay; // Error — back off fully
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            await Task.Delay(_currentDelay, stoppingToken);
         }
     }
 
-    private async Task ProcessOutboxMessagesAsync(CancellationToken stoppingToken)
+    private async Task<int> ProcessOutboxMessagesAsync(CancellationToken stoppingToken)
     {
         using var scope = _scopeFactory.CreateScope();
         var lockProvider = scope.ServiceProvider.GetRequiredService<IDistributedLock>();
@@ -56,7 +74,7 @@ public class OutboxProcessor : BackgroundService
         if (!await lockProvider.AcquireLockAsync(lockKey, TimeSpan.FromMinutes(2), stoppingToken))
         {
             _logger.LogDebug("Outbox lock already held by another instance. Skipping.");
-            return;
+            return 0;
         }
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -74,7 +92,7 @@ public class OutboxProcessor : BackgroundService
                 .Take(BatchSize)
                 .ToListAsync(stoppingToken);
 
-            if (!messages.Any()) return;
+            if (!messages.Any()) return 0;
 
             // PROD-AUDIT: Atomic state transition to prevent double processing
             foreach (var message in messages)
@@ -90,7 +108,7 @@ public class OutboxProcessor : BackgroundService
             catch (DbUpdateConcurrencyException)
             {
                 _logger.LogWarning("Concurrency conflict detected while marking outbox messages. Skipping batch.");
-                return;
+                return 0;
             }
 
             foreach (var message in messages)
@@ -143,6 +161,8 @@ public class OutboxProcessor : BackgroundService
             {
                 _logger.LogCritical("[OUTBOX_ALERT] High number of DeadLetter messages detected: {Count}. Manual intervention required.", deadLetterCount);
             }
+
+            return messages.Count;
         }
         finally
         {

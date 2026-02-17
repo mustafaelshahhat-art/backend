@@ -22,6 +22,7 @@ public class OutboxAdminService : IOutboxAdminService
     public async Task<(IEnumerable<OutboxMessage> Messages, int TotalCount)> GetDeadLetterMessagesAsync(int page, int pageSize, CancellationToken ct)
     {
         var query = _dbContext.OutboxMessages
+            .AsNoTracking()
             .Where(m => m.Status == OutboxMessageStatus.DeadLetter);
 
         var totalCount = await query.CountAsync(ct);
@@ -49,19 +50,16 @@ public class OutboxAdminService : IOutboxAdminService
         message.ScheduledAt = DateTime.UtcNow;
         message.UpdatedAt = DateTime.UtcNow;
 
+        await _dbContext.SaveChangesAsync(ct);
 
         return true;
     }
 
     public async Task<int> ClearDeadLetterMessagesAsync(CancellationToken ct)
     {
-        var deadLetters = await _dbContext.OutboxMessages
+        // PERF-FIX: Use ExecuteDeleteAsync — single SQL DELETE, no entity loading
+        return await _dbContext.OutboxMessages
             .Where(m => m.Status == OutboxMessageStatus.DeadLetter)
-            .ToListAsync(ct);
-
-        _dbContext.OutboxMessages.RemoveRange(deadLetters);
-
-        
-        return deadLetters.Count;
+            .ExecuteDeleteAsync(ct);
     }
 }

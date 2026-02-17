@@ -135,7 +135,7 @@ public class UserService : IUserService
             .Where(a => a.UserId == id)
             .OrderByDescending(a => a.CreatedAt)
             .Take(10)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
             
         dto.Activities = _mapper.Map<List<UserActivityDto>>(activities);
 

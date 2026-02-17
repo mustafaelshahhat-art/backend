@@ -11,7 +11,7 @@ public class RedisLockService : IDistributedLock
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisLockService> _logger;
-    private readonly string _lockPrefix = "ramadan:lock:";
+    private readonly string _lockPrefix = "korazone365:lock:";
 
     public RedisLockService(IConnectionMultiplexer redis, ILogger<RedisLockService> logger)
     {

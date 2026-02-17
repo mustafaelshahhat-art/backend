@@ -72,10 +72,13 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         // Team - TeamStats (1-to-1)
+        // PROD-FIX: Configure as optional to avoid EF Core warning about
+        // required relationship + query filter mismatch
         modelBuilder.Entity<Team>()
             .HasOne(t => t.Statistics)
             .WithOne(s => s.Team)
-            .HasForeignKey<TeamStats>(s => s.TeamId);
+            .HasForeignKey<TeamStats>(s => s.TeamId)
+            .IsRequired(false);
 
         // Player - User (Optional)
         modelBuilder.Entity<Player>()
@@ -226,6 +229,13 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TournamentPlayer>().Property<bool>("IsDeleted").HasDefaultValue(false);
         modelBuilder.Entity<TournamentPlayer>().HasQueryFilter(tp =>
             !EF.Property<bool>(tp, "IsDeleted"));
+
+        // 7.6 TeamStats — own IsDeleted, aligned with Team's query filter
+        // PROD-FIX: Eliminates EF Core warning about required relationship
+        // where principal (Team) has a query filter but dependent (TeamStats) doesn't.
+        modelBuilder.Entity<TeamStats>().Property<bool>("IsDeleted").HasDefaultValue(false);
+        modelBuilder.Entity<TeamStats>().HasQueryFilter(s =>
+            !EF.Property<bool>(s, "IsDeleted"));
 
         // 8. Notification (Cascade delete when User is hard deleted)
         modelBuilder.Entity<Notification>()
@@ -635,6 +645,12 @@ public class AppDbContext : DbContext
                 .Where(r => teamsBeingDeleted.Contains(r.TeamId) && !EF.Property<bool>(r, "IsDeleted"))
                 .ToListAsync(cancellationToken);
             foreach (var r in joinRequests) Entry(r).Property("IsDeleted").CurrentValue = true;
+
+            // Cascade IsDeleted to TeamStats
+            var teamStats = await TeamStats.IgnoreQueryFilters()
+                .Where(s => teamsBeingDeleted.Contains(s.TeamId) && !EF.Property<bool>(s, "IsDeleted"))
+                .ToListAsync(cancellationToken);
+            foreach (var s in teamStats) Entry(s).Property("IsDeleted").CurrentValue = true;
             
             // Cascade to tournament players only if there are affected players
             var playerIds = players.Select(p => p.Id).ToList();
