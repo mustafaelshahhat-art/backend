@@ -35,20 +35,7 @@ public class FallbackImageMiddleware
 
     private async Task ServePlaceholder(HttpContext context)
     {
-        var path = context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
-        
-        // Determine which placeholder to serve
-        string placeholderPath;
-        if (path.Contains("avatar") || path.Contains("user"))
-        {
-            // We don't have a specific avatar placeholder yet, so we could use a generic one or team one
-            // For now, let's use the team-placeholder since it exists and looks premium
-            placeholderPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "assets", "images", "team-placeholder.png");
-        }
-        else
-        {
-            placeholderPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "assets", "images", "team-placeholder.png");
-        }
+        var placeholderPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "assets", "images", "team-placeholder.png");
 
         if (File.Exists(placeholderPath))
         {

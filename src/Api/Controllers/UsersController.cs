@@ -176,24 +176,6 @@ public class UsersController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Uploads and updates the avatar for the current authenticated user.
-    /// </summary>
-    [HttpPost("upload-avatar")]
-    public async Task<ActionResult<string>> UploadAvatar(UploadAvatarRequest request, CancellationToken cancellationToken)
-    {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out var id))
-        {
-            return Unauthorized();
-        }
-
-        var command = new Application.Features.Users.Commands.UploadAvatar.UploadAvatarCommand(id, request.Base64Image, request.FileName);
-        var avatarUrl = await _mediator.Send(command, cancellationToken);
-        
-        return Ok(new { avatarUrl });
-    }
-
     private (Guid userId, string userRole) GetUserContext()
     {
         var idStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

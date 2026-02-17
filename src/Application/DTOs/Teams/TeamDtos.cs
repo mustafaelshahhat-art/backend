@@ -8,7 +8,6 @@ public class TeamDto
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string CaptainName { get; set; } = string.Empty;
-    public string? Logo { get; set; }
     public string Founded { get; set; } = string.Empty;
     public string? City { get; set; }
     public bool IsActive { get; set; }
@@ -32,7 +31,6 @@ public class TeamStatsDto
 public class CreateTeamRequest
 {
     public string Name { get; set; } = string.Empty;
-    public string? Logo { get; set; }
     public string Founded { get; set; } = string.Empty;
     public string? City { get; set; }
 }
@@ -40,7 +38,6 @@ public class CreateTeamRequest
 public class UpdateTeamRequest
 {
     public string? Name { get; set; }
-    public string? Logo { get; set; }
     public string? City { get; set; }
     public bool? IsActive { get; set; }
 }

@@ -12,7 +12,6 @@ public class UserDto
     public string Email { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
-    public string? Avatar { get; set; }
     public string? Phone { get; set; }
     public int? Age { get; set; }
     public string? NationalId { get; set; }
@@ -42,7 +41,6 @@ public class UserPublicDto
     public string DisplayId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
-    public string? Avatar { get; set; }
     public Guid? GovernorateId { get; set; }
     public string? GovernorateNameAr { get; set; }
     public Guid? CityId { get; set; }
@@ -66,9 +64,6 @@ public class UpdateUserRequest
 {
     public string? Name { get; set; }
     public string? Phone { get; set; }
-    public string? Avatar { get; set; }
-    [JsonPropertyName("removeAvatar")]
-    public bool RemoveAvatar { get; set; } = false;
     public Guid? GovernorateId { get; set; }
     public Guid? CityId { get; set; }
     public Guid? AreaId { get; set; }
@@ -79,12 +74,6 @@ public class ChangePasswordRequest
 {
     public string CurrentPassword { get; set; } = string.Empty;
     public string NewPassword { get; set; } = string.Empty;
-}
-
-public class UploadAvatarRequest
-{
-    public string Base64Image { get; set; } = string.Empty;
-    public string FileName { get; set; } = string.Empty;
 }
 
 /// <summary>

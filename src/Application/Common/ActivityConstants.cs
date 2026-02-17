@@ -33,7 +33,6 @@ public static class ActivityConstants
     public const string ADMIN_OVERRIDE = "ADMIN_OVERRIDE";
     public const string ADMIN_CREATED = "ADMIN_CREATED";
     public const string PASSWORD_CHANGED = "PASSWORD_CHANGED";
-    public const string AVATAR_UPDATED = "AVATAR_UPDATED";
     public const string PAYMENT_SUBMITTED = "PAYMENT_SUBMITTED";
     public const string PAYMENT_APPROVED = "PAYMENT_APPROVED";
     public const string GROUPS_FINISHED = "GROUPS_FINISHED";
@@ -48,7 +47,6 @@ public static class ActivityConstants
         { GUEST_VISIT,      ("زائر",   "زيارة ضيف",        "دخل زائر جديد إلى المنصة كضيف",                         ActivitySeverity.Info,     null) },
         { ADMIN_CREATED,    ("إدارة",  "إنشاء مشرف",       "تم إنشاء حساب مشرف جديد باسم {adminName}",              ActivitySeverity.Warning,  "User") },
         { PASSWORD_CHANGED, ("مستخدم", "تغيير كلمة المرور", "قام المستخدم بتغيير كلمة المرور الخاصة به",              ActivitySeverity.Info,     "User") },
-        { AVATAR_UPDATED,   ("مستخدم", "تحديث صورة",       "قام المستخدم بتحديث الصورة الشخصية",                     ActivitySeverity.Info,     "User") },
 
         // Match
         { MATCH_STARTED,       ("مباراة", "بدء مباراة",    "تم بدء المباراة {matchInfo}",                                             ActivitySeverity.Info,     "Match") },

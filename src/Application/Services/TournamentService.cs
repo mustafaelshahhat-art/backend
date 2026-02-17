@@ -89,7 +89,6 @@ public class TournamentService : ITournamentService
                     {
                         Registration = r,
                         TeamName = r.Team != null ? r.Team.Name : string.Empty,
-                        TeamLogoUrl = r.Team != null ? r.Team.Logo : null,
                         CaptainName = r.Team != null && r.Team.Players != null 
                             ? r.Team.Players.Where(p => p.TeamRole == TeamRole.Captain).Select(p => p.Name).FirstOrDefault() ?? string.Empty 
                             : string.Empty
@@ -110,7 +109,6 @@ public class TournamentService : ITournamentService
             {
                 var regDto = _mapper.Map<TeamRegistrationDto>(r.Registration);
                 regDto.TeamName = r.TeamName;
-                regDto.TeamLogoUrl = r.TeamLogoUrl;
                 regDto.CaptainName = r.CaptainName;
                 return regDto;
             }).ToList();
@@ -189,7 +187,6 @@ public class TournamentService : ITournamentService
                     {
                         Registration = r,
                         TeamName = r.Team != null ? r.Team.Name : string.Empty,
-                        TeamLogoUrl = r.Team != null ? r.Team.Logo : null,
                         CaptainName = r.Team != null && r.Team.Players != null 
                             ? r.Team.Players.Where(p => p.TeamRole == TeamRole.Captain).Select(p => p.Name).FirstOrDefault() ?? string.Empty 
                             : string.Empty
@@ -213,7 +210,6 @@ public class TournamentService : ITournamentService
         {
             var regDto = _mapper.Map<TeamRegistrationDto>(r.Registration);
             regDto.TeamName = r.TeamName;
-            regDto.TeamLogoUrl = r.TeamLogoUrl;
             regDto.CaptainName = r.CaptainName;
             return regDto;
         }).ToList();
@@ -899,7 +895,7 @@ public class TournamentService : ITournamentService
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), tournamentId);
 
-        // Get all matches WITH team navigation properties for name/logo mapping
+        // Get all matches WITH team navigation properties for name mapping
         var matches = await _matchRepository.FindAsync(
             m => m.TournamentId == tournamentId,
             new[] { "HomeTeam", "AwayTeam" },

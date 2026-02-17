@@ -15,7 +15,6 @@ public class User : BaseEntity
     public bool IsEmailVerified { get; set; } = false;
     
     // Profile fields
-    public string? Avatar { get; set; }
     public string? Phone { get; set; }
     public int? Age { get; set; }
     public string? NationalId { get; set; }

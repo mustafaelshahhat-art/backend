@@ -6,7 +6,6 @@ namespace Domain.Entities;
 public class Team : BaseEntity
 {
     public string Name { get; set; } = string.Empty;
-    public string? Logo { get; set; }
     public string Founded { get; set; } = string.Empty;
     public string? City { get; set; }
     public bool IsActive { get; set; } = true;

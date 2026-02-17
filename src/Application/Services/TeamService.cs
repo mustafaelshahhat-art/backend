@@ -214,7 +214,6 @@ public class TeamService : ITeamService
             Name = request.Name,
             Founded = request.Founded,
             City = request.City,
-            Logo = request.Logo,
             Players = new List<Player>()
         };
 
@@ -261,7 +260,6 @@ public class TeamService : ITeamService
 
         if (!string.IsNullOrEmpty(request.Name)) team.Name = request.Name!;
         if (!string.IsNullOrEmpty(request.City)) team.City = request.City;
-        if (!string.IsNullOrEmpty(request.Logo)) team.Logo = request.Logo;
         
         if (request.IsActive.HasValue && team.IsActive != request.IsActive.Value)
         {

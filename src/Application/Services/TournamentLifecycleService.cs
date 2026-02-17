@@ -345,7 +345,6 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         { 
             TeamId = t.TeamId, 
             TeamName = t.Team?.Name ?? "فريق",
-            TeamLogoUrl = t.Team?.Logo,
             GroupId = t.GroupId
         }).ToList();
         

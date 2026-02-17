@@ -17,7 +17,6 @@ namespace Application.Services;
 
 public class UserService : IUserService
 {
-    private readonly IFileStorageService _fileStorage;
     private readonly IUserCacheService _userCache;
     private readonly IRepository<User> _userRepository;
     private readonly IRepository<Activity> _activityRepository;
@@ -39,7 +38,6 @@ public class UserService : IUserService
         IPasswordHasher passwordHasher,
         IAnalyticsService analyticsService,
         ISystemSettingsService systemSettingsService,
-        IFileStorageService fileStorage,
         IUserCacheService userCache)
     {
         _userRepository = userRepository;
@@ -51,7 +49,6 @@ public class UserService : IUserService
         _passwordHasher = passwordHasher;
         _analyticsService = analyticsService;
         _systemSettingsService = systemSettingsService;
-        _fileStorage = fileStorage;
         _userCache = userCache;
     }
 
@@ -152,16 +149,6 @@ public class UserService : IUserService
 
         if (!string.IsNullOrEmpty(request.Name)) user.Name = request.Name!;
         if (!string.IsNullOrEmpty(request.Phone)) user.Phone = request.Phone;
-        
-        // Handle avatar: RemoveAvatar takes precedence, then check for new avatar
-        if (request.RemoveAvatar)
-        {
-            user.Avatar = null;
-        }
-        else if (!string.IsNullOrEmpty(request.Avatar))
-        {
-            user.Avatar = request.Avatar;
-        }
         
         if (request.GovernorateId.HasValue) user.GovernorateId = request.GovernorateId;
         if (request.CityId.HasValue) user.CityId = request.CityId;
@@ -478,23 +465,5 @@ public class UserService : IUserService
             TotalAdmins = totalAdmins,
             IsLastAdmin = isLastAdmin
         };
-    }
-
-    public async Task<string> UploadAvatarAsync(Guid userId, System.IO.Stream stream, string fileName, string contentType, CancellationToken ct = default)
-    {
-        var user = await _userRepository.GetByIdAsync(userId, ct);
-        if (user == null) throw new NotFoundException(nameof(User), userId);
-
-        var avatarUrl = await _fileStorage.SaveFileAsync(stream, fileName, contentType, ct);
-
-        // Update user avatar
-        user.Avatar = avatarUrl;
-        await _userRepository.UpdateAsync(user, ct);
-        await _userCache.InvalidateUserAsync(userId, ct);
-
-        // Log activity (Fire and forget via background logger inside service)
-        await _analyticsService.LogActivityByTemplateAsync("AVATAR_UPDATED", new Dictionary<string, string>(), userId, "مستخدم", ct);
-
-        return avatarUrl;
     }
 }
