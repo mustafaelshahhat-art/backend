@@ -68,7 +68,8 @@ public static class DependencyInjection
             // Let's assume services only use it if relevant feature is enabled.
             // But UserCacheService uses IDistributedCache, which is covered below.
             
-            services.AddDistributedMemoryCache();
+            // PERF: Cap in-memory distributed cache at 20MB for 256MB shared hosting safety
+            services.AddDistributedMemoryCache(options => options.SizeLimit = 20 * 1024 * 1024);
         }
 
         // Lock Provider Logic
