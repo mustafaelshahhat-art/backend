@@ -1,3 +1,4 @@
+using Application.DTOs;
 using Application.DTOs.Tournaments;
 using MediatR;
 using Application.DTOs.Matches;
@@ -8,4 +9,4 @@ public record CreateManualKnockoutMatchesCommand(
     Guid TournamentId,
     List<KnockoutPairingDto> Pairings,
     Guid UserId,
-    string UserRole) : IRequest<IEnumerable<MatchDto>>;
+    string UserRole) : IRequest<MatchListResponse>;

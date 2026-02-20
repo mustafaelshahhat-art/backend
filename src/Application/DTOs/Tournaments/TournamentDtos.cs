@@ -114,6 +114,7 @@ public class TeamRegistrationDto
     public string? PaymentMethod { get; set; }
     public DateTime RegisteredAt { get; set; }
     public Guid TournamentId { get; set; }
+    public bool IsQualifiedForKnockout { get; set; }
 }
 
 public class SubmitPaymentRequest
@@ -200,4 +201,23 @@ public class OpeningMatchRequest
 {
     public Guid HomeTeamId { get; set; }
     public Guid AwayTeamId { get; set; }
+}
+
+/// <summary>
+/// Organiser supplies one entry per group, listing the teams that should advance
+/// to the knockout round. Used by <c>ConfirmManualQualificationCommand</c>.
+/// </summary>
+public class GroupQualificationRequest
+{
+    /// <summary>GroupId matching TeamRegistration.GroupId.</summary>
+    public int GroupId { get; set; }
+
+    /// <summary>IDs of teams in this group that the organiser selects to advance.</summary>
+    public List<Guid> QualifiedTeamIds { get; set; } = new();
+}
+
+/// <summary>Request body for POST confirm-manual-qualification.</summary>
+public class ConfirmManualQualificationRequest
+{
+    public List<GroupQualificationRequest> Selections { get; set; } = new();
 }

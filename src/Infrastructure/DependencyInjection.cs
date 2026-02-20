@@ -1,3 +1,4 @@
+using Application.Common.Interfaces;
 using Application.Interfaces;
 using Domain.Interfaces;
 using Infrastructure.Authentication;
@@ -61,15 +62,10 @@ public static class DependencyInjection
         }
         else
         {
-            // Register a dummy/null multiplexer or just don't register it?
-            // Some services might depend on IConnectionMultiplexer.
-            // If we don't register it, and something injects it, startup fails.
-            // But if we register a failing one, runtime fails (which is what's happening).
-            // Let's assume services only use it if relevant feature is enabled.
-            // But UserCacheService uses IDistributedCache, which is covered below.
-            
-            // PERF: Cap in-memory distributed cache at 20MB for 256MB shared hosting safety
-            services.AddDistributedMemoryCache(options => options.SizeLimit = 20 * 1024 * 1024);
+            // ENTERPRISE: In non-Redis environments, still use IDistributedCache interface
+            // but log a warning — production MUST use Redis for horizontal scaling.
+            Console.Error.WriteLine("[WARN] Redis unavailable. Using in-memory distributed cache. NOT safe for horizontal scaling.");
+            services.AddDistributedMemoryCache();
         }
 
         // Lock Provider Logic
@@ -96,10 +92,20 @@ public static class DependencyInjection
 
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(configuration.GetConnectionString("DefaultConnection"),
-                sqlOptions => sqlOptions.EnableRetryOnFailure(
-                    maxRetryCount: 5,
-                    maxRetryDelay: TimeSpan.FromSeconds(30),
-                    errorNumbersToAdd: null)));
+                sqlOptions =>
+                {
+                    // PERF: 3 retries × 5s vs old 5 retries × 30s.
+                    // On shared/throttled SQL, long retries hold the connection open,
+                    // exhaust the pool faster, and cause 150s request hangs.
+                    sqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 3,
+                        maxRetryDelay: TimeSpan.FromSeconds(5),
+                        errorNumbersToAdd: null);
+                    // PERF: 15s command timeout (was 30s EF default).
+                    // Shared SQL I/O throttling makes long-running queries dangerous;
+                    // fail fast and let the client retry rather than hold a pool connection.
+                    sqlOptions.CommandTimeout(15);
+                }));
 
         services.AddScoped(typeof(IRepository<>), typeof(GenericRepository<>));
         services.AddScoped<ITransactionManager, TransactionManager>();
@@ -111,7 +117,8 @@ public static class DependencyInjection
         services.AddScoped<IMatchMessageRepository, MatchMessageRepository>();
         services.AddScoped<IMatchRepository, MatchRepository>();
         services.AddScoped<IUserCacheService, Services.UserCacheService>();
-        services.AddScoped<IFileStorageService, Services.LocalFileStorageService>();
+        services.AddScoped<IFileStorageService, Services.CloudFileStorageService>();
+        services.Configure<Services.FileStorageOptions>(configuration.GetSection(Services.FileStorageOptions.SectionName));
         
         services.AddSingleton<Infrastructure.Logging.BackgroundActivityLogger>();
         services.AddSingleton<IBackgroundActivityLogger>(sp => sp.GetRequiredService<Infrastructure.Logging.BackgroundActivityLogger>());
@@ -125,6 +132,12 @@ public static class DependencyInjection
         services.AddScoped<IOutboxAdminService, Services.OutboxAdminService>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorization.TeamCaptainHandler>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorization.TournamentOwnerHandler>();
+
+        // Phase 1+2: New cross-cutting abstractions (EXECUTION_PLAN §2.1, §2.2)
+        services.AddScoped<IAuthorizationChecker, Authorization.AuthorizationChecker>();
+        services.AddScoped<INotificationDispatcher, Services.NotificationDispatcher>();
+        services.AddScoped<IActivityLogger, Logging.ActivityLogger>();
+        services.AddScoped<IUnitOfWork, Data.UnitOfWork>();
 
         services.AddSingleton<IDomainEventTypeCache, Infrastructure.BackgroundJobs.DomainEventTypeCache>();
         services.AddHostedService<Infrastructure.BackgroundJobs.TournamentBackgroundService>();

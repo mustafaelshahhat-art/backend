@@ -1,5 +1,5 @@
 using Application.DTOs.Matches;
-using Application.Interfaces;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
@@ -12,15 +12,13 @@ namespace Api.Controllers;
 [Authorize]
 public class MatchesController : ControllerBase
 {
-    private readonly IMatchService _matchService;
-    private readonly IUserService _userService;
-    private readonly MediatR.IMediator _mediator;
+    private readonly IMediator _mediator;
+    private readonly IOutputCacheStore _cacheStore;
 
-    public MatchesController(IMatchService matchService, IUserService userService, MediatR.IMediator mediator)
+    public MatchesController(IMediator mediator, IOutputCacheStore cacheStore)
     {
-        _matchService = matchService;
-        _userService = userService;
         _mediator = mediator;
+        _cacheStore = cacheStore;
     }
 
     [HttpGet]
@@ -35,7 +33,8 @@ public class MatchesController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var matches = await _matchService.GetPagedAsync(page, pageSize, creatorId, status, teamId, cancellationToken);
+        var query = new Application.Features.Matches.Queries.GetMatchesPaged.GetMatchesPagedQuery(page, pageSize, creatorId, status, teamId);
+        var matches = await _mediator.Send(query, cancellationToken);
         return Ok(matches);
     }
 
@@ -46,7 +45,8 @@ public class MatchesController : ControllerBase
     [OutputCache(PolicyName = "MatchDetail")]
     public async Task<ActionResult<MatchDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var match = await _matchService.GetByIdAsync(id, cancellationToken);
+        var query = new Application.Features.Matches.Queries.GetMatchById.GetMatchByIdQuery(id);
+        var match = await _mediator.Send(query, cancellationToken);
         if (match == null) return NotFound();
         return Ok(match);
     }
@@ -58,6 +58,7 @@ public class MatchesController : ControllerBase
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Matches.Commands.StartMatch.StartMatchCommand(id, userId, userRole);
         var result = await _mediator.Send(command, cancellationToken);
+        await _cacheStore.EvictByTagAsync("matches", cancellationToken);
         return Ok(result);
     }
 
@@ -68,6 +69,9 @@ public class MatchesController : ControllerBase
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Matches.Commands.EndMatch.EndMatchCommand(id, userId, userRole);
         var result = await _mediator.Send(command, cancellationToken);
+        // Evict matches + standings — score finalization affects both
+        await _cacheStore.EvictByTagAsync("matches", cancellationToken);
+        await _cacheStore.EvictByTagAsync("standings", cancellationToken);
         return Ok(result);
     }
 
@@ -78,6 +82,7 @@ public class MatchesController : ControllerBase
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Matches.Commands.AddMatchEvent.AddMatchEventCommand(id, request, userId, userRole);
         var result = await _mediator.Send(command, cancellationToken);
+        await _cacheStore.EvictByTagAsync("matches", cancellationToken);
         return Ok(result);
     }
 
@@ -92,7 +97,7 @@ public class MatchesController : ControllerBase
     }
 
     [HttpPatch("{id}")]
-    [Authorize(Policy = "RequireCreator")] // Changed policy based on instruction's new line
+    [Authorize(Policy = "RequireCreator")]
     public async Task<ActionResult<MatchDto>> UpdateMatch(Guid id, [FromBody] UpdateMatchRequest request, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
@@ -106,11 +111,5 @@ public class MatchesController : ControllerBase
         var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? UserRole.Player.ToString();
         return (Guid.Parse(idStr!), role);
-    }
-
-    private async Task<bool> IsUserActiveAsync(Guid userId, CancellationToken cancellationToken)
-    {
-        var user = await _userService.GetByIdAsync(userId, cancellationToken);
-        return user?.Status == UserStatus.Active.ToString();
     }
 }

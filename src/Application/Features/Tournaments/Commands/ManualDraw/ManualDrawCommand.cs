@@ -1,3 +1,4 @@
+using Application.DTOs;
 using Application.DTOs.Tournaments;
 using Application.DTOs.Matches;
 using MediatR;
@@ -8,4 +9,4 @@ public record ManualDrawCommand(
     Guid TournamentId, 
     ManualDrawRequest Request, 
     Guid UserId, 
-    string UserRole) : IRequest<IEnumerable<MatchDto>>;
+    string UserRole) : IRequest<MatchListResponse>;

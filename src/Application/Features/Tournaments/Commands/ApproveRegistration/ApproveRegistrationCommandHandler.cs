@@ -1,5 +1,4 @@
 using Application.DTOs.Tournaments;
-using Application.Features.Tournaments.Commands.GenerateMatches;
 using Application.Interfaces;
 using AutoMapper;
 using Domain.Entities;
@@ -12,46 +11,37 @@ namespace Application.Features.Tournaments.Commands.ApproveRegistration;
 
 public class ApproveRegistrationCommandHandler : IRequestHandler<ApproveRegistrationCommand, TeamRegistrationDto>
 {
-    private readonly IRepository<Tournament> _tournamentRepository;
-    private readonly IRepository<TeamRegistration> _registrationRepository;
+    private readonly ITournamentRegistrationContext _regContext;
     private readonly IRepository<TournamentPlayer> _tournamentPlayerRepository;
     private readonly IRepository<Match> _matchRepository;
     private readonly IMapper _mapper;
-    private readonly IMediator _mediator;
-    private readonly IDistributedLock _distributedLock;
     private readonly ITransactionManager _transactionManager;
 
     public ApproveRegistrationCommandHandler(
-        IRepository<Tournament> tournamentRepository,
-        IRepository<TeamRegistration> registrationRepository,
+        ITournamentRegistrationContext regContext,
         IRepository<TournamentPlayer> tournamentPlayerRepository,
         IRepository<Match> matchRepository,
         IMapper mapper,
-        IMediator mediator,
-        IDistributedLock distributedLock,
         ITransactionManager transactionManager)
     {
-        _tournamentRepository = tournamentRepository;
-        _registrationRepository = registrationRepository;
+        _regContext = regContext;
         _tournamentPlayerRepository = tournamentPlayerRepository;
         _matchRepository = matchRepository;
         _mapper = mapper;
-        _mediator = mediator;
-        _distributedLock = distributedLock;
         _transactionManager = transactionManager;
     }
 
     public async Task<TeamRegistrationDto> Handle(ApproveRegistrationCommand request, CancellationToken cancellationToken)
     {
         var lockKey = $"tournament-reg-{request.TournamentId}";
-        if (!await _distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(10)))
+        if (!await _regContext.DistributedLock.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(10)))
         {
             throw new ConflictException("يتم معالجة عملية أخرى على هذه البطولة حالياً. يرجى المحاولة لاحقاً.");
         }
 
         try
         {
-            var tournament = await _tournamentRepository.GetByIdAsync(request.TournamentId, cancellationToken);
+            var tournament = await _regContext.Tournaments.GetByIdAsync(request.TournamentId, cancellationToken);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), request.TournamentId);
 
         // Authorization
@@ -59,7 +49,7 @@ public class ApproveRegistrationCommandHandler : IRequestHandler<ApproveRegistra
         var isAdmin = request.UserRole == UserRole.Admin.ToString();
         if (!isOwner && !isAdmin) throw new ForbiddenException("غير مصرح لك بإدارة طلبات هذه البطولة.");
 
-        var registration = (await _registrationRepository.FindAsync(
+        var registration = (await _regContext.Registrations.FindAsync(
             r => r.TournamentId == request.TournamentId && r.TeamId == request.TeamId, 
             new[] { "Team", "Team.Players" }, 
             cancellationToken)).FirstOrDefault();
@@ -99,10 +89,10 @@ public class ApproveRegistrationCommandHandler : IRequestHandler<ApproveRegistra
             await _tournamentPlayerRepository.AddRangeAsync(participations, cancellationToken);
         }
 
-        await _registrationRepository.UpdateAsync(registration, cancellationToken);
+        await _regContext.Registrations.UpdateAsync(registration, cancellationToken);
 
         // Check if all teams are approved and we reached max capacity 
-        var allRegistrations = await _registrationRepository.FindAsync(r => r.TournamentId == request.TournamentId, cancellationToken);
+        var allRegistrations = await _regContext.Registrations.FindAsync(r => r.TournamentId == request.TournamentId, cancellationToken);
         var activeRegistrations = allRegistrations.Where(r => r.Status != RegistrationStatus.Rejected && r.Status != RegistrationStatus.Withdrawn).ToList();
         
         if (activeRegistrations.Count == tournament.MaxTeams && activeRegistrations.All(r => r.Status == RegistrationStatus.Approved))
@@ -113,7 +103,7 @@ public class ApproveRegistrationCommandHandler : IRequestHandler<ApproveRegistra
                 tournament.SchedulingMode != SchedulingMode.Manual)
             {
                 tournament.ChangeStatus(TournamentStatus.WaitingForOpeningMatchSelection);
-                await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
+                await _regContext.Tournaments.UpdateAsync(tournament, cancellationToken);
             }
         }
 
@@ -121,7 +111,7 @@ public class ApproveRegistrationCommandHandler : IRequestHandler<ApproveRegistra
         }
         finally
         {
-            await _distributedLock.ReleaseLockAsync(lockKey);
+            await _regContext.DistributedLock.ReleaseLockAsync(lockKey);
         }
     }
 }

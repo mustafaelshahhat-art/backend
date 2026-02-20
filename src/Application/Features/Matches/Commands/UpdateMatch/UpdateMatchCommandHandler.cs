@@ -16,26 +16,20 @@ public class UpdateMatchCommandHandler : IRequestHandler<UpdateMatchCommand, Mat
     private readonly IRepository<Team> _teamRepository;
     private readonly ITournamentLifecycleService _lifecycleService;
     private readonly IMapper _mapper;
-    private readonly IRealTimeNotifier _notifier;
-    private readonly IAnalyticsService _analyticsService;
-    private readonly INotificationService _notificationService;
+    private readonly IMatchEventNotifier _matchEventNotifier;
 
     public UpdateMatchCommandHandler(
         IRepository<Match> matchRepository,
         IRepository<Team> teamRepository,
         ITournamentLifecycleService lifecycleService,
         IMapper mapper,
-        IRealTimeNotifier notifier,
-        IAnalyticsService analyticsService,
-        INotificationService notificationService)
+        IMatchEventNotifier matchEventNotifier)
     {
         _matchRepository = matchRepository;
         _teamRepository = teamRepository;
         _lifecycleService = lifecycleService;
         _mapper = mapper;
-        _notifier = notifier;
-        _analyticsService = analyticsService;
-        _notificationService = notificationService;
+        _matchEventNotifier = matchEventNotifier;
     }
 
     public async Task<MatchDto> Handle(UpdateMatchCommand request, CancellationToken cancellationToken)
@@ -69,7 +63,7 @@ public class UpdateMatchCommandHandler : IRequestHandler<UpdateMatchCommand, Mat
 
         if (scoreChanged)
         {
-            await _analyticsService.LogActivityByTemplateAsync(
+            await _matchEventNotifier.LogActivityAsync(
                 ActivityConstants.MATCH_SCORE_UPDATED, 
                 new Dictionary<string, string> { 
                     { "matchInfo", $"{homeTeam?.Name ?? "فريق"} ضد {awayTeam?.Name ?? "فريق"}" },
@@ -81,18 +75,18 @@ public class UpdateMatchCommandHandler : IRequestHandler<UpdateMatchCommand, Mat
             );
         }
 
-        // STEP 8: Trigger Standings/Lifecycle
+        // Trigger Standings/Lifecycle
         if (match.Status == MatchStatus.Finished || scoreChanged)
         {
-             await _lifecycleService.CheckAndFinalizeTournamentAsync(match.TournamentId, cancellationToken);
+             var lifecycleResult = await _lifecycleService.CheckAndFinalizeTournamentAsync(match.TournamentId, cancellationToken);
+             await _matchEventNotifier.HandleLifecycleOutcomeAsync(lifecycleResult, cancellationToken);
         }
 
         // Reload to get fresh data for response
         var updatedMatch = await _matchRepository.GetByIdAsync(request.Id, new[] { "HomeTeam", "AwayTeam" }, cancellationToken);
-        var matchDto = _mapper.Map<MatchDto>(updatedMatch);
-        await _notifier.SendMatchUpdatedAsync(matchDto, cancellationToken);
+        await _matchEventNotifier.SendMatchUpdateAsync(updatedMatch!, cancellationToken);
 
-        return matchDto;
+        return _mapper.Map<MatchDto>(updatedMatch);
     }
 
     private async Task ValidateManagementRights(Guid matchId, Guid userId, string userRole, CancellationToken ct)

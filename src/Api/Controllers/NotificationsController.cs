@@ -1,12 +1,13 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Application.DTOs.Notifications;
-using Application.Interfaces;
+using Application.Contracts.Notifications.Responses;
+using MediatR;
 using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using NotificationDto = Application.DTOs.Notifications.NotificationDto;
 
 namespace Api.Controllers;
 
@@ -15,11 +16,11 @@ namespace Api.Controllers;
 [Authorize]
 public class NotificationsController : ControllerBase
 {
-    private readonly INotificationService _notificationService;
+    private readonly IMediator _mediator;
 
-    public NotificationsController(INotificationService notificationService)
+    public NotificationsController(IMediator mediator)
     {
-        _notificationService = notificationService;
+        _mediator = mediator;
     }
 
     private Guid? GetUserId()
@@ -39,19 +40,21 @@ public class NotificationsController : ControllerBase
         if (userId == null) return Unauthorized();
         if (pageSize > 100) pageSize = 100;
 
-        var result = await _notificationService.GetUserNotificationsAsync(userId.Value, page, pageSize, null, null, ct);
+        var query = new Application.Features.Notifications.Queries.GetUserNotifications.GetUserNotificationsQuery(userId.Value, page, pageSize);
+        var result = await _mediator.Send(query, ct);
         return Ok(result);
     }
 
     /// <summary>GET /api/v1/notifications/unread-count</summary>
     [HttpGet("unread-count")]
-    public async Task<ActionResult<int>> GetUnreadCount(CancellationToken ct)
+    public async Task<ActionResult<UnreadCountResponse>> GetUnreadCount(CancellationToken ct)
     {
         var userId = GetUserId();
         if (userId == null) return Unauthorized();
 
-        var count = await _notificationService.GetUnreadCountAsync(userId.Value, ct);
-        return Ok(new { count });
+        var query = new Application.Features.Notifications.Queries.GetUnreadCount.GetUnreadCountQuery(userId.Value);
+        var count = await _mediator.Send(query, ct);
+        return Ok(new UnreadCountResponse(count));
     }
 
     /// <summary>POST /api/v1/notifications/{id}/read</summary>
@@ -61,7 +64,8 @@ public class NotificationsController : ControllerBase
         var userId = GetUserId();
         if (userId == null) return Unauthorized();
 
-        await _notificationService.MarkAsReadAsync(id, userId.Value, ct);
+        var command = new Application.Features.Notifications.Commands.MarkAsRead.MarkAsReadCommand(id, userId.Value);
+        await _mediator.Send(command, ct);
         return NoContent();
     }
 
@@ -72,7 +76,8 @@ public class NotificationsController : ControllerBase
         var userId = GetUserId();
         if (userId == null) return Unauthorized();
 
-        await _notificationService.MarkAllAsReadAsync(userId.Value, ct);
+        var command = new Application.Features.Notifications.Commands.MarkAllAsRead.MarkAllAsReadCommand(userId.Value);
+        await _mediator.Send(command, ct);
         return NoContent();
     }
 
@@ -83,7 +88,8 @@ public class NotificationsController : ControllerBase
         var userId = GetUserId();
         if (userId == null) return Unauthorized();
 
-        await _notificationService.DeleteAsync(id, userId.Value, ct);
+        var command = new Application.Features.Notifications.Commands.DeleteNotification.DeleteNotificationCommand(id, userId.Value);
+        await _mediator.Send(command, ct);
         return NoContent();
     }
 }

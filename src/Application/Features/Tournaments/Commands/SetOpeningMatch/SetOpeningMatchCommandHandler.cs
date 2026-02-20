@@ -1,10 +1,13 @@
-using Application.Interfaces;
-using Application.Features.Tournaments.Commands.GenerateMatches;
+using Application.DTOs;
 using Application.DTOs.Matches;
+using Application.Features.Tournaments;
+using Application.Interfaces;
+using AutoMapper;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
 using MediatR;
+using Microsoft.Extensions.Caching.Distributed;
 using Shared.Exceptions;
 
 namespace Application.Features.Tournaments.Commands.SetOpeningMatch;
@@ -19,42 +22,46 @@ namespace Application.Features.Tournaments.Commands.SetOpeningMatch;
 /// - Cannot be called after schedule generated.
 /// - AUTOMATION: Automatically triggers match generation for Random scheduling mode.
 /// </summary>
-public class SetOpeningMatchCommandHandler : IRequestHandler<SetOpeningMatchCommand, IEnumerable<MatchDto>>
+public class SetOpeningMatchCommandHandler : IRequestHandler<SetOpeningMatchCommand, MatchListResponse>
 {
-    private readonly IRepository<Tournament> _tournamentRepository;
-    private readonly IRepository<TeamRegistration> _registrationRepository;
+    private readonly ITournamentRegistrationContext _regContext;
     private readonly IRepository<Match> _matchRepository;
-    private readonly IDistributedLock _distributedLock;
-    private readonly IMediator _mediator;
-    private readonly ITournamentService _tournamentService;
+    private readonly IMapper _mapper;
+    private readonly IRealTimeNotifier _notifier;
+    private readonly IDistributedCache _distributedCache;
 
     public SetOpeningMatchCommandHandler(
-        IRepository<Tournament> tournamentRepository,
-        IRepository<TeamRegistration> registrationRepository,
+        ITournamentRegistrationContext regContext,
         IRepository<Match> matchRepository,
-        IDistributedLock distributedLock,
-        IMediator mediator,
-        ITournamentService tournamentService)
+        IMapper mapper,
+        IRealTimeNotifier notifier,
+        IDistributedCache distributedCache)
     {
-        _tournamentRepository = tournamentRepository;
-        _registrationRepository = registrationRepository;
+        _regContext = regContext;
         _matchRepository = matchRepository;
-        _distributedLock = distributedLock;
-        _mediator = mediator;
-        _tournamentService = tournamentService;
+        _mapper = mapper;
+        _notifier = notifier;
+        _distributedCache = distributedCache;
     }
 
-    public async Task<IEnumerable<MatchDto>> Handle(SetOpeningMatchCommand request, CancellationToken cancellationToken)
+    public async Task<MatchListResponse> Handle(SetOpeningMatchCommand request, CancellationToken cancellationToken)
     {
         var lockKey = $"tournament-lock-{request.TournamentId}";
-        if (!await _distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromMinutes(2), cancellationToken))
+        if (!await _regContext.DistributedLock.AcquireLockAsync(lockKey, TimeSpan.FromMinutes(2), cancellationToken))
         {
             throw new ConflictException("العملية قيد التنفيذ من قبل مستخدم آخر.");
         }
 
         try
         {
-            var tournament = await _tournamentRepository.GetByIdAsync(request.TournamentId, cancellationToken);
+            // Load WITH Registrations — CreateMatches needs tournament.Registrations to assign
+            // each TeamRegistration.GroupId (group distribution in-memory, persisted by UpdateAsync).
+            // Avoid a second GetByIdAsync call later; that would cause an EF Core identity-tracking
+            // conflict (two Tournament instances with the same PK in the same DbContext scope).
+            var tournament = await _regContext.Tournaments.GetByIdAsync(
+                request.TournamentId,
+                new[] { "Registrations", "Registrations.Team" },
+                cancellationToken);
             if (tournament == null) throw new NotFoundException(nameof(Tournament), request.TournamentId);
 
             // Authorization: Only Creator or Admin
@@ -67,7 +74,7 @@ public class SetOpeningMatchCommandHandler : IRequestHandler<SetOpeningMatchComm
             var matchesExist = await _matchRepository.AnyAsync(m => m.TournamentId == request.TournamentId, cancellationToken);
 
             // STRICT: Validate all teams are approved (Payment Lock System)
-            var allActiveRegistrations = await _registrationRepository.FindAsync(
+            var allActiveRegistrations = await _regContext.Registrations.FindAsync(
                 r => r.TournamentId == request.TournamentId && 
                      r.Status != RegistrationStatus.Rejected && 
                      r.Status != RegistrationStatus.Withdrawn &&
@@ -90,22 +97,49 @@ public class SetOpeningMatchCommandHandler : IRequestHandler<SetOpeningMatchComm
             // Domain validation via entity method (encapsulated)
             tournament.SetOpeningTeams(request.HomeTeamId, request.AwayTeamId, registeredTeamIds, matchesExist);
 
-            // Persist within same transaction
-            await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
-
-            // AUTOMATION: If tournament is in Random scheduling mode, automatically generate matches
-            IEnumerable<MatchDto> generatedMatches = new List<MatchDto>();
+            // AUTOMATION: If tournament is in Random scheduling mode, automatically generate matches.
+            // IMPORTANT: CreateMatches MUST run before any UpdateAsync so that EF Core marks
+            // TeamRegistration.GroupId as Modified *after* the value is set.
+            // Calling UpdateAsync first (before CreateMatches) would save GroupId=null, and
+            // while EF Core change-tracking should pick up the subsequent mutation, the safest
+            // pattern is one single UpdateAsync after all in-memory changes are complete.
+            MatchListResponse matchListResponse = new MatchListResponse(new List<MatchDto>());
             if (tournament.SchedulingMode == SchedulingMode.Random)
             {
-                // Call Service DIRECTLY to avoid Distributed Lock Deadlock (since we already hold the lock)
-                generatedMatches = await _tournamentService.GenerateMatchesAsync(request.TournamentId, request.UserId, request.UserRole, cancellationToken);
+                var teamIds = allActiveRegistrations.Select(r => r.TeamId).ToList();
+
+                // Sets GroupId on each TeamRegistration in tournament.Registrations (tracked entities)
+                var matches = TournamentHelper.CreateMatches(tournament, teamIds);
+
+                tournament.ChangeStatus(TournamentStatus.Active);
+
+                // Single UpdateAsync: _dbSet.Update marks tournament + ALL registrations as
+                // Modified — GroupId is NOW set, so the DB saves the correct values.
+                await _regContext.Tournaments.UpdateAsync(tournament, cancellationToken);
+
+                // Save matches
+                await _matchRepository.AddRangeAsync(matches);
+
+                // Clear the standings distributed cache so GetStandingsHandler recomputes
+                // fresh standings with the new GroupId assignments instead of serving
+                // a stale 60-second TTL entry.
+                await _distributedCache.RemoveAsync($"standings:{tournament.Id}", cancellationToken);
+
+                var generatedMatches = _mapper.Map<IEnumerable<MatchDto>>(matches);
+                await _notifier.SendMatchesGeneratedAsync(generatedMatches, cancellationToken);
+                matchListResponse = new MatchListResponse(generatedMatches.ToList());
+            }
+            else
+            {
+                // Manual mode: persist the opening team selection only (no match generation).
+                await _regContext.Tournaments.UpdateAsync(tournament, cancellationToken);
             }
 
-            return generatedMatches;
+            return matchListResponse;
         }
         finally
         {
-            await _distributedLock.ReleaseLockAsync(lockKey, cancellationToken);
+            await _regContext.DistributedLock.ReleaseLockAsync(lockKey, cancellationToken);
         }
     }
 }

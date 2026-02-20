@@ -1,5 +1,5 @@
 using Application.DTOs.Teams;
-using Application.Interfaces;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -11,11 +11,11 @@ namespace Api.Controllers;
 [Authorize]
 public class TeamRequestsController : ControllerBase
 {
-    private readonly ITeamService _teamService;
+    private readonly IMediator _mediator;
 
-    public TeamRequestsController(ITeamService teamService)
+    public TeamRequestsController(IMediator mediator)
     {
-        _teamService = teamService;
+        _mediator = mediator;
     }
 
     [HttpGet("my-invitations")]
@@ -26,7 +26,8 @@ public class TeamRequestsController : ControllerBase
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
-        var invitations = await _teamService.GetUserInvitationsAsync(userId, page, pageSize, cancellationToken);
+        var query = new Application.Features.TeamRequests.Queries.GetMyInvitations.GetMyInvitationsQuery(userId, page, pageSize);
+        var invitations = await _mediator.Send(query, cancellationToken);
         return Ok(invitations);
     }
 
@@ -38,8 +39,8 @@ public class TeamRequestsController : ControllerBase
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
-        // Find teams where user is captain
-        var requests = await _teamService.GetRequestsForCaptainAsync(userId, page, pageSize, cancellationToken);
+        var query = new Application.Features.TeamRequests.Queries.GetRequestsForCaptain.GetRequestsForCaptainQuery(userId, page, pageSize);
+        var requests = await _mediator.Send(query, cancellationToken);
         return Ok(requests);
     }
 
@@ -50,7 +51,8 @@ public class TeamRequestsController : ControllerBase
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
-        var response = await _teamService.AcceptInviteAsync(id, userId, cancellationToken);
+        var command = new Application.Features.TeamRequests.Commands.AcceptInvite.AcceptInviteCommand(id, userId);
+        var response = await _mediator.Send(command, cancellationToken);
         return Ok(response);
     }
 
@@ -61,7 +63,8 @@ public class TeamRequestsController : ControllerBase
         if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
 
         var userId = Guid.Parse(userIdStr);
-        var response = await _teamService.RejectInviteAsync(id, userId, cancellationToken);
+        var command = new Application.Features.TeamRequests.Commands.RejectInvite.RejectInviteCommand(id, userId);
+        var response = await _mediator.Send(command, cancellationToken);
         return Ok(response);
     }
 }

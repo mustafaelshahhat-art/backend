@@ -910,6 +910,11 @@ namespace Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<bool>("IsQualifiedForKnockout")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("PaymentMethod")
                         .HasColumnType("nvarchar(max)");
 

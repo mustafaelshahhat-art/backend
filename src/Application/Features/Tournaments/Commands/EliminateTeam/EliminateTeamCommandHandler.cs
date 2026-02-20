@@ -1,4 +1,3 @@
-using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
@@ -11,16 +10,13 @@ public class EliminateTeamCommandHandler : IRequestHandler<EliminateTeamCommand,
 {
     private readonly IRepository<Tournament> _tournamentRepository;
     private readonly IRepository<TeamRegistration> _registrationRepository;
-    private readonly IAnalyticsService _analyticsService;
 
     public EliminateTeamCommandHandler(
         IRepository<Tournament> tournamentRepository,
-        IRepository<TeamRegistration> registrationRepository,
-        IAnalyticsService analyticsService)
+        IRepository<TeamRegistration> registrationRepository)
     {
         _tournamentRepository = tournamentRepository;
         _registrationRepository = registrationRepository;
-        _analyticsService = analyticsService;
     }
 
     public async Task<bool> Handle(EliminateTeamCommand request, CancellationToken cancellationToken)

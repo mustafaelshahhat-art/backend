@@ -6,7 +6,7 @@ using Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace Api.Hubs;
 
@@ -15,23 +15,20 @@ public class MatchChatHub : Hub
 {
     private readonly IMatchMessageRepository _messageRepository;
     private readonly Domain.Interfaces.IRepository<Match> _matchRepository;
-    private readonly Application.Interfaces.IUserService _userService;
     private readonly Domain.Interfaces.IRepository<Player> _playerRepository;
-    private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
+    private readonly IDistributedCache _cache;
     private readonly ICurrentUserAccessor _userAccessor;
 
     public MatchChatHub(
         IMatchMessageRepository messageRepository,
         Domain.Interfaces.IRepository<Match> matchRepository,
         Domain.Interfaces.IRepository<Player> playerRepository,
-        Application.Interfaces.IUserService userService,
         ICurrentUserAccessor userAccessor,
-        Microsoft.Extensions.Caching.Memory.IMemoryCache cache)
+        IDistributedCache cache)
     {
         _messageRepository = messageRepository;
         _matchRepository = matchRepository;
         _playerRepository = playerRepository;
-        _userService = userService;
         _userAccessor = userAccessor;
         _cache = cache;
     }
@@ -60,15 +57,18 @@ public class MatchChatHub : Hub
             // PERFORMANCE FIX: Cache match participant checks for 5 minutes.
             // This prevents a DB query on every single chat message.
             var cacheKey = $"match_access_{matchId}_{userId}";
+            bool hasAccess;
             
-            if (!_cache.TryGetValue(cacheKey, out bool hasAccess))
+            var cached = await _cache.GetStringAsync(cacheKey);
+            if (cached != null)
+            {
+                hasAccess = cached == "1";
+            }
+            else
             {
                 hasAccess = await VerifyMatchAccessAsync(matchId, userId);
-                var cacheOptions = new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions()
-                    .SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
-                cacheOptions.Size = 64; // Boolean + cache key overhead
-                
-                _cache.Set(cacheKey, hasAccess, cacheOptions);
+                await _cache.SetStringAsync(cacheKey, hasAccess ? "1" : "0",
+                    new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) });
             }
 
             if (!hasAccess) return;

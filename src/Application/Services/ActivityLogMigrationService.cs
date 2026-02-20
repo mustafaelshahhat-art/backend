@@ -4,13 +4,14 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Application.Common;
+using Application.Interfaces;
 using Domain.Entities;
 using Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Application.Services;
 
-public class ActivityLogMigrationService
+public class ActivityLogMigrationService : IActivityLogMigrationService
 {
     private readonly IRepository<Activity> _activityRepository;
     private readonly IRepository<Team> _teamRepository;

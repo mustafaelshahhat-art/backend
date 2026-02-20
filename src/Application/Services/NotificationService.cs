@@ -59,7 +59,7 @@ public class NotificationService : INotificationService
             await _repository.AddRangeAsync(notifications, ct);
 
             // Single SignalR call to role group (replaces N individual calls)
-            var dto = NotificationDto.FromEntity(notifications[0]);
+            var dto = MapToDto(notifications[0]);
             await _notifier.SendToRoleGroupAsync(UserRole.Admin.ToString(), dto, ct);
             return dto;
         }
@@ -74,7 +74,7 @@ public class NotificationService : INotificationService
         var notification = CreateEntity(userId, title, message, category, type, priority, entityId, entityType, actionUrl);
         await _repository.AddAsync(notification, ct);
 
-        var notifDto = NotificationDto.FromEntity(notification);
+        var notifDto = MapToDto(notification);
         await _notifier.SafeSendNotificationAsync(userId, notifDto, ct);
 
         return notifDto;
@@ -108,7 +108,7 @@ public class NotificationService : INotificationService
         await _repository.AddRangeAsync(notifications, ct);
 
         // Single SignalR call to role group
-        var dto = NotificationDto.FromEntity(notifications[0]);
+        var dto = MapToDto(notifications[0]);
         await _notifier.SendToRoleGroupAsync(role.ToString(), dto, ct);
         return dto;
     }
@@ -205,4 +205,19 @@ public class NotificationService : INotificationService
             ActionUrl = actionUrl
         };
     }
+
+    private static NotificationDto MapToDto(Notification n) => new()
+    {
+        Id = n.Id,
+        Title = n.Title,
+        Message = n.Message,
+        Type = n.Type.ToString().ToLowerInvariant(),
+        Category = n.Category.ToString().ToLowerInvariant(),
+        Priority = n.Priority.ToString().ToLowerInvariant(),
+        IsRead = n.IsRead,
+        CreatedAt = n.CreatedAt,
+        EntityId = n.EntityId,
+        EntityType = n.EntityType,
+        ActionUrl = n.ActionUrl
+    };
 }

@@ -1,7 +1,8 @@
+using Application.DTOs;
 using Application.DTOs.Tournaments;
 using Application.DTOs.Matches;
-using Application.Interfaces;
 using Domain.Enums;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
@@ -13,19 +14,13 @@ namespace Api.Controllers;
 [Authorize]
 public class TournamentsController : ControllerBase
 {
-    private readonly ITournamentService _tournamentService;
-    private readonly IUserService _userService;
-    private readonly IMatchService _matchService;
-    private readonly MediatR.IMediator _mediator;
-    private readonly IFileStorageService _fileStorage;
+    private readonly IMediator _mediator;
+    private readonly IOutputCacheStore _cacheStore;
 
-    public TournamentsController(ITournamentService tournamentService, IUserService userService, IMatchService matchService, MediatR.IMediator mediator, IFileStorageService fileStorage)
+    public TournamentsController(IMediator mediator, IOutputCacheStore cacheStore)
     {
-        _tournamentService = tournamentService;
-        _userService = userService;
-        _matchService = matchService;
         _mediator = mediator;
-        _fileStorage = fileStorage;
+        _cacheStore = cacheStore;
     }
 
     [HttpGet]
@@ -35,26 +30,9 @@ public class TournamentsController : ControllerBase
     {
         if (pageSize > 100) pageSize = 100;
         var (userId, userRole) = GetUserContext();
-        
-        Guid? creatorIdFilter = null;
-        bool includeDrafts = false;
 
-        if (userRole == UserRole.TournamentCreator.ToString())
-        {
-            creatorIdFilter = userId;
-            includeDrafts = true;
-        }
-        else if (userRole == UserRole.Admin.ToString())
-        {
-            includeDrafts = true;
-        }
-
-        var result = await _tournamentService.GetPagedAsync(page, pageSize, creatorIdFilter, includeDrafts, cancellationToken);
-        
-        if (userRole != UserRole.TournamentCreator.ToString() && userRole != UserRole.Admin.ToString())
-        {
-            result.Items = result.Items.Where(t => t.Status != TournamentStatus.Draft.ToString()).ToList();
-        }
+        var query = new Application.Features.Tournaments.Queries.GetTournamentsPaged.GetTournamentsPagedQuery(page, pageSize, userId, userRole);
+        var result = await _mediator.Send(query, cancellationToken);
 
         return Ok(result);
     }
@@ -69,9 +47,13 @@ public class TournamentsController : ControllerBase
     [HttpGet("{id}/matches")]
     [AllowAnonymous]
     [OutputCache(PolicyName = "MatchList")]
-    public async Task<ActionResult<IEnumerable<MatchDto>>> GetMatches(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<Application.Common.Models.PagedResult<MatchDto>>> GetMatches(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default)
     {
-        var matches = await _matchService.GetMatchesByTournamentAsync(id, cancellationToken);
+        // PERF: Cap reduced from 500 → 100. A 500-row JSON payload on a 256MB host
+        // materializes ~2-4MB per request in memory before compression.
+        if (pageSize > 100) pageSize = 100;
+        var query = new Application.Features.Matches.Queries.GetMatchesByTournament.GetMatchesByTournamentQuery(id, page, pageSize);
+        var matches = await _mediator.Send(query, cancellationToken);
         return Ok(matches);
     }
 
@@ -81,7 +63,8 @@ public class TournamentsController : ControllerBase
     public async Task<ActionResult<TournamentDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        var tournament = await _tournamentService.GetByIdAsync(id, userId, userRole, cancellationToken);
+        var query = new Application.Tournaments.Queries.GetTournamentById.GetTournamentByIdQuery(id, userId, userRole);
+        var tournament = await _mediator.Send(query, cancellationToken);
         if (tournament == null) return NotFound();
 
         if (tournament.Status == TournamentStatus.Draft.ToString())
@@ -99,9 +82,9 @@ public class TournamentsController : ControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<TournamentDto>> GetActiveByTeam(Guid teamId, CancellationToken cancellationToken)
     {
-        var tournament = await _tournamentService.GetActiveByTeamAsync(teamId, cancellationToken);
+        var query = new Application.Features.Tournaments.Queries.GetActiveTournamentByTeam.GetActiveTournamentByTeamQuery(teamId);
+        var tournament = await _mediator.Send(query, cancellationToken);
         if (tournament == null) return NotFound();
-        // Drafts are never "active" by definition in service logic
         return Ok(tournament);
     }
 
@@ -109,7 +92,8 @@ public class TournamentsController : ControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<TeamRegistrationDto>> GetTeamRegistration(Guid id, Guid teamId, CancellationToken cancellationToken)
     {
-        var registration = await _tournamentService.GetRegistrationByTeamAsync(id, teamId, cancellationToken);
+        var query = new Application.Features.Tournaments.Queries.GetRegistrationByTeam.GetRegistrationByTeamQuery(id, teamId);
+        var registration = await _mediator.Send(query, cancellationToken);
         if (registration == null) return NotFound();
         return Ok(registration);
     }
@@ -121,7 +105,7 @@ public class TournamentsController : ControllerBase
         var (userId, _) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.CreateTournament.CreateTournamentCommand(request, userId);
         var result = await _mediator.Send(command, cancellationToken);
-
+        await _cacheStore.EvictByTagAsync("tournaments", cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
@@ -132,6 +116,7 @@ public class TournamentsController : ControllerBase
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.UpdateTournament.UpdateTournamentCommand(id, request, userId, userRole);
         var result = await _mediator.Send(command, cancellationToken);
+        await _cacheStore.EvictByTagAsync("tournaments", cancellationToken);
         return Ok(result);
     }
 
@@ -142,6 +127,7 @@ public class TournamentsController : ControllerBase
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.DeleteTournament.DeleteTournamentCommand(id, userId, userRole);
         await _mediator.Send(command, cancellationToken);
+        await _cacheStore.EvictByTagAsync("tournaments", cancellationToken);
         return NoContent();
     }
 
@@ -162,6 +148,7 @@ public class TournamentsController : ControllerBase
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.StartTournament.StartTournamentCommand(id, userId, userRole);
         var result = await _mediator.Send(command, cancellationToken);
+        await _cacheStore.EvictByTagAsync("tournaments", cancellationToken);
         return Ok(result);
     }
 
@@ -176,7 +163,7 @@ public class TournamentsController : ControllerBase
         // PROD-AUDIT: Use Command for Transaction Safety (Validation now handled by Pipeline)
         var command = new Application.Features.Tournaments.Commands.RegisterTeam.RegisterTeamCommand(id, request.TeamId, userId);
         var registration = await _mediator.Send(command, cancellationToken);
-        return Ok(registration);
+        return StatusCode(StatusCodes.Status201Created, registration);
     }
 
     [HttpGet("{id}/registrations")]
@@ -184,7 +171,8 @@ public class TournamentsController : ControllerBase
     public async Task<ActionResult<Application.Common.Models.PagedResult<TeamRegistrationDto>>> GetRegistrations(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 100, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var registrations = await _tournamentService.GetRegistrationsAsync(id, page, pageSize, cancellationToken);
+        var query = new Application.Features.Tournaments.Queries.GetRegistrations.GetRegistrationsQuery(id, page, pageSize);
+        var registrations = await _mediator.Send(query, cancellationToken);
         return Ok(registrations);
     }
 
@@ -198,13 +186,14 @@ public class TournamentsController : ControllerBase
         var userId = Guid.Parse(userIdString);
 
         using var stream = receipt.OpenReadStream();
-        var receiptUrl = await _fileStorage.SaveFileAsync(stream, receipt.FileName, receipt.ContentType, cancellationToken);
 
         var command = new Application.Features.Tournaments.Commands.SubmitPayment.SubmitPaymentCommand(
             id, 
             teamId, 
             userId, 
-            receiptUrl, 
+            stream, 
+            receipt.FileName, 
+            receipt.ContentType, 
             senderNumber, 
             paymentMethod);
 
@@ -260,7 +249,8 @@ public class TournamentsController : ControllerBase
         var (userId, userRole) = GetUserContext();
         Guid? creatorId = (userRole == UserRole.TournamentCreator.ToString()) ? userId : null;
 
-        var pending = await _tournamentService.GetPendingPaymentsAsync(page, pageSize, creatorId, cancellationToken);
+        var query = new Application.Features.Tournaments.Queries.GetPendingPayments.GetPendingPaymentsQuery(page, pageSize, creatorId);
+        var pending = await _mediator.Send(query, cancellationToken);
         return Ok(pending);
     }
 
@@ -272,17 +262,22 @@ public class TournamentsController : ControllerBase
         var (userId, userRole) = GetUserContext();
         Guid? creatorId = (userRole == UserRole.TournamentCreator.ToString()) ? userId : null;
 
-        var requests = await _tournamentService.GetAllPaymentRequestsAsync(page, pageSize, creatorId, cancellationToken);
+        var query = new Application.Features.Tournaments.Queries.GetAllPaymentRequests.GetAllPaymentRequestsQuery(page, pageSize, creatorId);
+        var requests = await _mediator.Send(query, cancellationToken);
         return Ok(requests);
     }
 
     [HttpPost("{id}/generate-matches")]
     [Authorize(Policy = "RequireTournamentOwner")]
-    public async Task<ActionResult<IEnumerable<MatchDto>>> GenerateMatches(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<MatchListResponse>> GenerateMatches(Guid id, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.GenerateMatches.GenerateMatchesCommand(id, userId, userRole);
         var result = await _mediator.Send(command, cancellationToken);
+        // Evict both: tournament status changes + new matches created
+        await _cacheStore.EvictByTagAsync("tournaments", cancellationToken);
+        await _cacheStore.EvictByTagAsync("matches", cancellationToken);
+        await _cacheStore.EvictByTagAsync("standings", cancellationToken);
         return Ok(result);
     }
 
@@ -292,7 +287,8 @@ public class TournamentsController : ControllerBase
     public async Task<ActionResult<Application.Common.Models.PagedResult<TournamentStandingDto>>> GetStandings(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 100, [FromQuery] int? groupId = null, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var standings = await _tournamentService.GetStandingsAsync(id, page, pageSize, groupId, cancellationToken);
+        var query = new Application.Tournaments.Queries.GetStandings.GetStandingsQuery(id, page, pageSize, groupId);
+        var standings = await _mediator.Send(query, cancellationToken);
         return Ok(standings);
     }
 
@@ -302,7 +298,8 @@ public class TournamentsController : ControllerBase
     public async Task<ActionResult<Application.Common.Models.PagedResult<GroupDto>>> GetGroups(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var groups = await _tournamentService.GetGroupsAsync(id, page, pageSize, cancellationToken);
+        var query = new Application.Features.Tournaments.Queries.GetGroups.GetGroupsQuery(id, page, pageSize);
+        var groups = await _mediator.Send(query, cancellationToken);
         return Ok(groups);
     }
 
@@ -311,13 +308,14 @@ public class TournamentsController : ControllerBase
     [OutputCache(PolicyName = "ShortCache")]
     public async Task<ActionResult<BracketDto>> GetBracket(Guid id, CancellationToken cancellationToken)
     {
-        var bracket = await _tournamentService.GetBracketAsync(id, cancellationToken);
+        var query = new Application.Features.Tournaments.Queries.GetBracket.GetBracketQuery(id);
+        var bracket = await _mediator.Send(query, cancellationToken);
         return Ok(bracket);
     }
 
     [HttpPost("{id}/eliminate/{teamId}")]
     [Authorize(Policy = "RequireTournamentOwner")]
-    public async Task<ActionResult> EliminateTeam(Guid id, Guid teamId, CancellationToken cancellationToken)
+    public async Task<IActionResult> EliminateTeam(Guid id, Guid teamId, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.EliminateTeam.EliminateTeamCommand(id, teamId, userId, userRole);
@@ -347,17 +345,22 @@ public class TournamentsController : ControllerBase
 
     [HttpPost("{id}/opening-match")]
     [Authorize(Policy = "RequireTournamentOwner")]
-    public async Task<ActionResult<IEnumerable<MatchDto>>> SetOpeningMatch(Guid id, [FromBody] OpeningMatchRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<MatchListResponse>> SetOpeningMatch(Guid id, [FromBody] OpeningMatchRequest request, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.SetOpeningMatch.SetOpeningMatchCommand(id, request.HomeTeamId, request.AwayTeamId, userId, userRole);
         var matches = await _mediator.Send(command, cancellationToken);
+        // Evict output caches so the next GET /standings, /groups, and /tournaments/{id}
+        // return fresh data with the newly generated matches and GroupId assignments.
+        await _cacheStore.EvictByTagAsync("standings", cancellationToken);
+        await _cacheStore.EvictByTagAsync("matches", cancellationToken);
+        await _cacheStore.EvictByTagAsync("tournaments", cancellationToken);
         return Ok(matches);
     }
 
     [HttpPost("{id}/manual-draw")]
     [Authorize(Policy = "RequireTournamentOwner")]
-    public async Task<ActionResult<IEnumerable<MatchDto>>> ManualDraw(Guid id, [FromBody] ManualDrawRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<MatchListResponse>> ManualDraw(Guid id, [FromBody] ManualDrawRequest request, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.ManualDraw.ManualDrawCommand(id, request, userId, userRole);
@@ -377,7 +380,7 @@ public class TournamentsController : ControllerBase
 
     [HttpPost("{id}/generate-manual-group-matches")]
     [Authorize(Policy = "RequireTournamentOwner")]
-    public async Task<ActionResult<IEnumerable<MatchDto>>> GenerateManualGroupMatches(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<MatchListResponse>> GenerateManualGroupMatches(Guid id, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.GenerateManualGroupMatches.GenerateManualGroupMatchesCommand(id, userId, userRole);
@@ -387,10 +390,50 @@ public class TournamentsController : ControllerBase
 
     [HttpPost("{id}/manual-knockout-pairings")]
     [Authorize(Policy = "RequireTournamentOwner")]
-    public async Task<ActionResult<IEnumerable<MatchDto>>> CreateManualKnockoutMatches(Guid id, [FromBody] List<KnockoutPairingDto> pairings, CancellationToken cancellationToken)
+    public async Task<ActionResult<MatchListResponse>> CreateManualKnockoutMatches(Guid id, [FromBody] List<KnockoutPairingDto> pairings, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.CreateManualKnockoutMatches.CreateManualKnockoutMatchesCommand(id, pairings, userId, userRole);
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Submit organiser-supplied pairings for the next knockout round (Round 2, Semi-final).
+    /// Only valid for Manual-mode tournaments. The Final is always auto-generated.
+    /// Called after the lifecycle service signals ManualDrawRequired = true.
+    /// </summary>
+    [HttpPost("{id}/manual-next-round/{roundNumber:int}")]
+    [Authorize(Policy = "RequireTournamentOwner")]
+    public async Task<ActionResult<MatchListResponse>> CreateManualNextRound(
+        Guid id,
+        int roundNumber,
+        [FromBody] List<KnockoutPairingDto> pairings,
+        CancellationToken cancellationToken)
+    {
+        var (userId, userRole) = GetUserContext();
+        var command = new Application.Features.Tournaments.Commands.CreateManualNextRound.CreateManualNextRoundCommand(
+            id, roundNumber, pairings, userId, userRole);
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Organiser confirms which teams advance from the group stage to the knockout round.
+    /// Only valid for Manual-mode tournaments when status is ManualQualificationPending.
+    /// Marks the selected teams, transitions the tournament to QualificationConfirmed,
+    /// then immediately generates knockout round 1.
+    /// </summary>
+    [HttpPost("{id}/confirm-manual-qualification")]
+    [Authorize(Policy = "RequireTournamentOwner")]
+    public async Task<ActionResult<Application.DTOs.Tournaments.TournamentLifecycleResult>> ConfirmManualQualification(
+        Guid id,
+        [FromBody] Application.DTOs.Tournaments.ConfirmManualQualificationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var (userId, userRole) = GetUserContext();
+        var command = new Application.Features.Tournaments.Commands.ConfirmManualQualification.ConfirmManualQualificationCommand(
+            id, request, userId, userRole);
         var result = await _mediator.Send(command, cancellationToken);
         return Ok(result);
     }
@@ -403,6 +446,15 @@ public class TournamentsController : ControllerBase
         var command = new Application.Features.Tournaments.Commands.ResetSchedule.ResetScheduleCommand(id, userId, userRole);
         await _mediator.Send(command, cancellationToken);
         return NoContent();
+    }
+
+    [HttpPost("{id}/refresh-status")]
+    [Authorize(Policy = "RequireTournamentOwner")] // Can be restricted, but useful for admins too
+    public async Task<ActionResult<TournamentLifecycleResult>> RefreshStatus(Guid id, CancellationToken cancellationToken)
+    {
+        var command = new Application.Features.Tournaments.Commands.RefreshTournamentStatus.RefreshTournamentStatusCommand(id);
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
     }
 
     private (Guid UserId, string UserRole) GetUserContext()

@@ -1,11 +1,13 @@
+using Application.Contracts.Common;
+using Application.Contracts.Teams.Responses;
 using Application.DTOs.Teams;
-using Application.Interfaces;
+using Application.DTOs.Tournaments;
 using Domain.Enums;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
 using System.Security.Claims;
-using Application.DTOs.Tournaments;
 
 namespace Api.Controllers;
 
@@ -14,11 +16,11 @@ namespace Api.Controllers;
 [Authorize]
 public class TeamsController : ControllerBase
 {
-    private readonly ITeamService _teamService;
+    private readonly IMediator _mediator;
 
-    public TeamsController(ITeamService teamService)
+    public TeamsController(IMediator mediator)
     {
-        _teamService = teamService;
+        _mediator = mediator;
     }
 
     [HttpGet]
@@ -26,7 +28,8 @@ public class TeamsController : ControllerBase
     public async Task<ActionResult<Application.Common.Models.PagedResult<TeamDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] Guid? captainId = null, [FromQuery] Guid? playerId = null, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var result = await _teamService.GetPagedAsync(page, pageSize, captainId, playerId, cancellationToken);
+        var query = new Application.Features.Teams.Queries.GetTeamsPaged.GetTeamsPagedQuery(page, pageSize, captainId, playerId);
+        var result = await _mediator.Send(query, cancellationToken);
         return Ok(result);
     }
 
@@ -34,7 +37,8 @@ public class TeamsController : ControllerBase
     [OutputCache(PolicyName = "TeamDetail")]
     public async Task<ActionResult<TeamDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var team = await _teamService.GetByIdAsync(id, cancellationToken);
+        var query = new Application.Features.Teams.Queries.GetTeamById.GetTeamByIdQuery(id);
+        var team = await _mediator.Send(query, cancellationToken);
         if (team == null) return NotFound();
         return Ok(team);
     }
@@ -45,7 +49,8 @@ public class TeamsController : ControllerBase
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var team = await _teamService.CreateAsync(request, Guid.Parse(userId), cancellationToken);
+        var command = new Application.Features.Teams.Commands.CreateTeam.CreateTeamCommand(request, Guid.Parse(userId));
+        var team = await _mediator.Send(command, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = team.Id }, team);
     }
 
@@ -54,20 +59,20 @@ public class TeamsController : ControllerBase
     public async Task<ActionResult<TeamDto>> Update(Guid id, UpdateTeamRequest request, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        var updatedTeam = await _teamService.UpdateAsync(id, request, userId, userRole, cancellationToken);
+        var command = new Application.Features.Teams.Commands.UpdateTeam.UpdateTeamCommand(id, request, userId, userRole);
+        var updatedTeam = await _mediator.Send(command, cancellationToken);
         return Ok(updatedTeam);
     }
 
     [HttpPost("{id}/join")]
     public async Task<ActionResult<JoinRequestDto>> RequestJoin(Guid id, CancellationToken cancellationToken) 
     {
-        // Body might be empty or specific. Contract says POST /{id}/join.
-        // Assuming user ID from token.
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var request = await _teamService.RequestJoinAsync(id, Guid.Parse(userId), cancellationToken);
-        return Ok(request);
+        var command = new Application.Features.Teams.Commands.RequestJoinTeam.RequestJoinTeamCommand(id, Guid.Parse(userId));
+        var result = await _mediator.Send(command, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, result);
     }
 
     [HttpGet("{id}/join-requests")]
@@ -75,7 +80,8 @@ public class TeamsController : ControllerBase
     public async Task<ActionResult<Application.Common.Models.PagedResult<JoinRequestDto>>> GetJoinRequests(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var requests = await _teamService.GetJoinRequestsAsync(id, page, pageSize, cancellationToken);
+        var query = new Application.Features.Teams.Queries.GetJoinRequests.GetJoinRequestsQuery(id, page, pageSize);
+        var requests = await _mediator.Send(query, cancellationToken);
         return Ok(requests);
     }
 
@@ -84,7 +90,8 @@ public class TeamsController : ControllerBase
     public async Task<ActionResult<JoinRequestDto>> RespondJoinRequest(Guid id, Guid requestId, [FromBody] RespondJoinRequest request, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        var response = await _teamService.RespondJoinRequestAsync(id, requestId, request.Approve, userId, userRole, cancellationToken);
+        var command = new Application.Features.Teams.Commands.RespondJoinRequest.RespondJoinRequestCommand(id, requestId, request.Approve, userId, userRole);
+        var response = await _mediator.Send(command, cancellationToken);
         return Ok(response);
     }
 
@@ -95,8 +102,9 @@ public class TeamsController : ControllerBase
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var joinRequest = await _teamService.InvitePlayerAsync(id, Guid.Parse(userId), request, cancellationToken);
-        return Ok(joinRequest);
+        var command = new Application.Features.Teams.Commands.InvitePlayer.InvitePlayerCommand(id, Guid.Parse(userId), request);
+        var joinRequest = await _mediator.Send(command, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, joinRequest);
     }
 
     [HttpPost("{id}/add-guest-player")]
@@ -106,8 +114,9 @@ public class TeamsController : ControllerBase
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var player = await _teamService.AddGuestPlayerAsync(id, Guid.Parse(userId), request, cancellationToken);
-        return Ok(player);
+        var command = new Application.Features.Teams.Commands.AddGuestPlayer.AddGuestPlayerCommand(id, Guid.Parse(userId), request);
+        var player = await _mediator.Send(command, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, player);
     }
 
     [HttpGet("{id}/requests")]
@@ -115,17 +124,19 @@ public class TeamsController : ControllerBase
     public async Task<ActionResult<Application.Common.Models.PagedResult<JoinRequestDto>>> GetRequests(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var requests = await _teamService.GetJoinRequestsAsync(id, page, pageSize, cancellationToken);
+        var query = new Application.Features.Teams.Queries.GetJoinRequests.GetJoinRequestsQuery(id, page, pageSize);
+        var requests = await _mediator.Send(query, cancellationToken);
         return Ok(requests);
     }
 
     [HttpDelete("{id}/players/{playerId}")]
     [Authorize(Policy = "RequireTeamCaptain")]
-    public async Task<ActionResult<object>> RemovePlayer(Guid id, Guid playerId, CancellationToken cancellationToken)
+    public async Task<ActionResult<RemovePlayerResponse>> RemovePlayer(Guid id, Guid playerId, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        await _teamService.RemovePlayerAsync(id, playerId, userId, userRole, cancellationToken);
-        return Ok(new { teamRemoved = true, playerId = playerId, teamId = id });
+        var command = new Application.Features.Teams.Commands.RemovePlayer.RemovePlayerCommand(id, playerId, userId, userRole);
+        await _mediator.Send(command, cancellationToken);
+        return Ok(new RemovePlayerResponse { TeamRemoved = true, PlayerId = playerId, TeamId = id });
     }
 
     [HttpDelete("{id}")]
@@ -133,7 +144,8 @@ public class TeamsController : ControllerBase
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
-        await _teamService.DeleteAsync(id, userId, userRole, cancellationToken);
+        var command = new Application.Features.Teams.Commands.DeleteTeam.DeleteTeamCommand(id, userId, userRole);
+        await _mediator.Send(command, cancellationToken);
         return NoContent();
     }
 
@@ -146,25 +158,28 @@ public class TeamsController : ControllerBase
 
     [HttpPost("{id}/disable")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<IActionResult> Disable(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<MessageResponse>> Disable(Guid id, CancellationToken cancellationToken)
     {
-        await _teamService.DisableTeamAsync(id, cancellationToken);
-        return Ok(new { message = "Team disabled and withdrawn from all active tournaments." });
+        var command = new Application.Features.Teams.Commands.DisableTeam.DisableTeamCommand(id);
+        await _mediator.Send(command, cancellationToken);
+        return Ok(new MessageResponse("Team disabled and withdrawn from all active tournaments."));
     }
 
     [HttpPost("{id}/activate")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<IActionResult> Activate(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<MessageResponse>> Activate(Guid id, CancellationToken cancellationToken)
     {
-        await _teamService.ActivateTeamAsync(id, cancellationToken);
-        return Ok(new { message = "Team activated successfully." });
+        var command = new Application.Features.Teams.Commands.ActivateTeam.ActivateTeamCommand(id);
+        await _mediator.Send(command, cancellationToken);
+        return Ok(new MessageResponse("Team activated successfully."));
     }
 
     [HttpGet("{id}/players")]
     public async Task<ActionResult<Application.Common.Models.PagedResult<PlayerDto>>> GetTeamPlayers(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var players = await _teamService.GetTeamPlayersAsync(id, page, pageSize, cancellationToken);
+        var query = new Application.Features.Teams.Queries.GetTeamPlayers.GetTeamPlayersQuery(id, page, pageSize);
+        var players = await _mediator.Send(query, cancellationToken);
         return Ok(players);
     }
 
@@ -172,7 +187,8 @@ public class TeamsController : ControllerBase
     public async Task<ActionResult<Application.Common.Models.PagedResult<Application.DTOs.Matches.MatchDto>>> GetTeamMatches(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var matches = await _teamService.GetTeamMatchesAsync(id, page, pageSize, cancellationToken);
+        var query = new Application.Features.Teams.Queries.GetTeamMatches.GetTeamMatchesQuery(id, page, pageSize);
+        var matches = await _mediator.Send(query, cancellationToken);
         return Ok(matches);
     }
 
@@ -181,7 +197,8 @@ public class TeamsController : ControllerBase
     public async Task<ActionResult<Application.Common.Models.PagedResult<Application.DTOs.Tournaments.TeamRegistrationDto>>> GetTeamFinancials(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var financials = await _teamService.GetTeamFinancialsAsync(id, page, pageSize, cancellationToken);
+        var query = new Application.Features.Teams.Queries.GetTeamFinancials.GetTeamFinancialsQuery(id, page, pageSize);
+        var financials = await _mediator.Send(query, cancellationToken);
         return Ok(financials);
     }
 }

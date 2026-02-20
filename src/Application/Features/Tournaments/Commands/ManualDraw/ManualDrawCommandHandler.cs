@@ -1,3 +1,4 @@
+using Application.DTOs;
 using Application.DTOs.Matches;
 using Application.Interfaces;
 using AutoMapper;
@@ -9,7 +10,7 @@ using Shared.Exceptions;
 
 namespace Application.Features.Tournaments.Commands.ManualDraw;
 
-public class ManualDrawCommandHandler : IRequestHandler<ManualDrawCommand, IEnumerable<MatchDto>>
+public class ManualDrawCommandHandler : IRequestHandler<ManualDrawCommand, MatchListResponse>
 {
     private readonly IRepository<Tournament> _tournamentRepository;
     private readonly IRepository<TeamRegistration> _registrationRepository;
@@ -31,7 +32,7 @@ public class ManualDrawCommandHandler : IRequestHandler<ManualDrawCommand, IEnum
         _distributedLock = distributedLock;
     }
 
-    public async Task<IEnumerable<MatchDto>> Handle(ManualDrawCommand request, CancellationToken cancellationToken)
+    public async Task<MatchListResponse> Handle(ManualDrawCommand request, CancellationToken cancellationToken)
     {
         var lockKey = $"tournament-matches-{request.TournamentId}";
         if (!await _distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(15)))
@@ -149,7 +150,7 @@ public class ManualDrawCommandHandler : IRequestHandler<ManualDrawCommand, IEnum
         
             await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
 
-            return _mapper.Map<IEnumerable<MatchDto>>(matches);
+            return new MatchListResponse(_mapper.Map<List<MatchDto>>(matches));
         }
         finally
         {

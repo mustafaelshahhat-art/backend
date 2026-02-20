@@ -17,4 +17,13 @@ public class TeamRegistration : BaseEntity
     public string? SenderNumber { get; set; }
     public string? RejectionReason { get; set; }
     public int? GroupId { get; set; }
+
+    /// <summary>
+    /// Set to true by <c>ConfirmManualQualificationCommandHandler</c> when the organiser
+    /// explicitly selects this team to advance from the group stage to the knockout round.
+    ///
+    /// Only meaningful for Manual-mode Group+Knockout tournaments.
+    /// In Automatic mode this flag is never set and the lifecycle service uses standings.
+    /// </summary>
+    public bool IsQualifiedForKnockout { get; set; } = false;
 }

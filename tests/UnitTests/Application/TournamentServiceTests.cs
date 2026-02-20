@@ -1,111 +1,44 @@
-using Application.Interfaces;
-using Application.Services;
-using Application.DTOs.Tournaments;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
 using FluentAssertions;
-using Microsoft.Extensions.Caching.Memory;
 using Moq;
-using Shared.Exceptions;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Threading;
-using System.Threading.Tasks;
 using Xunit;
-using AutoMapper;
+using TournamentHelper = global::Application.Features.Tournaments.TournamentHelper;
 
 namespace UnitTests.Application;
 
-public class TournamentServiceTests
+/// <summary>
+/// TournamentService has been decommissioned. Registration logic is now in
+/// RegisterTeamCommandHandler. These test the extracted TournamentHelper.
+/// </summary>
+public class TournamentHandlerInlineTests
 {
-    private readonly Mock<IRepository<Tournament>> _tournamentRepoMock;
-    private readonly Mock<IRepository<TeamRegistration>> _registrationRepoMock;
-    private readonly Mock<IRepository<Team>> _teamRepoMock;
-    private readonly Mock<IMapper> _mapperMock;
-    private readonly Mock<IDistributedLock> _distributedLockMock;
-    private readonly TournamentService _service;
-
-    public TournamentServiceTests()
+    [Fact]
+    public void TournamentHelper_CheckInterventionRequired_ReturnsTrueForStuckActive()
     {
-        _tournamentRepoMock = new Mock<IRepository<Tournament>>();
-        _registrationRepoMock = new Mock<IRepository<TeamRegistration>>();
-        _teamRepoMock = new Mock<IRepository<Team>>();
-        _mapperMock = new Mock<IMapper>();
-        _distributedLockMock = new Mock<IDistributedLock>();
-
-        // Default: lock always succeeds
-        _distributedLockMock
-            .Setup(l => l.AcquireLockAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-        _distributedLockMock
-            .Setup(l => l.ReleaseLockAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        _service = new TournamentService(
-            _tournamentRepoMock.Object,
-            _registrationRepoMock.Object,
-            new Mock<global::Domain.Interfaces.IRepository<global::Domain.Entities.Match>>().Object,
-            _mapperMock.Object,
-            new Mock<IAnalyticsService>().Object,
-            new Mock<INotificationService>().Object,
-            _teamRepoMock.Object,
-            new Mock<IRealTimeNotifier>().Object,
-            new Mock<global::Domain.Interfaces.IRepository<global::Domain.Entities.TournamentPlayer>>().Object,
-            new Mock<ITournamentLifecycleService>().Object,
-            _distributedLockMock.Object,
-            new MemoryCache(new MemoryCacheOptions())
-        );
+        // Active tournament with no matches → requires intervention
+        var tournament = new Tournament();
+        tournament.ChangeStatus(TournamentStatus.RegistrationOpen);
+        tournament.ChangeStatus(TournamentStatus.RegistrationClosed);
+        tournament.ChangeStatus(TournamentStatus.Active);
+        var result = TournamentHelper.CheckInterventionRequired(
+            tournament, totalMatches: 0, finishedMatches: 0, totalRegs: 4, approvedRegs: 4, DateTime.UtcNow);
+        result.Should().BeTrue();
     }
 
     [Fact]
-    public async Task RegisterTeamAsync_ShouldThrowConflict_WhenDeadlinePassed()
+    public void TournamentHelper_CheckInterventionRequired_ReturnsFalseForHealthyActive()
     {
-        // Arrange
-        var tournamentId = Guid.NewGuid();
         var tournament = new Tournament
         {
-            Id = tournamentId,
-            RegistrationDeadline = DateTime.UtcNow.AddHours(-1),
-            AllowLateRegistration = false
+            EndDate = DateTime.UtcNow.AddDays(30)
         };
-
-        _tournamentRepoMock.Setup(r => r.GetByIdAsync(tournamentId, It.IsAny<string[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(tournament);
-
-        var request = new RegisterTeamRequest { TeamId = Guid.NewGuid() };
-
-        // Act
-        var act = () => _service.RegisterTeamAsync(tournamentId, request, Guid.NewGuid());
-
-        // Assert
-        await act.Should().ThrowAsync<ConflictException>().WithMessage("انتهى موعد التسجيل في البطولة.");
-    }
-
-    [Fact]
-    public async Task RegisterTeamAsync_ShouldThrowConflict_WhenTournamentFull()
-    {
-        // Arrange
-        var tournamentId = Guid.NewGuid();
-        var tournament = new Tournament
-        {
-            Id = tournamentId,
-            RegistrationDeadline = DateTime.UtcNow.AddDays(1),
-            MaxTeams = 2,
-            Registrations = new List<TeamRegistration> { new(), new() }
-        };
-
-        _tournamentRepoMock.Setup(r => r.GetByIdAsync(tournamentId, It.IsAny<string[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(tournament);
-
-        var request = new RegisterTeamRequest { TeamId = Guid.NewGuid() };
-
-        // Act
-        var act = () => _service.RegisterTeamAsync(tournamentId, request, Guid.NewGuid());
-
-        // Assert
-        await act.Should().ThrowAsync<ConflictException>().WithMessage("اكتمل عدد الفرق في البطولة.");
+        tournament.ChangeStatus(TournamentStatus.RegistrationOpen);
+        tournament.ChangeStatus(TournamentStatus.RegistrationClosed);
+        tournament.ChangeStatus(TournamentStatus.Active);
+        var result = TournamentHelper.CheckInterventionRequired(
+            tournament, totalMatches: 6, finishedMatches: 2, totalRegs: 4, approvedRegs: 4, DateTime.UtcNow);
+        result.Should().BeFalse();
     }
 }

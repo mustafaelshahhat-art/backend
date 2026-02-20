@@ -18,6 +18,7 @@ public class MatchDto
     public string? StageName { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime? Date { get; set; }
+    public string? TournamentName { get; set; }
     public Guid? TournamentCreatorId { get; set; }
 
     public List<MatchEventDto> Events { get; set; } = new();

@@ -1,6 +1,6 @@
 using Application.DTOs.Users;
-using Application.Interfaces;
 using Domain.Enums;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -12,12 +12,10 @@ namespace Api.Controllers;
 [Authorize]
 public class UsersController : ControllerBase
 {
-    private readonly IUserService _userService;
-    private readonly MediatR.IMediator _mediator;
+    private readonly IMediator _mediator;
 
-    public UsersController(IUserService userService, MediatR.IMediator mediator)
+    public UsersController(IMediator mediator)
     {
-        _userService = userService;
         _mediator = mediator;
     }
 
@@ -26,42 +24,51 @@ public class UsersController : ControllerBase
     public async Task<ActionResult<Application.Common.Models.PagedResult<UserDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
-        var users = await _userService.GetPagedAsync(page, pageSize, null, cancellationToken);
+        var query = new Application.Features.Users.Queries.GetUsersPaged.GetUsersPagedQuery(page, pageSize, null);
+        var users = await _mediator.Send(query, cancellationToken);
         return Ok(users);
     }
 
     [HttpGet("role/{role}")]
     [Authorize]
-    public async Task<ActionResult> GetByRole(string role, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
+    [ProducesResponseType(typeof(Application.Common.Models.PagedResult<UserDto>), 200)]
+    [ProducesResponseType(typeof(Application.Common.Models.PagedResult<UserPublicDto>), 200)]
+    public async Task<IActionResult> GetByRole(string role, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
         var (userId, userRole) = GetUserContext();
         
         if (userRole == UserRole.Admin.ToString())
         {
-            var users = await _userService.GetPagedAsync(page, pageSize, role, cancellationToken);
+            var query = new Application.Features.Users.Queries.GetUsersPaged.GetUsersPagedQuery(page, pageSize, role);
+            var users = await _mediator.Send(query, cancellationToken);
             return Ok(users);
         }
         
         // Non-admins get public/restricted view
-        var publicUsers = await _userService.GetPublicPagedAsync(page, pageSize, role, cancellationToken);
+        var publicQuery = new Application.Features.Users.Queries.GetPublicUsersPaged.GetPublicUsersPagedQuery(page, pageSize, role);
+        var publicUsers = await _mediator.Send(publicQuery, cancellationToken);
         return Ok(publicUsers);
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult> GetById(Guid id, CancellationToken cancellationToken)
+    [ProducesResponseType(typeof(UserDto), 200)]
+    [ProducesResponseType(typeof(UserPublicDto), 200)]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {
         var (userId, userRole) = GetUserContext();
 
         if (userId == id || userRole == UserRole.Admin.ToString())
         {
-            var user = await _userService.GetByIdAsync(id, cancellationToken);
+            var query = new Application.Features.Users.Queries.GetUserById.GetUserByIdQuery(id);
+            var user = await _mediator.Send(query, cancellationToken);
             if (user == null) return NotFound();
             return Ok(user);
         }
 
         // Public view
-        var publicUser = await _userService.GetPublicByIdAsync(id, cancellationToken);
+        var publicQuery = new Application.Features.Users.Queries.GetPublicUserById.GetPublicUserByIdQuery(id);
+        var publicUser = await _mediator.Send(publicQuery, cancellationToken);
         if (publicUser == null) return NotFound();
         return Ok(publicUser);
     }
@@ -76,7 +83,8 @@ public class UsersController : ControllerBase
             return Forbid();
         }
 
-        var updatedUser = await _userService.UpdateAsync(id, request, cancellationToken);
+        var command = new Application.Features.Users.Commands.UpdateUser.UpdateUserCommand(id, request);
+        var updatedUser = await _mediator.Send(command, cancellationToken);
         return Ok(updatedUser);
     }
 
@@ -84,7 +92,8 @@ public class UsersController : ControllerBase
     [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        await _userService.DeleteAsync(id, cancellationToken);
+        var command = new Application.Features.Users.Commands.DeleteUser.DeleteUserCommand(id);
+        await _mediator.Send(command, cancellationToken);
         return NoContent();
     }
 
@@ -92,7 +101,8 @@ public class UsersController : ControllerBase
     [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Suspend(Guid id, CancellationToken cancellationToken)
     {
-        await _userService.SuspendAsync(id, cancellationToken);
+        var command = new Application.Features.Users.Commands.SuspendUser.SuspendUserCommand(id);
+        await _mediator.Send(command, cancellationToken);
         return NoContent();
     }
 
@@ -100,7 +110,8 @@ public class UsersController : ControllerBase
     [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Activate(Guid id, CancellationToken cancellationToken)
     {
-        await _userService.ActivateAsync(id, cancellationToken);
+        var command = new Application.Features.Users.Commands.ActivateUser.ActivateUserCommand(id);
+        await _mediator.Send(command, cancellationToken);
         return NoContent();
     }
 
@@ -118,8 +129,9 @@ public class UsersController : ControllerBase
             return Unauthorized();
         }
 
-        var newAdmin = await _userService.CreateAdminAsync(request, adminId, cancellationToken);
-        return Ok(newAdmin);
+        var command = new Application.Features.Users.Commands.CreateAdmin.CreateAdminCommand(request, adminId);
+        var newAdmin = await _mediator.Send(command, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, newAdmin);
     }
 
     /// <summary>
@@ -136,8 +148,9 @@ public class UsersController : ControllerBase
             return Unauthorized();
         }
 
-        var newCreator = await _userService.CreateTournamentCreatorAsync(request, adminId, cancellationToken);
-        return Ok(newCreator);
+        var command = new Application.Features.Users.Commands.CreateTournamentCreator.CreateTournamentCreatorCommand(request, adminId);
+        var newCreator = await _mediator.Send(command, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, newCreator);
     }
 
 
@@ -149,7 +162,8 @@ public class UsersController : ControllerBase
     [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<AdminCountDto>> GetAdminCount([FromQuery] Guid? userId = null, CancellationToken cancellationToken = default)
     {
-        var result = await _userService.GetAdminCountAsync(userId, cancellationToken);
+        var query = new Application.Features.Users.Queries.GetAdminCount.GetAdminCountQuery(userId);
+        var result = await _mediator.Send(query, cancellationToken);
         return Ok(result);
     }
 
@@ -165,15 +179,9 @@ public class UsersController : ControllerBase
             return Unauthorized();
         }
 
-        try
-        {
-            await _userService.ChangePasswordAsync(id, request.CurrentPassword, request.NewPassword, cancellationToken);
-            return NoContent();
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
+        var command = new Application.Features.Users.Commands.ChangePassword.ChangePasswordCommand(id, request.CurrentPassword, request.NewPassword);
+        await _mediator.Send(command, cancellationToken);
+        return NoContent();
     }
 
     private (Guid userId, string userRole) GetUserContext()

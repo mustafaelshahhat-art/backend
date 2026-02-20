@@ -9,6 +9,7 @@ using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
+using Domain.Services;
 using AutoMapper; // Imported
 
 namespace Application.Services;
@@ -18,9 +19,6 @@ public class TournamentLifecycleService : ITournamentLifecycleService
     private readonly IRepository<Tournament> _tournamentRepository;
     private readonly IRepository<Match> _matchRepository;
     private readonly IRepository<TeamRegistration> _registrationRepository;
-    private readonly IRepository<Team> _teamRepository;
-    private readonly INotificationService _notificationService;
-    private readonly IAnalyticsService _analyticsService;
     private readonly IRealTimeNotifier _notifier;
     private readonly IMapper _mapper;
 
@@ -28,29 +26,28 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         IRepository<Tournament> tournamentRepository,
         IRepository<Match> matchRepository,
         IRepository<TeamRegistration> registrationRepository,
-        IRepository<Team> teamRepository,
-        INotificationService notificationService,
-        IAnalyticsService analyticsService,
         IRealTimeNotifier notifier,
         IMapper mapper)
     {
         _tournamentRepository = tournamentRepository;
         _matchRepository = matchRepository;
         _registrationRepository = registrationRepository;
-        _teamRepository = teamRepository;
-        _notificationService = notificationService;
-        _analyticsService = analyticsService;
         _notifier = notifier;
         _mapper = mapper;
     }
 
-    public async Task CheckAndFinalizeTournamentAsync(Guid tournamentId, CancellationToken ct = default)
+    public async Task<TournamentLifecycleResult> CheckAndFinalizeTournamentAsync(Guid tournamentId, CancellationToken ct = default)
     {
+        var result = new TournamentLifecycleResult { TournamentId = tournamentId };
+
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
-        if (tournament == null || tournament.Status == TournamentStatus.Completed) return;
+        if (tournament == null || tournament.Status == TournamentStatus.Completed) return result;
+
+        result.TournamentName = tournament.Name;
+        result.CreatorUserId = tournament.CreatorUserId;
 
         var allMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, ct);
-        if (!allMatches.Any()) return;
+        if (!allMatches.Any()) return result;
 
         // Check format
         if (tournament.Format == TournamentFormat.GroupsThenKnockout || tournament.Format == TournamentFormat.GroupsWithHomeAwayKnockout)
@@ -60,11 +57,22 @@ public class TournamentLifecycleService : ITournamentLifecycleService
 
             if (groupMatches.Any() && groupMatches.All(m => m.Status == MatchStatus.Finished) && !knockoutMatches.Any())
             {
-                await _analyticsService.LogActivityByTemplateAsync("GROUPS_FINISHED", new Dictionary<string, string> { { "tournamentName", tournament.Name } }, null, "System", ct);
-                
-                // Auto-generate Knockout Round 1
-                await GenerateKnockoutR1Async(tournament.Id, ct);
-                return;
+                // ── Manual Qualification Policy ──
+                // Instead of auto-qualifying teams, transition to ManualQualificationPending
+                // so the organiser can select advancers.  Generation is BLOCKED until confirmed.
+                if (tournament.SchedulingMode == SchedulingMode.Manual)
+                {
+                    tournament.ChangeStatus(TournamentStatus.ManualQualificationPending);
+                    await _tournamentRepository.UpdateAsync(tournament, ct);
+                    result.GroupsFinished = true;
+                    result.ManualQualificationRequired = true;
+                    return result;
+                }
+
+                // Automatic mode: existing behaviour unchanged
+                var knockoutResult = await GenerateKnockoutR1Async(tournament.Id, ct);
+                knockoutResult.GroupsFinished = true;
+                return knockoutResult;
             }
         }
 
@@ -76,89 +84,125 @@ public class TournamentLifecycleService : ITournamentLifecycleService
             bool isKnockoutDoubleLeg = tournament.MatchType == TournamentLegType.HomeAndAway || tournament.Format == TournamentFormat.GroupsWithHomeAwayKnockout;
             if (latestRoundMatches.Count == 1 || (isKnockoutDoubleLeg && latestRoundMatches.Count == 2 && latestRoundMatches.First().StageName == "Final"))
             {
-                 await FinalizeTournamentAsync(tournament, latestRoundMatches, allMatches);
+                 return await FinalizeTournamentAsync(tournament, latestRoundMatches, allMatches, ct);
             }
             else
             {
                  // Generate Next Round
-                 await GenerateNextKnockoutRoundAsync(tournament, latestRoundMatches);
+                 return await GenerateNextKnockoutRoundAsync(tournament, latestRoundMatches, ct);
             }
         }
+
+        return result;
     }
 
     private List<Match> GetLatestRoundMatches(IEnumerable<Match> matches, CancellationToken ct)
     {
-        var actionableMatches = matches.Where(m => m.StageName != "League").ToList();
+        // Only consider knockout matches (GroupId == null) that are not league matches.
+        // Group-stage matches share the same RoundNumber (e.g. both round 1) and must
+        // not be mixed in here — otherwise Count will be wrong and finalization won't trigger.
+        var actionableMatches = matches
+            .Where(m => m.GroupId == null && m.StageName != "League")
+            .ToList();
+
         if (!actionableMatches.Any()) return new List<Match>();
 
         var maxRound = actionableMatches.Max(m => m.RoundNumber);
-        if (!maxRound.HasValue) 
-        {
-             // Maybe groups?
-             if (matches.Any(m => m.GroupId != null)) return new List<Match>(); // Ignoring group matches for round logic here
-             return matches.ToList(); 
-        }
+        if (!maxRound.HasValue)
+            return actionableMatches; // No round numbers assigned — treat them all as the latest
+
         return actionableMatches.Where(m => m.RoundNumber == maxRound).ToList();
     }
 
-    public async Task GenerateKnockoutR1Async(Guid tournamentId, CancellationToken ct = default)
+    public async Task<TournamentLifecycleResult> GenerateKnockoutR1Async(Guid tournamentId, CancellationToken ct = default)
     {
+        var result = new TournamentLifecycleResult { TournamentId = tournamentId };
         var tournament = await _tournamentRepository.GetByIdAsync(tournamentId, ct);
-        if (tournament == null) return;
+        if (tournament == null) return result;
+
+        result.TournamentName = tournament.Name;
+        result.CreatorUserId = tournament.CreatorUserId;
+
+        // ── Manual Qualification Gate ──
+        // If the organiser has not yet confirmed qualified teams, block generation entirely.
+        // This is a belt-and-suspenders guard — the primary gate is in CheckAndFinalizeTournamentAsync.
+        if (tournament.RequiresManualQualification())
+        {
+            result.ManualQualificationRequired = true;
+            return result;
+        }
 
         var allMatches = await _matchRepository.FindAsync(m => m.TournamentId == tournamentId, ct);
-        
-        // 1. Calculate Standings per Group
-        var registrations = await _registrationRepository.FindAsync(r => r.TournamentId == tournament.Id && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.Withdrawn), ct);
-        
-        var teamStats = CalculateStandings(allMatches, registrations);
-        
-        // 2. Qualify teams (Part 2 Logic: Smart Qualification)
-        var qualificationPool = new List<TournamentStandingDto>();
-        var groups = teamStats.GroupBy(s => s.GroupId ?? 0).ToList();
-        var best3rdsPool = new List<TournamentStandingDto>();
 
-        foreach (var g in groups)
+        // ── Qualification path: Manual (pre-confirmed) vs Automatic (standings-derived) ──
+        List<(Guid TeamId, int GroupId)> qualifiedTeams;
+
+        if (tournament.Status == TournamentStatus.QualificationConfirmed)
         {
-             var ranked = RankTeams(g.ToList());
-             var groupSize = ranked.Count;
-
-             // Logic: If group has <= 2 teams, only top 1 qualifies. Else top 2.
-             int teamsToQualify = groupSize <= 2 ? 1 : 2;
-             
-             for (int i = 0; i < Math.Min(ranked.Count, teamsToQualify); i++)
-             {
-                 qualificationPool.Add(ranked[i]);
-             }
-
-             // Others go to best-3rd pool if they are 3rd (only possible if group size > 2)
-             if (ranked.Count > 2)
-             {
-                 best3rdsPool.Add(ranked[2]);
-             }
+            // Manual path: the organiser already selected teams via ConfirmManualQualificationCommand.
+            // IsQualifiedForKnockout was set explicitly — no standings math needed here.
+            var confirmedRegs = await _registrationRepository.FindAsync(
+                r => r.TournamentId == tournamentId && r.IsQualifiedForKnockout, ct);
+            qualifiedTeams = confirmedRegs
+                .Select(r => (TeamId: r.TeamId, GroupId: r.GroupId ?? 0))
+                .ToList();
         }
-
-        int baseQualifiedCount = qualificationPool.Count;
-        int targetBracketSize = NextPowerOfTwo(baseQualifiedCount);
-
-        if (baseQualifiedCount < targetBracketSize)
+        else
         {
-            int needed = targetBracketSize - baseQualifiedCount;
-            var ranked3rds = RankTeams(best3rdsPool);
-            for (int i = 0; i < Math.Min(ranked3rds.Count, needed); i++)
+            // Automatic path: derive qualified teams from standings (existing logic, unchanged).
+            var registrations = await _registrationRepository.FindAsync(
+                r => r.TournamentId == tournament.Id
+                     && (r.Status == RegistrationStatus.Approved || r.Status == RegistrationStatus.Withdrawn), ct);
+
+            var teamStats = StandingsCalculator.Calculate(allMatches, registrations);
+
+            var qualificationPool = new List<StandingsCalculator.TeamStanding>();
+            var groups = teamStats.GroupBy(s => s.GroupId ?? 0).ToList();
+            var best3rdsPool = new List<StandingsCalculator.TeamStanding>();
+
+            foreach (var g in groups)
             {
-                qualificationPool.Add(ranked3rds[i]);
+                var ranked = StandingsCalculator.Rank(g.ToList());
+                var groupSize = ranked.Count;
+                int teamsToQualify = groupSize <= 2 ? 1 : 2;
+
+                for (int i = 0; i < Math.Min(ranked.Count, teamsToQualify); i++)
+                    qualificationPool.Add(ranked[i]);
+
+                if (ranked.Count > 2)
+                    best3rdsPool.Add(ranked[2]);
             }
+
+            int baseQualifiedCount = qualificationPool.Count;
+            int targetBracketSize = NextPowerOfTwo(baseQualifiedCount);
+
+            if (baseQualifiedCount < targetBracketSize)
+            {
+                int needed = targetBracketSize - baseQualifiedCount;
+                var ranked3rds = StandingsCalculator.Rank(best3rdsPool);
+                for (int i = 0; i < Math.Min(ranked3rds.Count, needed); i++)
+                    qualificationPool.Add(ranked3rds[i]);
+            }
+
+            qualifiedTeams = qualificationPool
+                .Select(t => (TeamId: t.TeamId, GroupId: t.GroupId ?? 0))
+                .ToList();
         }
 
-        // Mapping to pairing format
-        var qualifiedTeams = qualificationPool.Select(t => (TeamId: t.TeamId, GroupId: t.GroupId ?? 0)).ToList();
-        
-        // 3. Generate Pairings
+        // 3. Determine round number & manual-draw gate
+        //    Groups→Knockout R1 is NEVER a final (finals come much later).
         var newMatches = new List<Match>();
         var matchDate = DateTime.UtcNow.AddDays(1);
         int round = (allMatches.Max(m => m.RoundNumber) ?? 0) + 1;
         bool isDoubleLeg = tournament.MatchType == TournamentLegType.HomeAndAway || tournament.Format == TournamentFormat.GroupsWithHomeAwayKnockout;
+
+        // ── Manual Draw Policy ──
+        if (tournament.RequiresManualDraw(round, isFinalRound: false))
+        {
+            result.ManualDrawRequired = true;
+            result.ManualDrawRoundNumber = round;
+            return result;
+        }
 
         // PART 3 Logic: Opening Match Selection
         if (tournament.OpeningMatchHomeTeamId.HasValue && tournament.OpeningMatchAwayTeamId.HasValue)
@@ -216,24 +260,13 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         tournament.ChangeStatus(TournamentStatus.Active);
         await _tournamentRepository.UpdateAsync(tournament, ct);
 
-        // Notify
-        await _analyticsService.LogActivityByTemplateAsync("KNOCKOUT_STARTED", new Dictionary<string, string> { { "tournamentName", tournament.Name } }, null, "System", ct);
-        await _notificationService.SendNotificationAsync(Guid.Empty, "بدء الأدوار الإقصائية", $"تأهلت الفرق وبدأت الأدوار الإقصائية لبطولة {tournament.Name}", NotificationCategory.Tournament, ct: ct);
-        
         // Notify Real-Time
         await _notifier.SendMatchesGeneratedAsync(_mapper.Map<IEnumerable<MatchDto>>(newMatches));
-    }
 
-    private List<TournamentStandingDto> RankTeams(List<TournamentStandingDto> teams)
-    {
-        return teams.OrderByDescending(s => s.Points)
-                    .ThenByDescending(s => s.GoalDifference)
-                    .ThenByDescending(s => s.GoalsFor)
-                    // Part 2 Logic: Red Cards ASC, Yellow Cards ASC
-                    .ThenBy(s => s.RedCards)
-                    .ThenBy(s => s.YellowCards)
-                    .ThenBy(x => Guid.NewGuid()) // Random draw
-                    .ToList();
+        result.NextRoundGenerated = true;
+        result.MatchesGenerated = newMatches.Count;
+        result.RoundNumber = round;
+        return result;
     }
 
     private int NextPowerOfTwo(int n)
@@ -246,8 +279,15 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         return 64; // reasonable upper limit for tournaments
     }
 
-    private async Task GenerateNextKnockoutRoundAsync(Tournament tournament, List<Match> previousRoundMatches, CancellationToken ct = default)
+    private async Task<TournamentLifecycleResult> GenerateNextKnockoutRoundAsync(Tournament tournament, List<Match> previousRoundMatches, CancellationToken ct = default)
     {
+        var result = new TournamentLifecycleResult
+        {
+            TournamentId = tournament.Id,
+            TournamentName = tournament.Name,
+            CreatorUserId = tournament.CreatorUserId
+        };
+
         // Identify winners
         var winners = new List<Guid>();
         var processedMatches = new HashSet<Guid>();
@@ -278,13 +318,23 @@ public class TournamentLifecycleService : ITournamentLifecycleService
              winners.Add(winnerId);
         }
         
-        if (winners.Count < 2) return;
-        
+        if (winners.Count < 2) return result;
+
         var newMatches = new List<Match>();
         var matchDate = DateTime.UtcNow.AddDays(3);
         int round = (previousRoundMatches.First().RoundNumber ?? 0) + 1;
         bool isDoubleLeg = tournament.MatchType == TournamentLegType.HomeAndAway || tournament.Format == TournamentFormat.GroupsWithHomeAwayKnockout;
-        
+
+        // ── Manual Draw Policy ──
+        // winners.Count == 2 means the next match is the Final → always auto-generated.
+        bool isFinalRound = winners.Count == 2;
+        if (tournament.RequiresManualDraw(round, isFinalRound))
+        {
+            result.ManualDrawRequired = true;
+            result.ManualDrawRoundNumber = round;
+            return result;
+        }
+
         for(int i = 0; i < winners.Count; i+=2)
         {
              if (i+1 < winners.Count)
@@ -304,9 +354,14 @@ public class TournamentLifecycleService : ITournamentLifecycleService
         
         // Notify Real-Time
         await _notifier.SendMatchesGeneratedAsync(_mapper.Map<IEnumerable<MatchDto>>(newMatches));
+
+        result.NextRoundGenerated = true;
+        result.MatchesGenerated = newMatches.Count;
+        result.RoundNumber = round;
+        return result;
     }
 
-    private async Task FinalizeTournamentAsync(Tournament tournament, List<Match> finalMatches, IEnumerable<Match> allMatches, CancellationToken ct = default)
+    private async Task<TournamentLifecycleResult> FinalizeTournamentAsync(Tournament tournament, List<Match> finalMatches, IEnumerable<Match> allMatches, CancellationToken ct = default)
     {
          // Determine winner
          Guid winnerId;
@@ -328,106 +383,25 @@ public class TournamentLifecycleService : ITournamentLifecycleService
          tournament.ChangeStatus(TournamentStatus.Completed);
          tournament.WinnerTeamId = winnerId;
          await _tournamentRepository.UpdateAsync(tournament, ct);
-         
-         var winnerTeam = await _teamRepository.GetByIdAsync(winnerId, ct);
-         
-         await _analyticsService.LogActivityByTemplateAsync("TOURNAMENT_FINALIZED", new Dictionary<string, string> { { "tournamentName", tournament.Name }, { "winnerName", winnerTeam?.Name ?? "Unknown" } }, null, "نظام", ct);
-         
-         await _notificationService.SendNotificationAsync(Guid.Empty, "القمة انتهت!", $"انتهت بطولة {tournament.Name} رسمياً وتوج فريق {winnerTeam?.Name} باللقب!", NotificationCategory.Tournament, NotificationType.Success, ct: ct);
-         
+
+         // Resolve winner team name from final match navigation
+         var refMatch = await _matchRepository.GetByIdAsync(finalMatches[0].Id,
+             new System.Linq.Expressions.Expression<Func<Match, object>>[] { m => m.HomeTeam!, m => m.AwayTeam! }, ct);
+         var winnerTeamName = refMatch != null
+             ? (winnerId == refMatch.HomeTeamId ? refMatch.HomeTeam?.Name : refMatch.AwayTeam?.Name)
+             : null;
+
          await _notifier.SendTournamentUpdatedAsync(_mapper.Map<TournamentDto>(tournament));
-    }
 
-    public List<TournamentStandingDto> CalculateStandings(IEnumerable<Match> allMatches, IEnumerable<TeamRegistration> teams)
-    {
-        // Build a lookup for O(1) team resolution instead of O(N) FirstOrDefault
-        var standings = teams.Select(t => new TournamentStandingDto 
-        { 
-            TeamId = t.TeamId, 
-            TeamName = t.Team?.Name ?? "فريق",
-            GroupId = t.GroupId
-        }).ToList();
-        
-        var standingsByTeam = standings.ToDictionary(s => s.TeamId);
-        
-        // Include matches that belong to group stage OR league play.
-        // League matches are created with GroupId=1 and StageName="League".
-        // Group Stage matches have a non-null GroupId and StageName="Group Stage".
-        foreach(var m in allMatches.Where(mm => (mm.GroupId != null || mm.StageName == "League" || mm.StageName == "Group Stage") && mm.Status == MatchStatus.Finished))
-        {
-             standingsByTeam.TryGetValue(m.HomeTeamId, out var h);
-             standingsByTeam.TryGetValue(m.AwayTeamId, out var a);
-             
-             if (h != null) 
-             { 
-                 h.Played++;
-                 h.GoalsFor += m.HomeScore;
-                 h.GoalsAgainst += m.AwayScore;
-                 
-                 if (m.HomeScore > m.AwayScore) { h.Points += 3; h.Won++; h.Form.Add("W"); }
-                 else if (m.HomeScore == m.AwayScore) { h.Points += 1; h.Drawn++; h.Form.Add("D"); }
-                 else { h.Lost++; h.Form.Add("L"); }
-             }
-             
-             if (a != null) 
-             { 
-                 a.Played++;
-                 a.GoalsFor += m.AwayScore;
-                 a.GoalsAgainst += m.HomeScore;
-
-                 if (m.AwayScore > m.HomeScore) { a.Points += 3; a.Won++; a.Form.Add("W"); }
-                 else if (m.AwayScore == m.HomeScore) { a.Points += 1; a.Drawn++; a.Form.Add("D"); }
-                 else { a.Lost++; a.Form.Add("L"); }
-             }
-
-             // Count Cards
-             if (m.Events != null)
-             {
-                 foreach(var e in m.Events)
-                 {
-                     if (!standingsByTeam.TryGetValue(e.TeamId, out var teamStanding)) continue;
-                     
-                     if (e.Type == MatchEventType.YellowCard) teamStanding.YellowCards++;
-                     else if (e.Type == MatchEventType.RedCard) teamStanding.RedCards++;
-                 }
-             }
-        }
-        
-        // Trim form to last 5 results
-        foreach (var s in standings)
-        {
-            if (s.Form.Count > 5)
-                s.Form = s.Form.Skip(s.Form.Count - 5).ToList();
-        }
-        
-        // Final Sort: Group > Points > GD > GF > (Lower) RedCards > (Lower) YellowCards
-        var sorted = standings
-            .OrderBy(s => s.GroupId ?? 0)
-            .ThenByDescending(s => s.Points)
-            .ThenByDescending(s => s.GoalDifference)
-            .ThenByDescending(s => s.GoalsFor)
-            .ThenBy(s => s.RedCards)
-            .ThenBy(s => s.YellowCards)
-            .ToList();
-        
-        // Assign rank per group (or overall for league)
-        int? currentGroup = int.MinValue;
-        int rank = 0;
-        for (int i = 0; i < sorted.Count; i++)
-        {
-            if (sorted[i].GroupId != currentGroup)
-            {
-                currentGroup = sorted[i].GroupId;
-                rank = 1;
-            }
-            else
-            {
-                rank++;
-            }
-            sorted[i].Rank = rank;
-        }
-        
-        return sorted;
+         return new TournamentLifecycleResult
+         {
+             TournamentId = tournament.Id,
+             TournamentName = tournament.Name,
+             CreatorUserId = tournament.CreatorUserId,
+             TournamentFinalized = true,
+             WinnerTeamId = winnerId,
+             WinnerTeamName = winnerTeamName
+         };
     }
     
     private Match CreateMatch(Tournament t, Guid home, Guid away, DateTime date, int? group, int? round, string stage, CancellationToken ct)

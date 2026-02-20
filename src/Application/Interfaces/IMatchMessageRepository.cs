@@ -10,4 +10,5 @@ public interface IMatchMessageRepository
 {
     Task<MatchMessage> AddAsync(MatchMessage message, CancellationToken ct = default);
     Task<IEnumerable<MatchMessage>> GetByMatchIdAsync(Guid matchId, int pageSize = 50, int page = 1, CancellationToken ct = default);
+    Task<int> CountByMatchIdAsync(Guid matchId, CancellationToken ct = default);
 }

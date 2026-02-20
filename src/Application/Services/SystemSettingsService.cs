@@ -1,8 +1,9 @@
+using System.Text.Json;
 using System.Threading;
 using Application.DTOs.Settings;
 using Application.Interfaces;
 using Domain.Entities;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Distributed;
 using Domain.Interfaces;
 
 namespace Application.Services;
@@ -10,17 +11,14 @@ namespace Application.Services;
 public class SystemSettingsService : ISystemSettingsService
 {
     private readonly IRepository<SystemSetting> _settingsRepository;
-    private readonly IAnalyticsService _analyticsService;
-    private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
+    private readonly IDistributedCache _cache;
     private const string CacheKey = "SystemSettings_Global";
 
     public SystemSettingsService(
         IRepository<SystemSetting> settingsRepository,
-        IAnalyticsService analyticsService,
-        Microsoft.Extensions.Caching.Memory.IMemoryCache cache)
+        IDistributedCache cache)
     {
         _settingsRepository = settingsRepository;
-        _analyticsService = analyticsService;
         _cache = cache;
     }
 
@@ -47,7 +45,7 @@ public class SystemSettingsService : ISystemSettingsService
         await _settingsRepository.UpdateAsync(settings, ct);
         
         // Invalidate Cache
-        _cache.Remove(CacheKey);
+        await _cache.RemoveAsync(CacheKey, ct);
         
         return new SystemSettingsDto
         {
@@ -71,21 +69,23 @@ public class SystemSettingsService : ISystemSettingsService
 
     private async Task<SystemSetting> GetCachedSettingsAsync(CancellationToken ct = default)
     {
-        if (_cache.TryGetValue(CacheKey, out SystemSetting? settings))
+        var cached = await _cache.GetStringAsync(CacheKey, ct);
+        if (cached != null)
         {
-             if (settings != null) return settings;
+            var settings = JsonSerializer.Deserialize<SystemSetting>(cached);
+            if (settings != null) return settings;
         }
 
-        settings = await GetOrCreateSettingsAsync(ct);
+        var freshSettings = await GetOrCreateSettingsAsync(ct);
         
-        var options = new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions()
+        var options = new DistributedCacheEntryOptions()
             .SetSlidingExpiration(TimeSpan.FromMinutes(5))
             .SetAbsoluteExpiration(TimeSpan.FromHours(1));
-        options.Size = 1024; // SystemSettings is a small object
         
-        _cache.Set(CacheKey, settings, options);
+        var json = JsonSerializer.Serialize(freshSettings);
+        await _cache.SetStringAsync(CacheKey, json, options, ct);
         
-        return settings;
+        return freshSettings;
     }
 
     /// <summary>

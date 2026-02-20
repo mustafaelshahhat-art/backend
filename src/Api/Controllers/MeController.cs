@@ -1,5 +1,6 @@
 using Application.DTOs.Teams;
-using Application.Interfaces;
+using Application.DTOs.Users;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -11,13 +12,23 @@ namespace Api.Controllers;
 [Authorize]
 public class MeController : ControllerBase
 {
-    private readonly ITeamService _teamService;
-    private readonly IUserService _userService;
+    private readonly IMediator _mediator;
 
-    public MeController(ITeamService teamService, IUserService userService)
+    public MeController(IMediator mediator)
     {
-        _teamService = teamService;
-        _userService = userService;
+        _mediator = mediator;
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<UserDto>> GetCurrentUser(CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Unauthorized();
+
+        var query = new Application.Features.Users.Queries.GetUserById.GetUserByIdQuery(Guid.Parse(userId));
+        var user = await _mediator.Send(query, cancellationToken);
+        if (user == null) return NotFound();
+        return Ok(user);
     }
 
     [HttpGet("teams-overview")]
@@ -26,7 +37,8 @@ public class MeController : ControllerBase
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var overview = await _teamService.GetTeamsOverviewAsync(Guid.Parse(userId), cancellationToken);
+        var query = new Application.Features.Teams.Queries.GetTeamsOverview.GetTeamsOverviewQuery(Guid.Parse(userId));
+        var overview = await _mediator.Send(query, cancellationToken);
         return Ok(overview);
     }
 }

@@ -6,7 +6,6 @@ namespace Application.Interfaces;
 
 public interface ITournamentLifecycleService
 {
-    Task CheckAndFinalizeTournamentAsync(Guid tournamentId, CancellationToken ct = default);
-    Task GenerateKnockoutR1Async(Guid tournamentId, CancellationToken ct = default);
-    List<Application.DTOs.Tournaments.TournamentStandingDto> CalculateStandings(IEnumerable<Domain.Entities.Match> allMatches, IEnumerable<Domain.Entities.TeamRegistration> teams);
+    Task<Application.DTOs.Tournaments.TournamentLifecycleResult> CheckAndFinalizeTournamentAsync(Guid tournamentId, CancellationToken ct = default);
+    Task<Application.DTOs.Tournaments.TournamentLifecycleResult> GenerateKnockoutR1Async(Guid tournamentId, CancellationToken ct = default);
 }

@@ -1,8 +1,11 @@
+using Application.Contracts.Common;
 using Application.DTOs.Analytics;
 using Application.DTOs.Notifications;
-using Application.Interfaces;
-using Application.Services;
+using Application.Features.Analytics.Commands.MigrateLogs;
+using Application.Features.Analytics.Queries.GetActivities;
+using Application.Features.Analytics.Queries.GetAnalyticsOverview;
 using Domain.Enums;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
@@ -15,61 +18,32 @@ namespace Api.Controllers;
 [Authorize]
 public class AnalyticsController : ControllerBase
 {
-    private readonly IAnalyticsService _analyticsService;
-    private readonly ITeamService _teamService;
-    private readonly ActivityLogMigrationService _migrationService;
+    private readonly IMediator _mediator;
 
-    public AnalyticsController(
-        IAnalyticsService analyticsService, 
-        ITeamService teamService,
-        ActivityLogMigrationService migrationService)
+    public AnalyticsController(IMediator mediator)
     {
-        _analyticsService = analyticsService;
-        _teamService = teamService;
-        _migrationService = migrationService;
+        _mediator = mediator;
     }
 
     [HttpPost("migrate-logs")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<ActionResult> MigrateLogs(CancellationToken cancellationToken)
+    public async Task<ActionResult<MessageResponse>> MigrateLogs(CancellationToken cancellationToken)
     {
-        await _migrationService.MigrateLegacyLogsAsync(cancellationToken);
-        return Ok(new { message = "تمت عملية تحديث سجلات النشاط بنجاح" });
+        await _mediator.Send(new MigrateLogsCommand(), cancellationToken);
+        return Ok(new MessageResponse("تمت عملية تحديث سجلات النشاط بنجاح"));
     }
 
     [HttpGet("overview")]
     [Authorize]
     [OutputCache(PolicyName = "Analytics")]
-    public async Task<ActionResult> GetOverview([FromQuery] Guid? teamId = null, CancellationToken cancellationToken = default)
+    [ProducesResponseType(typeof(AnalyticsOverview), 200)]
+    [ProducesResponseType(typeof(TeamAnalyticsDto), 200)]
+    public async Task<IActionResult> GetOverview([FromQuery] Guid? teamId = null, CancellationToken cancellationToken = default)
     {
         var (userId, userRole) = GetUserContext();
-        var isAdmin = userRole == UserRole.Admin.ToString();
-
-        if (teamId.HasValue)
-        {
-            // Security Check: If not admin, must own the team
-            if (!isAdmin)
-            {
-                var team = await _teamService.GetByIdAsync(teamId.Value, cancellationToken);
-                if (team == null) return NotFound();
-                
-                // Check if user is the captain within the Players list
-                if (!team.Players.Any(p => p.UserId == userId && p.TeamRole == TeamRole.Captain))
-                {
-                    return Forbid();
-                }
-            }
-            
-            var teamAnalytics = await _analyticsService.GetTeamAnalyticsAsync(teamId.Value, cancellationToken);
-            return Ok(teamAnalytics);
-        }
-        
-        var isCreator = userRole == UserRole.TournamentCreator.ToString();
-        if (!isAdmin && !isCreator) return Forbid();
-
-        Guid? creatorId = isCreator ? userId : null;
-        var overview = await _analyticsService.GetOverviewAsync(creatorId, cancellationToken);
-        return Ok(overview);
+        var query = new GetAnalyticsOverviewQuery(teamId, userId, userRole);
+        var result = await _mediator.Send(query, cancellationToken);
+        return Ok(result);
     }
 
     [HttpGet("activities")]
@@ -87,27 +61,11 @@ public class AnalyticsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var (currentUserId, userRole) = GetUserContext();
-        var isAdmin = userRole == UserRole.Admin.ToString();
-        var isCreator = userRole == UserRole.TournamentCreator.ToString();
-        
-        if (!isAdmin && !isCreator) return Forbid();
-
-        Guid? creatorId = isCreator ? currentUserId : null;
-
-        var filters = new ActivityFilterParams
-        {
-            Page = page,
-            PageSize = pageSize,
-            ActorRole = actorRole,
-            ActionType = actionType,
-            EntityType = entityType,
-            FromDate = fromDate,
-            ToDate = toDate,
-            MinSeverity = minSeverity,
-            UserId = userId
-        };
-
-        var activity = await _analyticsService.GetRecentActivitiesAsync(filters, creatorId, cancellationToken);
+        var query = new GetActivitiesQuery(
+            page, pageSize, actorRole, actionType, entityType,
+            fromDate, toDate, minSeverity, userId,
+            currentUserId, userRole);
+        var activity = await _mediator.Send(query, cancellationToken);
         return Ok(activity);
     }
 

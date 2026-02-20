@@ -11,28 +11,22 @@ namespace Application.Features.Tournaments.Commands.RegisterTeam;
 
 public class RegisterTeamCommandHandler : IRequestHandler<RegisterTeamCommand, TeamRegistrationDto>
 {
-    private readonly IRepository<Tournament> _tournamentRepository;
-    private readonly IRepository<TeamRegistration> _registrationRepository;
+    private readonly ITournamentRegistrationContext _regContext;
     private readonly IRepository<Team> _teamRepository;
     private readonly IRepository<TournamentPlayer> _tournamentPlayerRepository;
-    private readonly IDistributedLock _distributedLock;
     private readonly IMapper _mapper;
     private readonly IRealTimeNotifier _notifier;
 
     public RegisterTeamCommandHandler(
-        IRepository<Tournament> tournamentRepository,
-        IRepository<TeamRegistration> registrationRepository,
+        ITournamentRegistrationContext regContext,
         IRepository<Team> teamRepository,
         IRepository<TournamentPlayer> tournamentPlayerRepository,
-        IDistributedLock distributedLock,
         IMapper mapper,
         IRealTimeNotifier notifier)
     {
-        _tournamentRepository = tournamentRepository;
-        _registrationRepository = registrationRepository;
+        _regContext = regContext;
         _teamRepository = teamRepository;
         _tournamentPlayerRepository = tournamentPlayerRepository;
-        _distributedLock = distributedLock;
         _mapper = mapper;
         _notifier = notifier;
     }
@@ -40,14 +34,14 @@ public class RegisterTeamCommandHandler : IRequestHandler<RegisterTeamCommand, T
     public async Task<TeamRegistrationDto> Handle(RegisterTeamCommand request, CancellationToken cancellationToken)
     {
         var lockKey = $"tournament-reg-{request.TournamentId}";
-        if (!await _distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(30), cancellationToken))
+        if (!await _regContext.DistributedLock.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(30), cancellationToken))
         {
             throw new ConflictException("النظام مشغول حالياً، يرجى المحاولة مرة أخرى.");
         }
 
         try
         {
-            var tournament = await _tournamentRepository.GetByIdAsync(request.TournamentId, new[] { "Registrations" }, cancellationToken);
+            var tournament = await _regContext.Tournaments.GetByIdAsync(request.TournamentId, new[] { "Registrations" }, cancellationToken);
             if (tournament == null) throw new NotFoundException(nameof(Tournament), request.TournamentId);
 
             if (DateTime.UtcNow > tournament.RegistrationDeadline && !tournament.AllowLateRegistration)
@@ -135,8 +129,8 @@ public class RegisterTeamCommandHandler : IRequestHandler<RegisterTeamCommand, T
                 tournament.ChangeStatus(TournamentStatus.RegistrationClosed);
             }
 
-            await _registrationRepository.AddAsync(registration, cancellationToken);
-            await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
+            await _regContext.Registrations.AddAsync(registration, cancellationToken);
+            await _regContext.Tournaments.UpdateAsync(tournament, cancellationToken);
 
             // If auto-approved, populate TournamentPlayers
             if (registration.Status == RegistrationStatus.Approved)
@@ -163,7 +157,7 @@ public class RegisterTeamCommandHandler : IRequestHandler<RegisterTeamCommand, T
         }
         finally
         {
-            await _distributedLock.ReleaseLockAsync(lockKey, cancellationToken);
+            await _regContext.DistributedLock.ReleaseLockAsync(lockKey, cancellationToken);
         }
     }
 }

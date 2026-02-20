@@ -40,4 +40,13 @@ public interface IRepository<T> where T : BaseEntity
     Task BeginTransactionAsync(CancellationToken ct = default);
     Task CommitTransactionAsync(CancellationToken ct = default);
     Task RollbackTransactionAsync(CancellationToken ct = default);
+
+    // Async query execution (allows Application to execute queries without EF Core dependency)
+    Task<List<TResult>> ExecuteQueryAsync<TResult>(IQueryable<TResult> query, CancellationToken ct = default);
+    Task<TResult?> ExecuteFirstOrDefaultAsync<TResult>(IQueryable<TResult> query, CancellationToken ct = default);
+    Task<TResult> ExecuteFirstAsync<TResult>(IQueryable<TResult> query, CancellationToken ct = default);
+    Task<int> ExecuteCountAsync<TResult>(IQueryable<TResult> query, CancellationToken ct = default);
+    Task<int> ExecuteSumAsync<TResult>(IQueryable<TResult> query, Expression<Func<TResult, int>> selector, CancellationToken ct = default);
+    Task<int?> ExecuteNullableSumAsync<TResult>(IQueryable<TResult> query, Expression<Func<TResult, int?>> selector, CancellationToken ct = default);
+    IQueryable<T> IncludeProperty<TProperty>(Expression<Func<T, TProperty>> navigationPropertyPath);
 }

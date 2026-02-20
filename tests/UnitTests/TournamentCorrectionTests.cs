@@ -9,6 +9,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
+using Application.Common.Interfaces;
 using Application.Interfaces;
 using Domain.Interfaces;
 using AutoMapper;
@@ -19,7 +20,7 @@ namespace UnitTests;
 public class TournamentCorrectionTests
 {
     private readonly Mock<IRepository<Tournament>> _repoMock = new();
-    private readonly Mock<IAnalyticsService> _analyticsMock = new();
+    private readonly Mock<IActivityLogger> _activityLoggerMock = new();
     private readonly Mock<IMapper> _mapperMock = new();
     private readonly Mock<IRealTimeNotifier> _notifierMock = new();
 
@@ -28,7 +29,7 @@ public class TournamentCorrectionTests
         return new CreateTournamentCommandHandler(
             _repoMock.Object,
             _mapperMock.Object,
-            _analyticsMock.Object,
+            _activityLoggerMock.Object,
             _notifierMock.Object);
     }
 

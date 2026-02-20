@@ -45,6 +45,12 @@ artifacts/
 **/appsettings.Development.json
 **/appsettings.Local.json
 
+# Local environment variable files
+.env
+.env.local
+**/.env
+**/.env.local
+
 # Tooling
 _ReSharper*/
 *.ReSharper
@@ -58,3 +64,9 @@ src/Api/logs/
 # User Uploads
 src/Api/wwwroot/uploads/*
 !src/Api/wwwroot/uploads/.gitkeep
+API_CONTRACT_AUDIT.md
+CODEBASE_AUDIT.md
+ENFORCEMENT_RULES.md
+EXECUTION_BLUEPRINT.md
+EXECUTION_PLAN.md
+TESTING_STRATEGY.md

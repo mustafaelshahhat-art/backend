@@ -47,4 +47,9 @@ public class MatchMessageRepository : IMatchMessageRepository
         results.Reverse();
         return results;
     }
+
+    public async Task<int> CountByMatchIdAsync(Guid matchId, CancellationToken ct = default)
+    {
+        return await _context.MatchMessages.CountAsync(m => m.MatchId == matchId, ct);
+    }
 }

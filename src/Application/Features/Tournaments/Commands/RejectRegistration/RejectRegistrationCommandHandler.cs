@@ -11,43 +11,37 @@ namespace Application.Features.Tournaments.Commands.RejectRegistration;
 
 public class RejectRegistrationCommandHandler : IRequestHandler<RejectRegistrationCommand, TeamRegistrationDto>
 {
-    private readonly IRepository<Tournament> _tournamentRepository;
-    private readonly IRepository<TeamRegistration> _registrationRepository;
+    private readonly ITournamentRegistrationContext _regContext;
     private readonly IRepository<TournamentPlayer> _tournamentPlayerRepository;
     private readonly IRepository<Match> _matchRepository;
     private readonly IRealTimeNotifier _notifier;
     private readonly IMapper _mapper;
-    private readonly IDistributedLock _distributedLock;
 
     public RejectRegistrationCommandHandler(
-        IRepository<Tournament> tournamentRepository,
-        IRepository<TeamRegistration> registrationRepository,
+        ITournamentRegistrationContext regContext,
         IRepository<TournamentPlayer> tournamentPlayerRepository,
         IRepository<Match> matchRepository,
         IRealTimeNotifier notifier,
-        IMapper mapper,
-        IDistributedLock distributedLock)
+        IMapper mapper)
     {
-        _tournamentRepository = tournamentRepository;
-        _registrationRepository = registrationRepository;
+        _regContext = regContext;
         _tournamentPlayerRepository = tournamentPlayerRepository;
         _matchRepository = matchRepository;
         _notifier = notifier;
         _mapper = mapper;
-        _distributedLock = distributedLock;
     }
 
     public async Task<TeamRegistrationDto> Handle(RejectRegistrationCommand request, CancellationToken cancellationToken)
     {
         var lockKey = $"tournament-reg-{request.TournamentId}";
-        if (!await _distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(10)))
+        if (!await _regContext.DistributedLock.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(10)))
         {
             throw new ConflictException("يتم معالجة عملية أخرى على هذه البطولة حالياً. يرجى المحاولة لاحقاً.");
         }
 
         try
         {
-            var tournament = await _tournamentRepository.GetByIdAsync(request.TournamentId, cancellationToken);
+            var tournament = await _regContext.Tournaments.GetByIdAsync(request.TournamentId, cancellationToken);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), request.TournamentId);
 
         // Authorization: Tournament Creator or Admin
@@ -59,7 +53,7 @@ public class RejectRegistrationCommandHandler : IRequestHandler<RejectRegistrati
              throw new ForbiddenException("غير مصرح لك بإدارة طلبات هذه البطولة. فقط منظم البطولة أو مدير النظام يمكنه ذلك.");
         }
 
-        var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == request.TournamentId && r.TeamId == request.TeamId, new[] { "Team", "Team.Players" }, cancellationToken)).FirstOrDefault();
+        var registration = (await _regContext.Registrations.FindAsync(r => r.TournamentId == request.TournamentId && r.TeamId == request.TeamId, new[] { "Team", "Team.Players" }, cancellationToken)).FirstOrDefault();
         if (registration == null) throw new NotFoundException("التسجيل غير موجود.");
 
         // State Validation: Must be Pending
@@ -85,7 +79,7 @@ public class RejectRegistrationCommandHandler : IRequestHandler<RejectRegistrati
             ));
         }
 
-        await _registrationRepository.UpdateAsync(registration, cancellationToken);
+        await _regContext.Registrations.UpdateAsync(registration, cancellationToken);
 
         // Cleanup TournamentPlayers
         var participations = await _tournamentPlayerRepository.FindAsync(tp => tp.RegistrationId == registration.Id, cancellationToken);
@@ -105,11 +99,11 @@ public class RejectRegistrationCommandHandler : IRequestHandler<RejectRegistrati
                 }
             }
             
-            await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
+            await _regContext.Tournaments.UpdateAsync(tournament, cancellationToken);
         }
 
         // Notify Real-Time (Fresh read after save)
-        var updatedTournament = await _tournamentRepository.GetByIdAsync(request.TournamentId, cancellationToken);
+        var updatedTournament = await _regContext.Tournaments.GetByIdAsync(request.TournamentId, cancellationToken);
         if (updatedTournament != null)
         {
             var tournamentDto = _mapper.Map<TournamentDto>(updatedTournament);
@@ -120,7 +114,7 @@ public class RejectRegistrationCommandHandler : IRequestHandler<RejectRegistrati
         }
         finally
         {
-            await _distributedLock.ReleaseLockAsync(lockKey);
+            await _regContext.DistributedLock.ReleaseLockAsync(lockKey);
         }
     }
 }

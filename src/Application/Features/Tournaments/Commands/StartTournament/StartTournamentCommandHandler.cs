@@ -1,4 +1,5 @@
 using Application.DTOs.Tournaments;
+using Application.Features.Tournaments;
 using Application.Interfaces;
 using AutoMapper;
 using Domain.Entities;
@@ -15,7 +16,6 @@ public class StartTournamentCommandHandler : IRequestHandler<StartTournamentComm
     private readonly IRepository<Match> _matchRepository;
     private readonly IRepository<TeamRegistration> _registrationRepository;
     private readonly IDistributedLock _distributedLock;
-    private readonly ITournamentService _tournamentService;
     private readonly IMapper _mapper;
 
     public StartTournamentCommandHandler(
@@ -23,14 +23,12 @@ public class StartTournamentCommandHandler : IRequestHandler<StartTournamentComm
         IRepository<Match> matchRepository,
         IRepository<TeamRegistration> registrationRepository,
         IDistributedLock distributedLock,
-        ITournamentService tournamentService,
         IMapper mapper)
     {
         _tournamentRepository = tournamentRepository;
         _matchRepository = matchRepository;
         _registrationRepository = registrationRepository;
         _distributedLock = distributedLock;
-        _tournamentService = tournamentService;
         _mapper = mapper;
     }
 
@@ -76,7 +74,17 @@ public class StartTournamentCommandHandler : IRequestHandler<StartTournamentComm
             {
                 if (tournament.SchedulingMode == SchedulingMode.Random)
                 {
-                    await _tournamentService.GenerateMatchesAsync(request.Id, request.UserId, request.UserRole, cancellationToken);
+                    // Reload with includes for match generation
+                    var freshTournament = await _tournamentRepository.GetByIdAsync(request.Id, new[] { "Registrations", "Registrations.Team" }, cancellationToken);
+                    if (freshTournament == null) throw new NotFoundException(nameof(Tournament), request.Id);
+
+                    var teamIds = registrations.Select(r => r.TeamId).ToList();
+                    var matches = TournamentHelper.CreateMatches(freshTournament, teamIds);
+                    await _matchRepository.AddRangeAsync(matches);
+                    // Update tournament with any group assignments
+                    await _tournamentRepository.UpdateAsync(freshTournament, cancellationToken);
+                    // Point tournament to freshTournament for subsequent checks
+                    tournament = freshTournament;
                 }
                 // For Manual mode, matches don't need to exist yet - they will be generated after manual draw
             }

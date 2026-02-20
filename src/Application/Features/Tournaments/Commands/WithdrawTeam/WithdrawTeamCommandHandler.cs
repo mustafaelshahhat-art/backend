@@ -1,3 +1,4 @@
+using Application.Common.Interfaces;
 using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
@@ -9,40 +10,34 @@ namespace Application.Features.Tournaments.Commands.WithdrawTeam;
 
 public class WithdrawTeamCommandHandler : IRequestHandler<WithdrawTeamCommand, Unit>
 {
-    private readonly IRepository<Tournament> _tournamentRepository;
-    private readonly IRepository<TeamRegistration> _registrationRepository;
+    private readonly ITournamentRegistrationContext _regContext;
     private readonly IRepository<Team> _teamRepository;
     private readonly IRepository<TournamentPlayer> _tournamentPlayerRepository;
-    private readonly IAnalyticsService _analyticsService;
-    private readonly IDistributedLock _distributedLock;
+    private readonly IActivityLogger _activityLogger;
 
     public WithdrawTeamCommandHandler(
-        IRepository<Tournament> tournamentRepository,
-        IRepository<TeamRegistration> registrationRepository,
+        ITournamentRegistrationContext regContext,
         IRepository<Team> teamRepository,
         IRepository<TournamentPlayer> tournamentPlayerRepository,
-        IAnalyticsService analyticsService,
-        IDistributedLock distributedLock)
+        IActivityLogger activityLogger)
     {
-        _tournamentRepository = tournamentRepository;
-        _registrationRepository = registrationRepository;
+        _regContext = regContext;
         _teamRepository = teamRepository;
         _tournamentPlayerRepository = tournamentPlayerRepository;
-        _analyticsService = analyticsService;
-        _distributedLock = distributedLock;
+        _activityLogger = activityLogger;
     }
 
     public async Task<Unit> Handle(WithdrawTeamCommand request, CancellationToken cancellationToken)
     {
         var lockKey = $"tournament-reg-{request.TournamentId}";
-        if (!await _distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(10)))
+        if (!await _regContext.DistributedLock.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(10)))
         {
             throw new ConflictException("يتم معالجة عملية أخرى على هذه البطولة حالياً. يرجى المحاولة لاحقاً.");
         }
 
         try
         {
-            var tournament = await _tournamentRepository.GetByIdAsync(request.TournamentId, cancellationToken);
+            var tournament = await _regContext.Tournaments.GetByIdAsync(request.TournamentId, cancellationToken);
         if (tournament == null) throw new NotFoundException(nameof(Tournament), request.TournamentId);
 
         if (tournament.Status != TournamentStatus.RegistrationOpen && tournament.Status != TournamentStatus.RegistrationClosed)
@@ -50,7 +45,7 @@ public class WithdrawTeamCommandHandler : IRequestHandler<WithdrawTeamCommand, U
             throw new ConflictException("لا يمكن الانسحاب من البطولة بعد بدئها.");
         }
 
-        var registration = (await _registrationRepository.FindAsync(r => r.TournamentId == request.TournamentId && r.TeamId == request.TeamId, cancellationToken)).FirstOrDefault();
+        var registration = (await _regContext.Registrations.FindAsync(r => r.TournamentId == request.TournamentId && r.TeamId == request.TeamId, cancellationToken)).FirstOrDefault();
         if (registration == null) throw new NotFoundException("التسجيل غير موجود.");
 
         // Only captain can withdraw
@@ -61,7 +56,7 @@ public class WithdrawTeamCommandHandler : IRequestHandler<WithdrawTeamCommand, U
         }
 
         registration.Status = RegistrationStatus.Withdrawn;
-        await _registrationRepository.UpdateAsync(registration, cancellationToken);
+        await _regContext.Registrations.UpdateAsync(registration, cancellationToken);
 
         // Cleanup participation
         var participations = await _tournamentPlayerRepository.FindAsync(tp => tp.RegistrationId == registration.Id, cancellationToken);
@@ -70,10 +65,10 @@ public class WithdrawTeamCommandHandler : IRequestHandler<WithdrawTeamCommand, U
         if (tournament.CurrentTeams > 0)
         {
             tournament.CurrentTeams--;
-            await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
+            await _regContext.Tournaments.UpdateAsync(tournament, cancellationToken);
         }
 
-        await _analyticsService.LogActivityByTemplateAsync(
+await _activityLogger.LogAsync(
             "TEAM_WITHDRAWN", 
             new Dictionary<string, string> { { "teamName", team.Name }, { "tournamentName", tournament.Name } }, 
             request.UserId, 
@@ -84,7 +79,7 @@ public class WithdrawTeamCommandHandler : IRequestHandler<WithdrawTeamCommand, U
         }
         finally
         {
-            await _distributedLock.ReleaseLockAsync(lockKey);
+            await _regContext.DistributedLock.ReleaseLockAsync(lockKey);
         }
     }
 }

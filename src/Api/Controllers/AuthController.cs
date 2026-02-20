@@ -1,5 +1,7 @@
+using Application.Contracts.Common;
 using Application.DTOs.Auth;
 using Application.Interfaces;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -12,88 +14,90 @@ namespace Api.Controllers;
 [EnableRateLimiting("auth")]
 public class AuthController : ControllerBase
 {
-    private readonly IAuthService _authService;
+    private readonly IMediator _mediator;
+    private readonly IFileStorageService _fileStorage;
 
-    public AuthController(IAuthService authService)
+    public AuthController(IMediator mediator, IFileStorageService fileStorage)
     {
-        _authService = authService;
+        _mediator = mediator;
+        _fileStorage = fileStorage;
     }
 
     [HttpPost("register")]
     [Api.Infrastructure.Filters.FileValidation]
     public async Task<ActionResult<AuthResponse>> Register([FromForm] RegisterRequest request, IFormFile? idFront, IFormFile? idBack, CancellationToken cancellationToken)
     {
-        if (idFront != null) request.IdFrontUrl = await SaveFile(idFront, cancellationToken);
-        if (idBack != null) request.IdBackUrl = await SaveFile(idBack, cancellationToken);
-
-        var response = await _authService.RegisterAsync(request, cancellationToken);
-        return Ok(response);
-    }
-
-    private async Task<string> SaveFile(IFormFile file, CancellationToken cancellationToken)
-    {
-        var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
-        if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
-
-        var fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
-        var filePath = Path.Combine(uploadsFolder, fileName);
-
-        using (var stream = new FileStream(filePath, FileMode.Create))
+        if (idFront != null)
         {
-            await file.CopyToAsync(stream, cancellationToken);
+            var frontName = $"{Guid.NewGuid()}{Path.GetExtension(idFront.FileName)}";
+            request.IdFrontUrl = await _fileStorage.SaveFileAsync(idFront.OpenReadStream(), frontName, idFront.ContentType, cancellationToken);
+        }
+        if (idBack != null)
+        {
+            var backName = $"{Guid.NewGuid()}{Path.GetExtension(idBack.FileName)}";
+            request.IdBackUrl = await _fileStorage.SaveFileAsync(idBack.OpenReadStream(), backName, idBack.ContentType, cancellationToken);
         }
 
-        return $"/uploads/{fileName}";
+        var command = new Application.Features.Auth.Commands.Register.RegisterCommand(request);
+        var response = await _mediator.Send(command, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, response);
     }
 
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request, CancellationToken cancellationToken)
     {
-        var response = await _authService.LoginAsync(request, cancellationToken);
+        var command = new Application.Features.Auth.Commands.Login.LoginCommand(request);
+        var response = await _mediator.Send(command, cancellationToken);
         return Ok(response);
     }
 
     [AllowAnonymous]
     [HttpPost("login-guest")]
-    public async Task<IActionResult> LoginGuest(CancellationToken cancellationToken)
+    public async Task<ActionResult<MessageResponse>> LoginGuest(CancellationToken cancellationToken)
     {
-        await _authService.LogGuestVisitAsync(cancellationToken);
-        return Ok(new { message = "Guest visit logged." });
+        var command = new Application.Features.Auth.Commands.LogGuestVisit.LogGuestVisitCommand();
+        await _mediator.Send(command, cancellationToken);
+        return Ok(new MessageResponse("Guest visit logged."));
     }
 
     [HttpPost("refresh-token")]
     public async Task<ActionResult<AuthResponse>> RefreshToken([FromBody] RefreshTokenRequest request, CancellationToken cancellationToken)
     {
-        var response = await _authService.RefreshTokenAsync(request, cancellationToken);
+        var command = new Application.Features.Auth.Commands.RefreshToken.RefreshTokenCommand(request);
+        var response = await _mediator.Send(command, cancellationToken);
         return Ok(response);
     }
 
     [HttpPost("verify-email")]
-    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<MessageResponse>> VerifyEmail([FromBody] VerifyEmailRequest request, CancellationToken cancellationToken)
     {
-        await _authService.VerifyEmailAsync(request.Email, request.Otp, cancellationToken);
-        return Ok(new { message = "Email verified successfully." });
+        var command = new Application.Features.Auth.Commands.VerifyEmail.VerifyEmailCommand(request.Email, request.Otp);
+        await _mediator.Send(command, cancellationToken);
+        return Ok(new MessageResponse("Email verified successfully."));
     }
 
     [HttpPost("forgot-password")]
-    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<MessageResponse>> ForgotPassword([FromBody] ForgotPasswordRequest request, CancellationToken cancellationToken)
     {
-        await _authService.ForgotPasswordAsync(request.Email, cancellationToken);
-        return Ok(new { message = "If the email exists, a reset code has been sent." });
+        var command = new Application.Features.Auth.Commands.ForgotPassword.ForgotPasswordCommand(request.Email);
+        await _mediator.Send(command, cancellationToken);
+        return Ok(new MessageResponse("If the email exists, a reset code has been sent."));
     }
 
     [HttpPost("reset-password")]
-    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<MessageResponse>> ResetPassword([FromBody] ResetPasswordRequest request, CancellationToken cancellationToken)
     {
-        await _authService.ResetPasswordAsync(request.Email, request.Otp, request.NewPassword, cancellationToken);
-        return Ok(new { message = "Password reset successfully." });
+        var command = new Application.Features.Auth.Commands.ResetPassword.ResetPasswordCommand(request.Email, request.Otp, request.NewPassword);
+        await _mediator.Send(command, cancellationToken);
+        return Ok(new MessageResponse("Password reset successfully."));
     }
 
     [HttpPost("resend-otp")]
-    public async Task<IActionResult> ResendOtp([FromBody] ResendOtpRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<MessageResponse>> ResendOtp([FromBody] ResendOtpRequest request, CancellationToken cancellationToken)
     {
-        await _authService.ResendOtpAsync(request.Email, request.Type, cancellationToken);
-        return Ok(new { message = "OTP resent successfully." });
+        var command = new Application.Features.Auth.Commands.ResendOtp.ResendOtpCommand(request.Email, request.Type);
+        await _mediator.Send(command, cancellationToken);
+        return Ok(new MessageResponse("OTP resent successfully."));
     }
 
     [Authorize]
@@ -103,7 +107,8 @@ public class AuthController : ControllerBase
         var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (Guid.TryParse(userIdStr, out var userId))
         {
-            await _authService.LogoutAsync(userId, cancellationToken);
+            var command = new Application.Features.Auth.Commands.Logout.LogoutCommand(userId);
+            await _mediator.Send(command, cancellationToken);
         }
         return NoContent();
     }

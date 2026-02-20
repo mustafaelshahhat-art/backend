@@ -15,37 +15,31 @@ public class StartMatchCommandHandler : IRequestHandler<StartMatchCommand, Match
     private readonly IRepository<Match> _matchRepository;
     private readonly IRepository<Team> _teamRepository;
     private readonly IMapper _mapper;
-    private readonly IRealTimeNotifier _notifier;
-    private readonly IAnalyticsService _analyticsService;
-    private readonly INotificationService _notificationService;
+    private readonly IMatchEventNotifier _matchEventNotifier;
 
     public StartMatchCommandHandler(
         IRepository<Match> matchRepository,
         IRepository<Team> teamRepository,
         IMapper mapper,
-        IRealTimeNotifier notifier,
-        IAnalyticsService analyticsService,
-        INotificationService notificationService)
+        IMatchEventNotifier matchEventNotifier)
     {
         _matchRepository = matchRepository;
         _teamRepository = teamRepository;
         _mapper = mapper;
-        _notifier = notifier;
-        _analyticsService = analyticsService;
-        _notificationService = notificationService;
+        _matchEventNotifier = matchEventNotifier;
     }
 
     public async Task<MatchDto> Handle(StartMatchCommand request, CancellationToken cancellationToken)
     {
         await ValidateManagementRights(request.Id, request.UserId, request.UserRole, cancellationToken);
         
-        var match = await _matchRepository.GetByIdAsync(request.Id, cancellationToken);
+        var match = await _matchRepository.GetByIdAsync(request.Id, new[] { "HomeTeam", "AwayTeam", "Tournament" }, cancellationToken);
         if (match == null) throw new NotFoundException(nameof(Match), request.Id);
 
         match.Status = MatchStatus.Live;
         await _matchRepository.UpdateAsync(match, cancellationToken);
 
-        await _analyticsService.LogActivityByTemplateAsync(
+        await _matchEventNotifier.LogActivityAsync(
             ActivityConstants.MATCH_STARTED, 
             new Dictionary<string, string> { { "matchInfo", $"{match.HomeTeam?.Name ?? "فريق"} ضد {match.AwayTeam?.Name ?? "فريق"}" } }, 
             null, 
@@ -53,13 +47,9 @@ public class StartMatchCommandHandler : IRequestHandler<StartMatchCommand, Match
             cancellationToken
         );
 
-        // Notify
-        await _notifier.SendSystemEventAsync("MATCH_STATUS_CHANGED", new { MatchId = request.Id, Status = MatchStatus.Live.ToString() }, $"match:{request.Id}", cancellationToken);
-        
-        var matchDto = _mapper.Map<MatchDto>(match);
-        await _notifier.SendMatchUpdatedAsync(matchDto, cancellationToken);
+        await _matchEventNotifier.SendMatchUpdateAsync(match, cancellationToken);
 
-        return matchDto;
+        return _mapper.Map<MatchDto>(match);
     }
 
     private async Task ValidateManagementRights(Guid matchId, Guid userId, string userRole, CancellationToken ct)

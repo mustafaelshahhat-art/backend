@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using Domain.Enums;
 
@@ -54,14 +53,12 @@ public class Tournament : BaseEntity
     public Guid? OpeningTeamBId { get; private set; }
 
     // Backward-compatible aliases (mapped to same DB columns)
-    [NotMapped]
     public Guid? OpeningMatchHomeTeamId
     {
         get => OpeningTeamAId;
         set => OpeningTeamAId = value;
     }
     
-    [NotMapped]
     public Guid? OpeningMatchAwayTeamId
     {
         get => OpeningTeamBId;
@@ -112,6 +109,44 @@ public class Tournament : BaseEntity
     /// Returns true if opening teams have been selected.
     /// </summary>
     public bool HasOpeningTeams => OpeningTeamAId.HasValue && OpeningTeamBId.HasValue;
+
+    /// <summary>
+    /// Domain rule: returns true when the given round requires a manual draw by the organiser.
+    ///
+    /// Rules:
+    ///   • If SchedulingMode != Manual  → always false (automatic behaviour unchanged)
+    ///   • If isFinalRound == true      → always false (Final is ALWAYS generated automatically)
+    ///   • Otherwise                    → true (organisers must supply pairings)
+    ///
+    /// The caller is responsible for passing isFinalRound = true when only 2 participants
+    /// remain (i.e. the match about to be created is the tournament Final).
+    /// This keeps the entity free of infrastructure and match-count knowledge.
+    /// </summary>
+    public bool RequiresManualDraw(int roundNumber, bool isFinalRound = false)
+    {
+        if (SchedulingMode != SchedulingMode.Manual) return false;
+        if (isFinalRound) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Domain rule: returns true when the group stage is complete and the organiser
+    /// must manually select which teams advance to the knockout round.
+    ///
+    /// Rules:
+    ///   • If SchedulingMode != Manual  → false (automatic mode proceeds unblocked)
+    ///   • If Status != ManualQualificationPending → false (not the right state)
+    ///   • Otherwise → true (block auto-generation, show selection UI)
+    ///
+    /// QualificationConfirmed is intentionally NOT blocked — that state means the
+    /// organiser already saved their selections, and generation can proceed
+    /// using the pre-confirmed IsQualifiedForKnockout teams.
+    /// </summary>
+    public bool RequiresManualQualification()
+    {
+        return SchedulingMode == SchedulingMode.Manual
+               && Status == TournamentStatus.ManualQualificationPending;
+    }
 
     // Late Registration Policy
     public bool AllowLateRegistration { get; set; } = false;
@@ -185,7 +220,21 @@ public class Tournament : BaseEntity
             case TournamentStatus.Active:
                 isValid = newStatus == TournamentStatus.Completed || 
                           newStatus == TournamentStatus.WaitingForOpeningMatchSelection ||
+                          newStatus == TournamentStatus.ManualQualificationPending ||
                           newStatus == TournamentStatus.Cancelled;
+                break;
+
+            case TournamentStatus.ManualQualificationPending:
+                isValid = newStatus == TournamentStatus.QualificationConfirmed
+                          || newStatus == TournamentStatus.RegistrationClosed
+                          || newStatus == TournamentStatus.Cancelled;
+                break;
+
+            case TournamentStatus.QualificationConfirmed:
+                isValid = newStatus == TournamentStatus.Active
+                          || newStatus == TournamentStatus.RegistrationClosed
+                          || newStatus == TournamentStatus.Completed
+                          || newStatus == TournamentStatus.Cancelled;
                 break;
 
             case TournamentStatus.Completed:

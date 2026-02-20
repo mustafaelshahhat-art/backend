@@ -1,4 +1,5 @@
 using Application.Common;
+using Application.Common.Interfaces;
 using Application.DTOs.Tournaments;
 using Application.Interfaces;
 using AutoMapper;
@@ -13,18 +14,18 @@ public class CreateTournamentCommandHandler : IRequestHandler<CreateTournamentCo
 {
     private readonly IRepository<Tournament> _tournamentRepository;
     private readonly IMapper _mapper;
-    private readonly IAnalyticsService _analyticsService;
+    private readonly IActivityLogger _activityLogger;
     private readonly IRealTimeNotifier _notifier;
 
     public CreateTournamentCommandHandler(
         IRepository<Tournament> tournamentRepository,
         IMapper mapper,
-        IAnalyticsService analyticsService,
+        Application.Common.Interfaces.IActivityLogger activityLogger,
         IRealTimeNotifier notifier)
     {
         _tournamentRepository = tournamentRepository;
         _mapper = mapper;
-        _analyticsService = analyticsService;
+        _activityLogger = activityLogger;
         _notifier = notifier;
     }
 
@@ -79,7 +80,7 @@ public class CreateTournamentCommandHandler : IRequestHandler<CreateTournamentCo
         // Ideally we'd have a current user service, but we use the command's CreatorUserId
         var creatorName = "منشئ البطولة"; // Fallback or fetch from user repo if needed. For now, avoid "Admin" hardcode if creatorId exists.
         
-        await _analyticsService.LogActivityByTemplateAsync(
+        await _activityLogger.LogAsync(
             ActivityConstants.TOURNAMENT_CREATED, 
             new Dictionary<string, string> { { "tournamentName", tournament.Name } }, 
             request.CreatorUserId, 

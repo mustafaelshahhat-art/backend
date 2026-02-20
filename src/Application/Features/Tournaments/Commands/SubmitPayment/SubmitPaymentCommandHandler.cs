@@ -13,15 +13,18 @@ public class SubmitPaymentCommandHandler : IRequestHandler<SubmitPaymentCommand,
 {
     private readonly IRepository<TeamRegistration> _registrationRepository;
     private readonly IRepository<Team> _teamRepository;
+    private readonly IFileStorageService _fileStorage;
     private readonly IMapper _mapper;
 
     public SubmitPaymentCommandHandler(
         IRepository<TeamRegistration> registrationRepository,
         IRepository<Team> teamRepository,
+        IFileStorageService fileStorage,
         IMapper mapper)
     {
         _registrationRepository = registrationRepository;
         _teamRepository = teamRepository;
+        _fileStorage = fileStorage;
         _mapper = mapper;
     }
 
@@ -39,7 +42,9 @@ public class SubmitPaymentCommandHandler : IRequestHandler<SubmitPaymentCommand,
             throw new ForbiddenException("فقط كابتن الفريق يمكنه رفع إيصال الدفع.");
         }
 
-        registration.PaymentReceiptUrl = request.PaymentReceiptUrl;
+        var receiptUrl = await _fileStorage.SaveFileAsync(request.FileStream, request.FileName, request.ContentType, cancellationToken);
+
+        registration.PaymentReceiptUrl = receiptUrl;
         registration.SenderNumber = request.SenderNumber;
         registration.PaymentMethod = request.PaymentMethod;
         registration.Status = RegistrationStatus.PendingPaymentReview;

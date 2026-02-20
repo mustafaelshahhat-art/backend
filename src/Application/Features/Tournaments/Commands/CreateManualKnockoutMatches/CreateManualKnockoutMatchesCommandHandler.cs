@@ -1,3 +1,4 @@
+using Application.DTOs;
 using Application.DTOs.Matches;
 using Application.DTOs.Tournaments;
 using Application.Interfaces;
@@ -5,12 +6,13 @@ using AutoMapper;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces;
+using Domain.Services;
 using MediatR;
 using Shared.Exceptions;
 
 namespace Application.Features.Tournaments.Commands.CreateManualKnockoutMatches;
 
-public class CreateManualKnockoutMatchesCommandHandler : IRequestHandler<CreateManualKnockoutMatchesCommand, IEnumerable<MatchDto>>
+public class CreateManualKnockoutMatchesCommandHandler : IRequestHandler<CreateManualKnockoutMatchesCommand, MatchListResponse>
 {
     private readonly IRepository<Tournament> _tournamentRepository;
     private readonly IRepository<TeamRegistration> _registrationRepository;
@@ -32,7 +34,7 @@ public class CreateManualKnockoutMatchesCommandHandler : IRequestHandler<CreateM
         _mapper = mapper;
     }
 
-    public async Task<IEnumerable<MatchDto>> Handle(CreateManualKnockoutMatchesCommand request, CancellationToken cancellationToken)
+    public async Task<MatchListResponse> Handle(CreateManualKnockoutMatchesCommand request, CancellationToken cancellationToken)
     {
         var lockKey = $"tournament_scheduling_{request.TournamentId}";
         if (!await _distributedLock.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(10), cancellationToken))
@@ -95,24 +97,20 @@ public class CreateManualKnockoutMatchesCommandHandler : IRequestHandler<CreateM
                     throw new BadRequestException("لا يمكن للفريق أن يواجه نفسه.");
             }
 
-            var matches = new List<Match>();
-            var matchDate = tournament.StartDate.AddHours(18); // Default time
+            // ── Single match-generation engine ──────────────────────────────
+            // MatchGenerator.GenerateManualKnockout is the same kernel used by
+            // CreateManualNextRoundCommandHandler so there is ONE code path for
+            // converting organiser-supplied pairings into Match entities.
+            bool isHomeAway = tournament.GetEffectiveMode() == TournamentMode.KnockoutHomeAway;
 
-            foreach (var pairing in request.Pairings)
-            {
-                var match = new Match
-                {
-                    TournamentId = tournament.Id,
-                    HomeTeamId = pairing.HomeTeamId,
-                    AwayTeamId = pairing.AwayTeamId,
-                    RoundNumber = 1,
-                    StageName = "Round 1",
-                    Status = MatchStatus.Scheduled,
-                    Date = matchDate
-                };
-                matches.Add(match);
-                matchDate = matchDate.AddHours(2);
-            }
+            var pairingTuples = request.Pairings.Select(p =>
+                (p.HomeTeamId, p.AwayTeamId, RoundNumber: 1, StageName: "Round 1"));
+
+            var matches = MatchGenerator.GenerateManualKnockout(
+                tournament.Id,
+                pairingTuples,
+                isHomeAway,
+                tournament.StartDate.AddHours(18));
 
             await _matchRepository.AddRangeAsync(matches, cancellationToken);
 
@@ -120,7 +118,7 @@ public class CreateManualKnockoutMatchesCommandHandler : IRequestHandler<CreateM
             tournament.ChangeStatus(TournamentStatus.Active);
             await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
 
-            return _mapper.Map<IEnumerable<MatchDto>>(matches);
+            return new MatchListResponse(_mapper.Map<List<MatchDto>>(matches));
         }
         finally
         {

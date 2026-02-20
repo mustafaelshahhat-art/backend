@@ -58,16 +58,26 @@ public class ResetScheduleCommandHandler : IRequestHandler<ResetScheduleCommand,
             tournament.OpeningMatchId = null;
             await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
 
-            // Clear GroupIds from registrations — batch update (single SaveChanges)
+            // Clear GroupIds and qualification flags from registrations — batch update (single SaveChanges)
             var registrations = (await _registrationRepository.FindAsync(
                 r => r.TournamentId == request.TournamentId, cancellationToken)).ToList();
             foreach (var reg in registrations)
             {
                 reg.GroupId = null;
+                reg.IsQualifiedForKnockout = false;
             }
             if (registrations.Any())
             {
                 await _registrationRepository.UpdateRangeAsync(registrations, cancellationToken);
+            }
+
+            // If resetting from QualificationConfirmed, revert tournament back to RegistrationClosed
+            // so the admin can re-run the group draw and re-confirm qualification.
+            if (tournament.Status == TournamentStatus.QualificationConfirmed ||
+                tournament.Status == TournamentStatus.ManualQualificationPending)
+            {
+                tournament.ChangeStatus(TournamentStatus.RegistrationClosed);
+                await _tournamentRepository.UpdateAsync(tournament, cancellationToken);
             }
 
             return Unit.Value;

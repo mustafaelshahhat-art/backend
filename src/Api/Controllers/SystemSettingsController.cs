@@ -1,5 +1,6 @@
+using Application.Contracts.Settings.Responses;
 using Application.DTOs.Settings;
-using Application.Interfaces;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -11,11 +12,11 @@ namespace Api.Controllers;
 [Authorize(Policy = "RequireAdmin")]
 public class SystemSettingsController : ControllerBase
 {
-    private readonly ISystemSettingsService _settingsService;
+    private readonly IMediator _mediator;
 
-    public SystemSettingsController(ISystemSettingsService settingsService)
+    public SystemSettingsController(IMediator mediator)
     {
-        _settingsService = settingsService;
+        _mediator = mediator;
     }
 
     /// <summary>
@@ -24,7 +25,7 @@ public class SystemSettingsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<SystemSettingsDto>> GetSettings(CancellationToken cancellationToken)
     {
-        var settings = await _settingsService.GetSettingsAsync(cancellationToken);
+        var settings = await _mediator.Send(new Application.Features.SystemSettings.Queries.GetSettings.GetSettingsQuery(), cancellationToken);
         return Ok(settings);
     }
 
@@ -40,7 +41,7 @@ public class SystemSettingsController : ControllerBase
             return Unauthorized();
         }
 
-        var settings = await _settingsService.UpdateSettingsAsync(request, adminGuid, cancellationToken);
+        var settings = await _mediator.Send(new Application.Features.SystemSettings.Commands.UpdateSettings.UpdateSettingsCommand(request, adminGuid), cancellationToken);
         return Ok(settings);
     }
 
@@ -49,9 +50,9 @@ public class SystemSettingsController : ControllerBase
     /// For public access, use GET /api/v1/Status/maintenance
     /// </summary>
     [HttpGet("maintenance-status")]
-    public async Task<ActionResult<object>> GetMaintenanceStatus(CancellationToken cancellationToken)
+    public async Task<ActionResult<MaintenanceStatusResponse>> GetMaintenanceStatus(CancellationToken cancellationToken)
     {
-        var settings = await _settingsService.GetSettingsAsync(cancellationToken);
-        return Ok(new { maintenanceMode = settings.MaintenanceMode, updatedAt = settings.UpdatedAt });
+        var settings = await _mediator.Send(new Application.Features.SystemSettings.Queries.GetSettings.GetSettingsQuery(), cancellationToken);
+        return Ok(new MaintenanceStatusResponse { MaintenanceMode = settings.MaintenanceMode, UpdatedAt = settings.UpdatedAt });
     }
 }

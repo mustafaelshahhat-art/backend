@@ -22,22 +22,23 @@ public static class DependencyInjection
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(Application.Common.Behaviors.LoggingBehavior<,>)); // If I changed it to IPipelineBehavior
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(Application.Common.Behaviors.ValidationBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(Application.Common.Behaviors.PerformanceBehavior<,>));
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(Application.Common.Behaviors.DistributedLockBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(Application.Common.Behaviors.TransactionBehavior<,>));
         });
 
-        services.AddScoped<IAuthService, AuthService>();
-        services.AddScoped<IUserService, UserService>();
-        services.AddScoped<ITeamService, TeamService>();
-        services.AddScoped<ITournamentService, TournamentService>();
         services.AddScoped<IOtpService, OtpService>();
-        services.AddScoped<IMatchService, MatchService>();
-        services.AddScoped<IAnalyticsService, AnalyticsService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<ITournamentLifecycleService, TournamentLifecycleService>();
         services.AddScoped<ISystemSettingsService, SystemSettingsService>();
-        services.AddScoped<ILocationService, LocationService>();
-        services.AddScoped<ISearchService, SearchService>();
-        services.AddScoped<ActivityLogMigrationService>();
+        services.AddScoped<IActivityLogMigrationService, ActivityLogMigrationService>();
+
+        // Composite facades to reduce handler constructor dependencies
+        services.AddScoped<IAuthUserResolverService, AuthUserResolverService>();
+        services.AddScoped<IAuthTokenService, AuthTokenService>();
+        services.AddScoped<IMatchEventNotifier, MatchEventNotifierService>();
+        services.AddScoped<ITeamNotificationFacade, TeamNotificationFacadeService>();
+        services.AddScoped<ITournamentRegistrationContext, TournamentRegistrationContext>();
+        services.AddScoped<ITeamMemberDataService, TeamMemberDataService>();
 
         return services;
     }

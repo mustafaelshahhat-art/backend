@@ -248,4 +248,25 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
             await _context.Database.RollbackTransactionAsync(ct);
         }
     }
+
+    public async Task<List<TResult>> ExecuteQueryAsync<TResult>(IQueryable<TResult> query, CancellationToken ct = default)
+        => await query.ToListAsync(ct);
+
+    public async Task<TResult?> ExecuteFirstOrDefaultAsync<TResult>(IQueryable<TResult> query, CancellationToken ct = default)
+        => await query.FirstOrDefaultAsync(ct);
+
+    public async Task<TResult> ExecuteFirstAsync<TResult>(IQueryable<TResult> query, CancellationToken ct = default)
+        => await query.FirstAsync(ct);
+
+    public async Task<int> ExecuteCountAsync<TResult>(IQueryable<TResult> query, CancellationToken ct = default)
+        => await query.CountAsync(ct);
+
+    public async Task<int> ExecuteSumAsync<TResult>(IQueryable<TResult> query, Expression<Func<TResult, int>> selector, CancellationToken ct = default)
+        => await query.SumAsync(selector, ct);
+
+    public async Task<int?> ExecuteNullableSumAsync<TResult>(IQueryable<TResult> query, Expression<Func<TResult, int?>> selector, CancellationToken ct = default)
+        => await query.SumAsync(selector, ct);
+
+    public IQueryable<T> IncludeProperty<TProperty>(Expression<Func<T, TProperty>> navigationPropertyPath)
+        => _dbSet.Include(navigationPropertyPath);
 }

@@ -1,4 +1,5 @@
 using MediatR;
+using Application.DTOs;
 using Application.DTOs.Matches;
 
 namespace Application.Features.Tournaments.Commands.SetOpeningMatch;
@@ -14,4 +15,4 @@ public record SetOpeningMatchCommand(
     Guid HomeTeamId, 
     Guid AwayTeamId, 
     Guid UserId, 
-    string UserRole) : IRequest<IEnumerable<MatchDto>>;
+    string UserRole) : IRequest<MatchListResponse>;

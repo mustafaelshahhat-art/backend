@@ -1,4 +1,6 @@
+using Application.Common.Models;
 using Application.Interfaces;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
@@ -11,27 +13,28 @@ namespace Api.Controllers;
 [Authorize]
 public class SearchController : ControllerBase
 {
-    private readonly ISearchService _searchService;
+    private readonly IMediator _mediator;
 
-    public SearchController(ISearchService searchService)
+    public SearchController(IMediator mediator)
     {
-        _searchService = searchService;
+        _mediator = mediator;
     }
 
     [HttpGet]
     [OutputCache(PolicyName = "SearchResults")]
-    public async Task<IActionResult> Search([FromQuery] string q, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<PagedResult<SearchResultItem>>> Search([FromQuery] string q, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
     {
         if (pageSize > 100) pageSize = 100;
         if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
         {
-            return Ok(new SearchResponse { Results = new List<SearchResultItem>(), TotalCount = 0 });
+            return Ok(new PagedResult<SearchResultItem>(new List<SearchResultItem>(), 0, page, pageSize));
         }
 
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var role = User.FindFirst(ClaimTypes.Role)?.Value ?? "Player";
 
-        var results = await _searchService.SearchAsync(q, page, pageSize, userId, role, cancellationToken);
+        var query = new Application.Features.Search.Queries.SearchQuery(q, page, pageSize, userId, role);
+        var results = await _mediator.Send(query, cancellationToken);
         return Ok(results);
     }
 }

@@ -1,4 +1,5 @@
-using Application.Interfaces;
+using Application.Contracts.Settings.Responses;
+using MediatR;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers;
@@ -11,11 +12,11 @@ namespace Api.Controllers;
 [Route("api/v1/[controller]")]
 public class StatusController : ControllerBase
 {
-    private readonly ISystemSettingsService _settingsService;
+    private readonly IMediator _mediator;
 
-    public StatusController(ISystemSettingsService settingsService)
+    public StatusController(IMediator mediator)
     {
-        _settingsService = settingsService;
+        _mediator = mediator;
     }
 
     /// <summary>
@@ -23,9 +24,9 @@ public class StatusController : ControllerBase
     /// Called by frontend login/landing pages before authentication.
     /// </summary>
     [HttpGet("maintenance")]
-    public async Task<ActionResult<object>> GetMaintenanceStatus(CancellationToken cancellationToken)
+    public async Task<ActionResult<MaintenanceStatusResponse>> GetMaintenanceStatus(CancellationToken cancellationToken)
     {
-        var isMaintenanceMode = await _settingsService.IsMaintenanceModeEnabledAsync(cancellationToken);
-        return Ok(new { maintenanceMode = isMaintenanceMode });
+        var isMaintenanceMode = await _mediator.Send(new Application.Features.SystemSettings.Queries.GetMaintenanceStatus.GetMaintenanceStatusQuery(), cancellationToken);
+        return Ok(new MaintenanceStatusResponse { MaintenanceMode = isMaintenanceMode });
     }
 }

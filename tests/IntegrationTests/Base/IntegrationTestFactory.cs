@@ -2,8 +2,10 @@ using Infrastructure.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Respawn;
 using Testcontainers.MsSql;
 using Testcontainers.Redis;
 using Xunit;
@@ -20,6 +22,8 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
         .WithImage("redis:latest")
         .Build();
 
+    private Respawner? _respawner;
+
     public async Task InitializeAsync()
     {
         await _dbContainer.StartAsync();
@@ -28,6 +32,19 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.ConfigureAppConfiguration((context, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["JwtSettings:Secret"] = "SuperSecretTestKeyForIntegrationTestsThatIsLongEnough123!",
+                ["JwtSettings:Issuer"] = "KoraZone365Api",
+                ["JwtSettings:Audience"] = "KoraZone365App",
+                ["JwtSettings:AccessTokenExpirationMinutes"] = "60",
+                ["JwtSettings:RefreshTokenExpirationDays"] = "7",
+                ["AdminSettings:Password"] = "TestAdmin123!"
+            });
+        });
+
         builder.ConfigureServices(services =>
         {
             // Remove real DB
@@ -44,6 +61,27 @@ public class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLife
             services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp => 
                 StackExchange.Redis.ConnectionMultiplexer.Connect(_redisContainer.GetConnectionString()));
         });
+    }
+
+    /// <summary>
+    /// Resets the database to a clean state (preserving schema), re-seeding only the admin user.
+    /// Call at the start of tests that need a fresh DB.
+    /// </summary>
+    public async Task ResetDatabaseAsync()
+    {
+        using var scope = Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var connection = dbContext.Database.GetDbConnection();
+        await connection.OpenAsync();
+
+        _respawner ??= await Respawner.CreateAsync(connection, new RespawnerOptions
+        {
+            DbAdapter = DbAdapter.SqlServer,
+            SchemasToInclude = new[] { "dbo" },
+            TablesToIgnore = new Respawn.Graph.Table[] { "__EFMigrationsHistory" }
+        });
+
+        await _respawner.ResetAsync(connection);
     }
 
     public new async Task DisposeAsync()
