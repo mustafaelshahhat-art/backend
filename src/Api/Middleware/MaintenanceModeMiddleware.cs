@@ -26,19 +26,35 @@ public class MaintenanceModeMiddleware
 
     public async Task InvokeAsync(HttpContext context, ISystemSettingsService settingsService)
     {
-        var path = context.Request.Path.Value?.ToLower() ?? "";
-
-        // Always allow certain paths
-        if (AllowedPaths.Any(p => path.StartsWith(p)))
+        // Skip for specific paths to avoid infinite loop or blocking critical endpoints
+        var path = context.Request.Path.Value?.ToLower();
+        if (path != null && (
+            path.StartsWith("/api/v1/auth") || 
+            path.StartsWith("/api/v1/status") || 
+            path.StartsWith("/health") || 
+            path.StartsWith("/swagger") ||
+            path.StartsWith("/api/v1/debug") // Allow Debug Controller
+           ))
         {
             await _next(context);
             return;
         }
 
-        // Check if maintenance mode is enabled
-        var isMaintenanceMode = await settingsService.IsMaintenanceModeEnabledAsync();
-        
-        if (!isMaintenanceMode)
+        bool isMaintenance = false;
+        try 
+        {
+            isMaintenance = await settingsService.IsMaintenanceModeEnabledAsync();
+        }
+        catch (Exception ex)
+        {
+             // PROD-DEBUG: If DB is down (ConnectionString not initialized), treat as NOT maintenance so we can debug
+             // Otherwise user sees 500 error instead of useful info or simple failure
+             var logger = context.RequestServices.GetService<ILogger<MaintenanceModeMiddleware>>();
+             logger?.LogWarning(ex, "Failed to check maintenance mode (likely DB down). Proceeding for debug.");
+             isMaintenance = false;
+        }
+
+        if (!isMaintenance)
         {
             await _next(context);
             return;

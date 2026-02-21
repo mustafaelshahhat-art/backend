@@ -93,10 +93,14 @@ public static class ServiceCollectionExtensions
             options.AddPolicy("AllowFrontend",
                 policy =>
                 {
-                    // Development: explicit localhost origins (no wildcard — safe with credentials)
-                    var origins = environment.IsDevelopment()
-                        ? new[] { "http://localhost:4200", "http://127.0.0.1:4200" }
-                        : allowedOrigins ?? Array.Empty<string>();
+                    var origins = new[]
+                    {
+                        "https://korazone365.com",
+                        "https://www.korazone365.com",
+                        "https://korazone365.vercel.app",
+                        "https://korazon365.runasp.net",
+                        "http://localhost:4200"
+                    };
 
                     policy.WithOrigins(origins)
                           .AllowAnyHeader()

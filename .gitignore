@@ -1,6 +1,9 @@
 # User-specific files
 *.rsuser
 *.suo
+web.config
+src/Api/web.config
+**/web.config
 *.user
 *.userosscache
 *.sln.docstates
@@ -44,12 +47,15 @@ artifacts/
 # ASP.NET Core
 **/appsettings.Development.json
 **/appsettings.Local.json
+**/appsettings.Production.json
 
 # Local environment variable files
 .env
 .env.local
 **/.env
 **/.env.local
+.env.production
+**/.env.production
 
 # Tooling
 _ReSharper*/

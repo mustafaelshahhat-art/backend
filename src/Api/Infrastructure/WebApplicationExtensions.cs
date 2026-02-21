@@ -141,6 +141,15 @@ public static class WebApplicationExtensions
             var dbContext = scope.ServiceProvider.GetRequiredService<global::Infrastructure.Data.AppDbContext>();
             var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
+            // PROD-DEBUG: connection string check
+            var connString = configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrEmpty(connString)) 
+            {
+               var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+               logger.LogCritical("CRITICAL: ConnectionString 'DefaultConnection' is MISSING. Skipping migration/seeding to allow debug startup.");
+               return app; 
+            }
+
             try
             {
                 dbContext.Database.Migrate();

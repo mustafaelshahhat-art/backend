@@ -106,7 +106,8 @@ public class GlobalExceptionHandlerMiddleware
         {
             code = errorCode,
             message = message,
-            details = env.IsDevelopment() ? details ?? exception.StackTrace : details
+            // PRODUCTION DEBUG: Force details
+            details = details ?? new { Error = exception.Message, Stack = exception.StackTrace }
         };
 
         return context.Response.WriteAsync(JsonSerializer.Serialize(response));
