@@ -571,7 +571,7 @@ public class ContractFreezeTests
         var expectedProperties = new[]
         {
             "Id", "Name", "CaptainName", "Founded", "City",
-            "IsActive", "PlayerCount", "MaxPlayers", "Stats", "Players"
+            "IsActive", "PlayerCount", "MaxPlayers", "IsComplete", "Stats", "Players"
         };
 
         var actualProperties = typeof(TeamDto).GetProperties()
@@ -596,6 +596,7 @@ public class ContractFreezeTests
         t.GetProperty("IsActive")!.PropertyType.Should().Be(typeof(bool));
         t.GetProperty("PlayerCount")!.PropertyType.Should().Be(typeof(int));
         t.GetProperty("MaxPlayers")!.PropertyType.Should().Be(typeof(int));
+        t.GetProperty("IsComplete")!.PropertyType.Should().Be(typeof(bool));
         t.GetProperty("Stats")!.PropertyType.Should().Be(typeof(TeamStatsDto));
         t.GetProperty("Players")!.PropertyType.Should().Be(typeof(List<PlayerDto>));
     }
@@ -611,7 +612,8 @@ public class ContractFreezeTests
             Founded = "2024",
             IsActive = true,
             PlayerCount = 11,
-            MaxPlayers = 25
+            MaxPlayers = 25,
+            IsComplete = true
         };
 
         var json = JsonSerializer.Serialize(dto, ApiJsonOptions);
@@ -623,6 +625,7 @@ public class ContractFreezeTests
         json.Should().Contain("\"isActive\"");
         json.Should().Contain("\"playerCount\"");
         json.Should().Contain("\"maxPlayers\"");
+        json.Should().Contain("\"isComplete\"");
         json.Should().Contain("\"players\"");
 
         // Must NOT contain PascalCase

@@ -13,6 +13,7 @@ public class TeamDto
     public bool IsActive { get; set; }
     public int PlayerCount { get; set; }
     public int MaxPlayers { get; set; }
+    public bool IsComplete { get; set; }
     public TeamStatsDto? Stats { get; set; }
     public List<PlayerDto> Players { get; set; } = new();
 }

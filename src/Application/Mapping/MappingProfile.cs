@@ -55,6 +55,7 @@ public class MappingProfile : Profile
             .ForMember(d => d.CaptainName, o => o.Ignore())
             .ForMember(d => d.PlayerCount, o => o.MapFrom(s => s.Players.Count))
             .ForMember(d => d.MaxPlayers, o => o.MapFrom(s => 10))
+            .ForMember(d => d.IsComplete, o => o.MapFrom(s => s.Players.Count >= Team.MinPlayersForCompletion))
             .ForMember(d => d.Stats, o => o.MapFrom(s => s.Statistics));
         
         CreateMap<TeamStats, TeamStatsDto>()

@@ -324,7 +324,8 @@ public class RealTimeNotifier : IRealTimeNotifier
                 team.City,
                 team.IsActive,
                 team.PlayerCount,
-                team.MaxPlayers
+                team.MaxPlayers,
+                team.IsComplete
             };
             await _hubContext.Clients.All.SendAsync("TeamCreated", slim, ct);
         }
@@ -348,6 +349,7 @@ public class RealTimeNotifier : IRealTimeNotifier
                 team.IsActive,
                 team.PlayerCount,
                 team.MaxPlayers,
+                team.IsComplete,
                 team.Stats
             };
             await _hubContext.Clients.All.SendAsync("TeamUpdated", slim, ct);

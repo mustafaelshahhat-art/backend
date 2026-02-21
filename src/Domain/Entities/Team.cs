@@ -5,6 +5,8 @@ namespace Domain.Entities;
 
 public class Team : BaseEntity
 {
+    public const int MinPlayersForCompletion = 6;
+
     public string Name { get; set; } = string.Empty;
     public string Founded { get; set; } = string.Empty;
     public string? City { get; set; }

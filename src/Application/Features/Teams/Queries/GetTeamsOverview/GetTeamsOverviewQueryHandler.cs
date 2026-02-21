@@ -45,7 +45,8 @@ public class GetTeamsOverviewQueryHandler : IRequestHandler<GetTeamsOverviewQuer
             {
                 Id = t.Id, Name = t.Name, CaptainName = t.CaptainName,
                 Founded = t.Founded, City = t.City, IsActive = t.IsActive,
-                PlayerCount = t.PlayerCount, MaxPlayers = 25,
+                PlayerCount = t.PlayerCount, MaxPlayers = 10,
+                IsComplete = t.PlayerCount >= Team.MinPlayersForCompletion,
                 Stats = t.HasStats ? new TeamStatsDto
                 {
                     Matches = t.MatchesPlayed, Wins = t.Wins, Draws = t.Draws,

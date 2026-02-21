@@ -32,6 +32,7 @@ public class GetTeamsPagedQueryHandler : IRequestHandler<GetTeamsPagedQuery, Pag
             {
                 Id = t.Id, Name = t.Name, Founded = t.Founded, City = t.City, IsActive = t.IsActive,
                 PlayerCount = t.Players.Count, MaxPlayers = 10,
+                IsComplete = t.Players.Count >= Team.MinPlayersForCompletion,
                 CaptainName = t.Players.Where(p => p.TeamRole == TeamRole.Captain).Select(p => p.Name).FirstOrDefault() ?? string.Empty,
                 Stats = t.Statistics != null ? new TeamStatsDto
                 {
