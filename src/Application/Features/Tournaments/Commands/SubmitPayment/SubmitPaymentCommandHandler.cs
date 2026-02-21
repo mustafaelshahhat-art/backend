@@ -15,17 +15,20 @@ public class SubmitPaymentCommandHandler : IRequestHandler<SubmitPaymentCommand,
     private readonly IRepository<Team> _teamRepository;
     private readonly IFileStorageService _fileStorage;
     private readonly IMapper _mapper;
+    private readonly IRealTimeNotifier _notifier;
 
     public SubmitPaymentCommandHandler(
         IRepository<TeamRegistration> registrationRepository,
         IRepository<Team> teamRepository,
         IFileStorageService fileStorage,
-        IMapper mapper)
+        IMapper mapper,
+        IRealTimeNotifier notifier)
     {
         _registrationRepository = registrationRepository;
         _teamRepository = teamRepository;
         _fileStorage = fileStorage;
         _mapper = mapper;
+        _notifier = notifier;
     }
 
     public async Task<TeamRegistrationDto> Handle(SubmitPaymentCommand request, CancellationToken cancellationToken)
@@ -51,6 +54,9 @@ public class SubmitPaymentCommandHandler : IRequestHandler<SubmitPaymentCommand,
         
         await _registrationRepository.UpdateAsync(registration, cancellationToken);
         
-        return _mapper.Map<TeamRegistrationDto>(registration);
+        var registrationDto = _mapper.Map<TeamRegistrationDto>(registration);
+        await _notifier.SendRegistrationUpdatedAsync(registrationDto, cancellationToken);
+        
+        return registrationDto;
     }
 }

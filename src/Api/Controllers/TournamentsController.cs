@@ -163,6 +163,7 @@ public class TournamentsController : ControllerBase
         // PROD-AUDIT: Use Command for Transaction Safety (Validation now handled by Pipeline)
         var command = new Application.Features.Tournaments.Commands.RegisterTeam.RegisterTeamCommand(id, request.TeamId, userId);
         var registration = await _mediator.Send(command, cancellationToken);
+        await _cacheStore.EvictByTagAsync("tournaments", cancellationToken);
         return StatusCode(StatusCodes.Status201Created, registration);
     }
 
@@ -198,6 +199,7 @@ public class TournamentsController : ControllerBase
             paymentMethod);
 
         var registration = await _mediator.Send(command, cancellationToken);
+        await _cacheStore.EvictByTagAsync("tournaments", cancellationToken);
         return Ok(registration);
     }
 

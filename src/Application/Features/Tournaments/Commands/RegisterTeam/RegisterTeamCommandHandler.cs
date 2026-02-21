@@ -152,6 +152,7 @@ public class RegisterTeamCommandHandler : IRequestHandler<RegisterTeamCommand, T
             // Notify Real-Time
             var tournamentDto = _mapper.Map<TournamentDto>(tournament);
             await _notifier.SendTournamentUpdatedAsync(tournamentDto, cancellationToken);
+            await _notifier.SendRegistrationUpdatedAsync(registrationDto, cancellationToken);
 
             return registrationDto;
         }
