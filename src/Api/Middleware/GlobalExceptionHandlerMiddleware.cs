@@ -102,12 +102,20 @@ public class GlobalExceptionHandlerMiddleware
 
         var env = context.RequestServices.GetRequiredService<IWebHostEnvironment>();
         
+        // PERF-FIX (Security): Only include stack traces in Development.
+        // Previously leaked exception.Message + exception.StackTrace to ALL clients
+        // in all environments (including Production), exposing internal implementation details.
+        object? responseDetails = details;
+        if (responseDetails == null && env.IsDevelopment())
+        {
+            responseDetails = new { Error = exception.Message, Stack = exception.StackTrace };
+        }
+
         var response = new
         {
             code = errorCode,
             message = message,
-            // PRODUCTION DEBUG: Force details
-            details = details ?? new { Error = exception.Message, Stack = exception.StackTrace }
+            details = responseDetails
         };
 
         return context.Response.WriteAsync(JsonSerializer.Serialize(response));

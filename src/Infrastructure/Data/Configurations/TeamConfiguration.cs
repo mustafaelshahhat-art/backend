@@ -18,5 +18,9 @@ public class TeamConfiguration : IEntityTypeConfiguration<Team>
 
         builder.HasIndex(t => t.City)
             .HasDatabaseName("IX_Teams_City");
+
+        // PERF-FIX: Name index for ORDER BY in GetTeamsPaged
+        builder.HasIndex(t => t.Name)
+            .HasDatabaseName("IX_Teams_Name");
     }
 }

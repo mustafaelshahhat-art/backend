@@ -118,6 +118,11 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
         return await query.Where(predicate).ToListAsync(ct);
     }
 
+    // PERF-FIX: Stage-only methods — track the change in the DbContext without flushing.
+    // Handlers should call _unitOfWork.SaveChangesAsync() once at the end for a single atomic round-trip.
+    // The legacy methods below still call SaveChanges for backward-compat with existing handlers
+    // that haven't been migrated to UnitOfWork yet.
+
     public async Task AddAsync(T entity, CancellationToken ct = default)
     {
         await _dbSet.AddAsync(entity, ct);
@@ -167,6 +172,41 @@ public class GenericRepository<T> : IRepository<T> where T : BaseEntity
     {
         _dbSet.Remove(entity);
         await _context.SaveChangesAsync(ct);
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // PERF-FIX: Stage-only variants — NO SaveChanges call.
+    // Use with IUnitOfWork.SaveChangesAsync() for batched atomic saves.
+    // ──────────────────────────────────────────────────────────
+
+    public async Task StageAddAsync(T entity, CancellationToken ct = default)
+    {
+        await _dbSet.AddAsync(entity, ct);
+    }
+
+    public async Task StageAddRangeAsync(IEnumerable<T> entities, CancellationToken ct = default)
+    {
+        await _dbSet.AddRangeAsync(entities, ct);
+    }
+
+    public void StageUpdate(T entity)
+    {
+        _dbSet.Update(entity);
+    }
+
+    public void StageUpdateRange(IEnumerable<T> entities)
+    {
+        _dbSet.UpdateRange(entities);
+    }
+
+    public void StageDelete(T entity)
+    {
+        _dbSet.Remove(entity);
+    }
+
+    public void StageDeleteRange(IEnumerable<T> entities)
+    {
+        _dbSet.RemoveRange(entities);
     }
 
     public async Task<int> CountAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default)

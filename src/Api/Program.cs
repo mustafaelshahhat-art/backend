@@ -14,11 +14,16 @@ if (builder.Environment.IsDevelopment())
 }
 
 // PROD-AUDIT: Structured Logging
+// PERF-FIX: File sink wrapped in Async to prevent synchronous I/O from blocking
+// request threads under load. Also added fileSizeLimitBytes to prevent disk exhaustion.
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
     .WriteTo.Console()
-    .WriteTo.File("logs/log-.txt", rollingInterval: RollingInterval.Day)
+    .WriteTo.Async(a => a.File("logs/log-.txt",
+        rollingInterval: RollingInterval.Day,
+        fileSizeLimitBytes: 50_000_000, // 50 MB per file
+        retainedFileCountLimit: 7))
     .CreateLogger();
 builder.Host.UseSerilog();
 

@@ -90,7 +90,10 @@ public static class DependencyInjection
             services.AddSingleton<IDistributedLock, Services.SqlDistributedLockService>();
         }
 
-        services.AddDbContext<AppDbContext>(options =>
+        // PERF-FIX: Use AddDbContextPool for context reuse — reduces GC pressure
+        // and eliminates per-request model creation overhead.
+        // The NoTracking default is set in OnConfiguring (required for pooling).
+        services.AddDbContextPool<AppDbContext>(options =>
             options.UseSqlServer(configuration.GetConnectionString("DefaultConnection"),
                 sqlOptions =>
                 {

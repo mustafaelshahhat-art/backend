@@ -14,6 +14,8 @@ public class AppDbContext : DbContext
         // ENTERPRISE: Default to NoTracking for all read queries.
         // Command handlers that need tracking must use explicit .AsTracking() or rely on
         // GetByIdAsync (which uses FindAsync — always tracked).
+        // NOTE: With AddDbContextPool, this runs once per pooled instance.
+        // QueryTrackingBehavior persists across pool checkouts (EF doesn't reset it).
         ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
     }
 
@@ -115,59 +117,63 @@ public class AppDbContext : DbContext
         }
         
         // Cascade IsDeleted to all entities that depend on soft-deleted teams
+        // PERF-FIX: Use ExecuteUpdateAsync for bulk cascades — single SQL per entity type,
+        // no entity materialization into memory (was 7+ SELECT queries loading all dependents).
         if (teamsBeingDeleted.Count > 0)
         {
-            // Load Players + Matches (always needed for downstream cascades)
-            var players = await Players.IgnoreQueryFilters()
+            // Cascade Players
+            var affectedPlayerIds = await Players.IgnoreQueryFilters()
                 .Where(p => teamsBeingDeleted.Contains(p.TeamId) && !EF.Property<bool>(p, "IsDeleted"))
+                .Select(p => p.Id)
                 .ToListAsync(cancellationToken);
-            foreach (var p in players) Entry(p).Property("IsDeleted").CurrentValue = true;
-            
-            var matches = await Matches.IgnoreQueryFilters()
-                .Where(m => (teamsBeingDeleted.Contains(m.HomeTeamId) || teamsBeingDeleted.Contains(m.AwayTeamId)) && !EF.Property<bool>(m, "IsDeleted"))
-                .ToListAsync(cancellationToken);
-            foreach (var m in matches) Entry(m).Property("IsDeleted").CurrentValue = true;
-            
-            // Cascade to match-dependent entities only if there are affected matches
-            var matchIds = matches.Select(m => m.Id).ToList();
-            if (matchIds.Count > 0)
-            {
-                var events = await MatchEvents.IgnoreQueryFilters()
-                    .Where(e => matchIds.Contains(e.MatchId) && !EF.Property<bool>(e, "IsDeleted"))
-                    .ToListAsync(cancellationToken);
-                foreach (var e in events) Entry(e).Property("IsDeleted").CurrentValue = true;
-                
-                var messages = await MatchMessages.IgnoreQueryFilters()
-                    .Where(msg => matchIds.Contains(msg.MatchId) && !EF.Property<bool>(msg, "IsDeleted"))
-                    .ToListAsync(cancellationToken);
-                foreach (var msg in messages) Entry(msg).Property("IsDeleted").CurrentValue = true;
-            }
-            
-            // Cascade to team-dependent entities
-            var regs = await TeamRegistrations.IgnoreQueryFilters()
-                .Where(r => teamsBeingDeleted.Contains(r.TeamId) && !EF.Property<bool>(r, "IsDeleted"))
-                .ToListAsync(cancellationToken);
-            foreach (var r in regs) Entry(r).Property("IsDeleted").CurrentValue = true;
-            
-            var joinRequests = await TeamJoinRequests.IgnoreQueryFilters()
-                .Where(r => teamsBeingDeleted.Contains(r.TeamId) && !EF.Property<bool>(r, "IsDeleted"))
-                .ToListAsync(cancellationToken);
-            foreach (var r in joinRequests) Entry(r).Property("IsDeleted").CurrentValue = true;
 
-            // Cascade IsDeleted to TeamStats
-            var teamStats = await TeamStats.IgnoreQueryFilters()
-                .Where(s => teamsBeingDeleted.Contains(s.TeamId) && !EF.Property<bool>(s, "IsDeleted"))
-                .ToListAsync(cancellationToken);
-            foreach (var s in teamStats) Entry(s).Property("IsDeleted").CurrentValue = true;
-            
-            // Cascade to tournament players only if there are affected players
-            var playerIds = players.Select(p => p.Id).ToList();
-            if (playerIds.Count > 0)
+            if (affectedPlayerIds.Count > 0)
             {
-                var tournamentPlayers = await TournamentPlayers.IgnoreQueryFilters()
-                    .Where(tp => playerIds.Contains(tp.PlayerId) && !EF.Property<bool>(tp, "IsDeleted"))
-                    .ToListAsync(cancellationToken);
-                foreach (var tp in tournamentPlayers) Entry(tp).Property("IsDeleted").CurrentValue = true;
+                await Players.IgnoreQueryFilters()
+                    .Where(p => affectedPlayerIds.Contains(p.Id))
+                    .ExecuteUpdateAsync(s => s.SetProperty(p => EF.Property<bool>(p, "IsDeleted"), true), cancellationToken);
+            }
+
+            // Cascade Matches + their dependents
+            var affectedMatchIds = await Matches.IgnoreQueryFilters()
+                .Where(m => (teamsBeingDeleted.Contains(m.HomeTeamId) || teamsBeingDeleted.Contains(m.AwayTeamId)) && !EF.Property<bool>(m, "IsDeleted"))
+                .Select(m => m.Id)
+                .ToListAsync(cancellationToken);
+
+            if (affectedMatchIds.Count > 0)
+            {
+                await Matches.IgnoreQueryFilters()
+                    .Where(m => affectedMatchIds.Contains(m.Id))
+                    .ExecuteUpdateAsync(s => s.SetProperty(m => EF.Property<bool>(m, "IsDeleted"), true), cancellationToken);
+
+                await MatchEvents.IgnoreQueryFilters()
+                    .Where(e => affectedMatchIds.Contains(e.MatchId) && !EF.Property<bool>(e, "IsDeleted"))
+                    .ExecuteUpdateAsync(s => s.SetProperty(e => EF.Property<bool>(e, "IsDeleted"), true), cancellationToken);
+
+                await MatchMessages.IgnoreQueryFilters()
+                    .Where(msg => affectedMatchIds.Contains(msg.MatchId) && !EF.Property<bool>(msg, "IsDeleted"))
+                    .ExecuteUpdateAsync(s => s.SetProperty(msg => EF.Property<bool>(msg, "IsDeleted"), true), cancellationToken);
+            }
+
+            // Cascade team-dependent entities (single SQL each)
+            await TeamRegistrations.IgnoreQueryFilters()
+                .Where(r => teamsBeingDeleted.Contains(r.TeamId) && !EF.Property<bool>(r, "IsDeleted"))
+                .ExecuteUpdateAsync(s => s.SetProperty(r => EF.Property<bool>(r, "IsDeleted"), true), cancellationToken);
+
+            await TeamJoinRequests.IgnoreQueryFilters()
+                .Where(r => teamsBeingDeleted.Contains(r.TeamId) && !EF.Property<bool>(r, "IsDeleted"))
+                .ExecuteUpdateAsync(s => s.SetProperty(r => EF.Property<bool>(r, "IsDeleted"), true), cancellationToken);
+
+            await TeamStats.IgnoreQueryFilters()
+                .Where(s => teamsBeingDeleted.Contains(s.TeamId) && !EF.Property<bool>(s, "IsDeleted"))
+                .ExecuteUpdateAsync(s => s.SetProperty(ts => EF.Property<bool>(ts, "IsDeleted"), true), cancellationToken);
+
+            // Cascade to tournament players via affected players
+            if (affectedPlayerIds.Count > 0)
+            {
+                await TournamentPlayers.IgnoreQueryFilters()
+                    .Where(tp => affectedPlayerIds.Contains(tp.PlayerId) && !EF.Property<bool>(tp, "IsDeleted"))
+                    .ExecuteUpdateAsync(s => s.SetProperty(tp => EF.Property<bool>(tp, "IsDeleted"), true), cancellationToken);
             }
         }
 

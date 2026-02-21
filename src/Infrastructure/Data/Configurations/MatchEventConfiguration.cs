@@ -21,5 +21,9 @@ public class MatchEventConfiguration : IEntityTypeConfiguration<MatchEvent>
         // Indexes
         builder.HasIndex(me => me.MatchId)
             .HasDatabaseName("IX_MatchEvents_MatchId");
+
+        // PERF-FIX: Composite index for goal/event queries that filter by (MatchId, Type, TeamId)
+        builder.HasIndex(me => new { me.MatchId, me.Type, me.TeamId })
+            .HasDatabaseName("IX_MatchEvents_Match_Type_Team");
     }
 }

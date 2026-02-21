@@ -28,6 +28,16 @@ public interface IRepository<T> where T : BaseEntity
     Task DeleteAsync(Guid id, CancellationToken ct = default);
     Task DeleteRangeAsync(IEnumerable<T> entities, CancellationToken ct = default);
     Task HardDeleteAsync(T entity, CancellationToken ct = default);
+
+    // PERF-FIX: Stage-only variants — track changes without calling SaveChanges.
+    // Use with IUnitOfWork.SaveChangesAsync() for a single atomic round-trip.
+    Task StageAddAsync(T entity, CancellationToken ct = default);
+    Task StageAddRangeAsync(IEnumerable<T> entities, CancellationToken ct = default);
+    void StageUpdate(T entity);
+    void StageUpdateRange(IEnumerable<T> entities);
+    void StageDelete(T entity);
+    void StageDeleteRange(IEnumerable<T> entities);
+
     Task<int> CountAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default);
     Task<bool> AnyAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default);
     Task<bool> AnyAsync(Expression<Func<T, bool>> predicate, bool ignoreFilters, CancellationToken ct = default);

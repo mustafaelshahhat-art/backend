@@ -54,7 +54,6 @@ public static class WebApplicationExtensions
 
         app.UseCookiePolicy();
         app.UseMiddleware<CorrelationIdMiddleware>(); // PROD-AUDIT: Traceability
-        app.UseMiddleware<IdempotencyMiddleware>();
         app.UseMiddleware<SlowQueryMiddleware>(); // PROD-AUDIT: Performance
         app.UseSerilogRequestLogging(options =>
         {
@@ -104,10 +103,19 @@ public static class WebApplicationExtensions
 
         app.UseMiddleware<SecurityHeadersMiddleware>();
 
+        // PERF-FIX: Rate limiter BEFORE authentication — blocks floods before they hit
+        // the JWT validation + cache/DB lookup pipeline. Without this, attackers sending
+        // rapid requests with invalid tokens still exhaust the auth pipeline.
+        app.UseRateLimiter();
+
         app.UseAuthentication();
         app.UseMiddleware<UserStatusCheckMiddleware>();
         app.UseMiddleware<MaintenanceModeMiddleware>();
-        app.UseRateLimiter(); // Enable Rate Limiting
+
+        // PERF-FIX: IdempotencyMiddleware AFTER authentication — prevents unauthenticated
+        // requests from hitting the database for idempotency key lookups.
+        app.UseMiddleware<IdempotencyMiddleware>();
+
         app.UseAuthorization();
 
         return app;
