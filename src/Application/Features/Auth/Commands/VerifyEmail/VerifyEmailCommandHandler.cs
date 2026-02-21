@@ -56,15 +56,26 @@ public class VerifyEmailCommandHandler : IRequestHandler<VerifyEmailCommand, Uni
         user.IsEmailVerified = true;
         await _userRepository.UpdateAsync(user, ct);
 
-        var mappedUser = await _authUserResolver.ResolveUserWithTeamAsync(user, ct);
-        await _teamNotifier.SendUserCreatedAsync(mappedUser, ct);
-
-        await _teamNotifier.NotifyByTemplateAsync(
-            Guid.Empty, NotificationTemplates.ADMIN_USER_VERIFIED_PENDING_APPROVAL,
-            new Dictionary<string, string>
+        // Fire-and-forget notifications — don't block the HTTP response for SignalR/DB writes
+        _ = Task.Run(async () =>
+        {
+            try
             {
-                { "name", user.Name }, { "email", user.Email }, { "role", user.Role.ToString() }
-            }, ct: ct);
+                var mappedUser = await _authUserResolver.ResolveUserWithTeamAsync(user, ct);
+                await _teamNotifier.SendUserCreatedAsync(mappedUser, ct);
+
+                await _teamNotifier.NotifyByTemplateAsync(
+                    Guid.Empty, NotificationTemplates.ADMIN_USER_VERIFIED_PENDING_APPROVAL,
+                    new Dictionary<string, string>
+                    {
+                        { "name", user.Name }, { "email", user.Email }, { "role", user.Role.ToString() }
+                    }, ct: ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[VerifyEmail] Failed to send post-verification notifications for User: {UserId}", user.Id);
+            }
+        }, ct);
 
         return Unit.Value;
     }

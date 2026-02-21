@@ -25,12 +25,13 @@ public class OtpService : IOtpService
 
     public async Task<string> GenerateOtpAsync(Guid userId, string type, CancellationToken ct = default)
     {
-        // 1. Invalidate any existing active OTPs for this user and type
-        var existingOtps = await _otpRepository.FindAsync(o => o.UserId == userId && o.Type == type && !o.IsUsed && o.ExpiresAt > DateTime.UtcNow, ct);
-        foreach (var existing in existingOtps)
+        // 1. Invalidate any existing active OTPs for this user and type (batch update)
+        var existingOtps = (await _otpRepository.FindAsync(o => o.UserId == userId && o.Type == type && !o.IsUsed && o.ExpiresAt > DateTime.UtcNow, ct)).ToList();
+        if (existingOtps.Count > 0)
         {
-            existing.IsUsed = true; // Effectively cancel them
-            await _otpRepository.UpdateAsync(existing, ct);
+            foreach (var existing in existingOtps)
+                existing.IsUsed = true;
+            await _otpRepository.UpdateRangeAsync(existingOtps, ct);
         }
 
         // 2. Generate 6-digit numeric OTP

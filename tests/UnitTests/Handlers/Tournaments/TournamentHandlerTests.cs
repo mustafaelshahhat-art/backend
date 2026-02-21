@@ -36,6 +36,7 @@ public class TournamentHandlerTests
     private readonly Mock<IRepository<Match>> _matchRepo = new();
     private readonly Mock<IRepository<Team>> _teamRepo = new();
     private readonly Mock<IRepository<TournamentPlayer>> _tournamentPlayerRepo = new();
+    private readonly Mock<IRepository<User>> _userRepo = new();
     private readonly Mock<IMapper> _mapper = new();
     private readonly Mock<IMediator> _mediator = new();
     private readonly Mock<IDistributedLock> _distributedLock = new();
@@ -543,7 +544,7 @@ public class TournamentHandlerTests
         _mapper.Setup(m => m.Map<TournamentDto>(It.IsAny<Tournament>()))
             .Returns((Tournament t) => new TournamentDto { Id = t.Id, Name = t.Name, Status = t.Status.ToString() });
 
-        var handler = new GetTournamentsPagedQueryHandler(_tournamentRepo.Object, _mapper.Object);
+        var handler = new GetTournamentsPagedQueryHandler(_tournamentRepo.Object, _userRepo.Object);
 
         // Act
         var result = await handler.Handle(

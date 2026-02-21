@@ -10,15 +10,17 @@ public static class EmailPolicies
 {
     public static IAsyncPolicy GetResiliencePolicy(ILogger logger)
     {
-        // 1. Timeout Policy: 30 seconds per attempt
+        // 1. Timeout Policy: 15 seconds per attempt (was 30s)
         var timeoutPolicy = Policy
-            .TimeoutAsync(TimeSpan.FromSeconds(30));
+            .TimeoutAsync(TimeSpan.FromSeconds(15));
 
-        // 2. Retry Policy: Exponential backoff (2s, 4s, 8s)
+        // 2. Retry Policy: Single retry with 2s delay (was 3 retries × exponential)
+        // Reduced because EmailQueueService already retries 3x with its own backoff.
+        // Combined: 1 Polly retry × 3 queue retries = 6 attempts max (was 4×3=12)
         var retryPolicy = Policy
             .Handle<Exception>()
-            .WaitAndRetryAsync(3, 
-                retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+            .WaitAndRetryAsync(1, 
+                retryAttempt => TimeSpan.FromSeconds(2),
                 (exception, timeSpan, retryCount, context) =>
                 {
                     logger.LogWarning(exception, $"[RESILIENCE_RETRY] Attempt {retryCount} failed. Retrying in {timeSpan.TotalSeconds}s.");

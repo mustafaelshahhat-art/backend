@@ -89,6 +89,22 @@ public class ManualDrawCommandHandler : IRequestHandler<ManualDrawCommand, Match
                 if (request.Request.GroupAssignments.Count != tournament.NumberOfGroups)
                     throw new BadRequestException($"يجب تعيين الفرق لعدد {tournament.NumberOfGroups} مجموعة بالضبط.");
 
+                // ── CRITICAL: Persist GroupId on TeamRegistration so standings queries work ──
+                var registrationsToUpdate = new List<TeamRegistration>();
+                foreach (var group in request.Request.GroupAssignments)
+                {
+                    foreach (var teamId in group.TeamIds)
+                    {
+                        var reg = approvedRegistrations.FirstOrDefault(r => r.TeamId == teamId);
+                        if (reg != null)
+                        {
+                            reg.GroupId = group.GroupId;
+                            registrationsToUpdate.Add(reg);
+                        }
+                    }
+                }
+                await _registrationRepository.UpdateRangeAsync(registrationsToUpdate, cancellationToken);
+
                 foreach (var group in request.Request.GroupAssignments)
                 {
                     var teams = group.TeamIds;

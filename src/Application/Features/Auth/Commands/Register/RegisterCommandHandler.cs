@@ -46,29 +46,33 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthRespo
         if (existingUser != null && existingUser.Any())
             throw new ConflictException("البريد الإلكتروني مستخدم بالفعل. يرجى استخدام بريد إلكتروني آخر أو تسجيل الدخول بحسابك الحالي.");
 
+        // Generate token + refresh token upfront so we can persist in a single DB write
+        var refreshToken = _authToken.GenerateRefreshToken();
+
         var user = new User
         {
             Email = email, Name = name,
             PasswordHash = _authToken.HashPassword(req.Password),
             Role = UserRole.Player, Status = UserStatus.Pending,
-            DisplayId = "U-" + new Random().Next(1000, 9999),
+            DisplayId = "U-" + Random.Shared.Next(1000, 9999),
             Phone = req.Phone?.Trim(), NationalId = req.NationalId?.Trim(),
             Age = req.Age, GovernorateId = req.GovernorateId,
             CityId = req.CityId, AreaId = req.AreaId,
             IdFrontUrl = req.IdFrontUrl, IdBackUrl = req.IdBackUrl,
-            IsEmailVerified = false
+            IsEmailVerified = false,
+            RefreshToken = refreshToken,
+            RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7)
         };
 
+        // Single DB insert (was previously add + update = 2 round-trips)
         await _userRepository.AddAsync(user, ct);
 
         var token = _authToken.GenerateToken(user);
-        var refreshToken = _authToken.GenerateRefreshToken();
-        user.RefreshToken = refreshToken;
-        user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
-        await _userRepository.UpdateAsync(user, ct);
 
-        var mappedUser = await _authUserResolver.ResolveUserWithTeamAsync(user, ct);
+        // Map inline — new user never has a team, skip the team/player DB lookups
+        var mappedUser = _authUserResolver.MapUserDtoWithoutTeam(user);
 
+        // OTP + email enqueue (OTP still requires DB, email enqueue is in-memory)
         var otp = await _otpService.GenerateOtpAsync(user.Id, "EMAIL_VERIFY", ct);
         var emailBody = EmailTemplateHelper.CreateOtpTemplate(
             "تفعيل حسابك الجديد", user.Name,

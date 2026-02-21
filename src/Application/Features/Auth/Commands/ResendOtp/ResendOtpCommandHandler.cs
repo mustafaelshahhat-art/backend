@@ -10,13 +10,13 @@ public class ResendOtpCommandHandler : IRequestHandler<ResendOtpCommand, Unit>
 {
     private readonly IRepository<User> _userRepository;
     private readonly IOtpService _otpService;
-    private readonly IEmailService _emailService;
+    private readonly IEmailQueueService _emailQueue;
 
-    public ResendOtpCommandHandler(IRepository<User> userRepository, IOtpService otpService, IEmailService emailService)
+    public ResendOtpCommandHandler(IRepository<User> userRepository, IOtpService otpService, IEmailQueueService emailQueue)
     {
         _userRepository = userRepository;
         _otpService = otpService;
-        _emailService = emailService;
+        _emailQueue = emailQueue;
     }
 
     public async Task<Unit> Handle(ResendOtpCommand request, CancellationToken ct)
@@ -28,21 +28,15 @@ public class ResendOtpCommandHandler : IRequestHandler<ResendOtpCommand, Unit>
 
         var otp = await _otpService.GenerateOtpAsync(user.Id, request.Type, ct);
 
-        try
-        {
-            string title = request.Type == "EMAIL_VERIFY" ? "تفعيل حسابك" : "إعادة تعيين كلمة المرور";
-            string subject = request.Type == "EMAIL_VERIFY" ? "تأكيد بريدك الإلكتروني" : "طلب إعادة تعيين كلمة المرور";
-            string message = request.Type == "EMAIL_VERIFY"
-                ? "لقد طلبت إعادة إرسال رمز التفعيل. يرجى استخدامه لتأكيد بريدك الإليكتروني."
-                : "لقد طلبت إعادة إرسال رمز استعادة الحساب. يرجى استخدامه لتعيين كلمة مرور جديدة.";
+        string title = request.Type == "EMAIL_VERIFY" ? "تفعيل حسابك" : "إعادة تعيين كلمة المرور";
+        string subject = request.Type == "EMAIL_VERIFY" ? "تأكيد بريدك الإلكتروني" : "طلب إعادة تعيين كلمة المرور";
+        string message = request.Type == "EMAIL_VERIFY"
+            ? "لقد طلبت إعادة إرسال رمز التفعيل. يرجى استخدامه لتأكيد بريدك الإليكتروني."
+            : "لقد طلبت إعادة إرسال رمز استعادة الحساب. يرجى استخدامه لتعيين كلمة مرور جديدة.";
 
-            var body = EmailTemplateHelper.CreateOtpTemplate(title, user.Name, message, otp, "10 دقائق");
-            await _emailService.SendEmailAsync(user.Email, $"{subject} – Kora Zone 365", body, ct);
-        }
-        catch
-        {
-            throw new Exception("فشل إرسال البريد الإلكتروني. يرجى المحاولة لاحقاً.");
-        }
+        var body = EmailTemplateHelper.CreateOtpTemplate(title, user.Name, message, otp, "10 دقائق");
+        // Enqueue instead of blocking on SMTP (was synchronous, blocking the HTTP response for up to 104s worst-case)
+        await _emailQueue.EnqueueAsync(user.Email, $"{subject} – Kora Zone 365", body, ct);
 
         return Unit.Value;
     }

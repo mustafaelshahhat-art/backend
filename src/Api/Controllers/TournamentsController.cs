@@ -365,6 +365,9 @@ public class TournamentsController : ControllerBase
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.ManualDraw.ManualDrawCommand(id, request, userId, userRole);
         var result = await _mediator.Send(command, cancellationToken);
+        await _cacheStore.EvictByTagAsync("tournaments", cancellationToken);
+        await _cacheStore.EvictByTagAsync("matches", cancellationToken);
+        await _cacheStore.EvictByTagAsync("standings", cancellationToken);
         return Ok(result);
     }
 
@@ -385,6 +388,9 @@ public class TournamentsController : ControllerBase
         var (userId, userRole) = GetUserContext();
         var command = new Application.Features.Tournaments.Commands.GenerateManualGroupMatches.GenerateManualGroupMatchesCommand(id, userId, userRole);
         var result = await _mediator.Send(command, cancellationToken);
+        await _cacheStore.EvictByTagAsync("tournaments", cancellationToken);
+        await _cacheStore.EvictByTagAsync("matches", cancellationToken);
+        await _cacheStore.EvictByTagAsync("standings", cancellationToken);
         return Ok(result);
     }
 

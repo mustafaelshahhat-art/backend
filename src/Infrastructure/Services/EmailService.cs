@@ -62,9 +62,6 @@ public class EmailService : IEmailService
                     client.DeliveryMethod = SmtpDeliveryMethod.Network;
                     client.Timeout = 20000; // 20 seconds internal timeout
 
-                    // Optional short delay to avoid spam filters on high-velocity bursts
-                    await Task.Delay(Random.Shared.Next(100, 300), ct);
-
                     await client.SendMailAsync(message, ct);
                     _logger.LogInformation("[EMAIL_SUCCESS] Message '{Subject}' sent successfully to {Recipient}", subject, to);
                 }

@@ -5,10 +5,17 @@ namespace Api.Middleware;
 
 /// <summary>
 /// Middleware that blocks all non-admin access when maintenance mode is enabled.
+/// Uses a short-lived in-memory cache to avoid per-request distributed cache / DB hits.
 /// </summary>
 public class MaintenanceModeMiddleware
 {
     private readonly RequestDelegate _next;
+
+    // In-memory cache to avoid hitting IDistributedCache on every request
+    private volatile bool _cachedMaintenanceMode;
+    private DateTime _cacheExpiry = DateTime.MinValue;
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(15);
+    private readonly object _cacheLock = new();
 
     // Paths that are always allowed even during maintenance
     private static readonly string[] AllowedPaths = new[]
@@ -43,7 +50,18 @@ public class MaintenanceModeMiddleware
         bool isMaintenance = false;
         try 
         {
-            isMaintenance = await settingsService.IsMaintenanceModeEnabledAsync();
+            // Fast path: return cached value if still fresh
+            if (DateTime.UtcNow < _cacheExpiry)
+            {
+                isMaintenance = _cachedMaintenanceMode;
+            }
+            else
+            {
+                isMaintenance = await settingsService.IsMaintenanceModeEnabledAsync();
+                // Update in-memory cache (benign race on concurrent requests)
+                _cachedMaintenanceMode = isMaintenance;
+                _cacheExpiry = DateTime.UtcNow.Add(CacheDuration);
+            }
         }
         catch (Exception ex)
         {

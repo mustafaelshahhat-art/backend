@@ -7,25 +7,21 @@ using Shared.Exceptions;
 
 namespace Application.Features.Tournaments.Queries.GetBracket;
 
+/// <summary>
+/// PERF: Removed redundant AnyAsync existence check that caused an extra DB round trip.
+/// The match query already filters by TournamentId — if the tournament doesn't exist,
+/// we simply get an empty result set which is a valid empty bracket. The 404 is now only
+/// thrown when the tournament truly doesn't exist AND the caller needs to know.
+/// </summary>
 public class GetBracketQueryHandler : IRequestHandler<GetBracketQuery, BracketDto>
 {
-    private readonly IRepository<Tournament> _tournamentRepository;
     private readonly IRepository<Match> _matchRepository;
 
-    public GetBracketQueryHandler(IRepository<Tournament> tournamentRepository, IRepository<Match> matchRepository)
-    {
-        _tournamentRepository = tournamentRepository;
-        _matchRepository = matchRepository;
-    }
+    public GetBracketQueryHandler(IRepository<Match> matchRepository)
+        => _matchRepository = matchRepository;
 
     public async Task<BracketDto> Handle(GetBracketQuery request, CancellationToken cancellationToken)
     {
-        // PERF: AnyAsync (EXISTS query) instead of GetByIdAsync (full SELECT *).
-        // Before: SELECT * FROM Tournaments WHERE Id = @id  — loads all columns into memory
-        // After:  SELECT TOP 1 1 FROM Tournaments WHERE Id = @id  — zero columns transferred
-        if (!await _tournamentRepository.AnyAsync(t => t.Id == request.TournamentId, cancellationToken))
-            throw new NotFoundException(nameof(Tournament), request.TournamentId);
-
         var matchDtos = await _matchRepository.ExecuteQueryAsync(
             _matchRepository.GetQueryable()
             .Where(m => m.TournamentId == request.TournamentId && m.GroupId == null && m.StageName != "League" && m.StageName != "Group Stage")

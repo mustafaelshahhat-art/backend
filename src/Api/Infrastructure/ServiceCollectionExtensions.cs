@@ -48,6 +48,7 @@ public static class ServiceCollectionExtensions
             options.AddPolicy("TournamentList", builder => builder
                 .Expire(TimeSpan.FromSeconds(30))
                 .SetVaryByQuery("page", "pageSize")
+                .SetVaryByHeader("Authorization")
                 .Tag("tournaments"));
             // PERF: New policies for previously uncached endpoints
             options.AddPolicy("TournamentDetail", builder => builder

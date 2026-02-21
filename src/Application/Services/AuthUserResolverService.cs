@@ -43,4 +43,10 @@ public class AuthUserResolverService : IAuthUserResolverService
         }
         return dto;
     }
+
+    /// <inheritdoc />
+    public UserDto MapUserDtoWithoutTeam(User user)
+    {
+        return _mapper.Map<UserDto>(user);
+    }
 }

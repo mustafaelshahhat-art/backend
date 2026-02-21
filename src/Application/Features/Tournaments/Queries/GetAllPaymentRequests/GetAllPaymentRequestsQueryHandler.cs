@@ -57,6 +57,7 @@ public class GetAllPaymentRequestsQueryHandler : IRequestHandler<GetAllPaymentRe
                     Id = r.Tournament != null ? r.Tournament.Id : Guid.Empty,
                     Name = r.Tournament != null ? r.Tournament.Name : string.Empty,
                     EntryFee = r.Tournament != null ? r.Tournament.EntryFee : 0,
+                    CreatorUserId = r.Tournament != null ? r.Tournament.CreatorUserId : null,
                     WalletNumber = r.Tournament != null ? r.Tournament.WalletNumber : null,
                     InstaPayNumber = r.Tournament != null ? r.Tournament.InstaPayNumber : null,
                     PaymentMethodsJson = r.Tournament != null ? r.Tournament.PaymentMethodsJson : null
