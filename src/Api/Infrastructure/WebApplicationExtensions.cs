@@ -132,6 +132,10 @@ public static class WebApplicationExtensions
         app.MapHub<Api.Hubs.NotificationHub>("/hubs/notifications");
         app.MapHub<Api.Hubs.MatchChatHub>("/hubs/chat");
 
+        // SPA fallback: serve index.html for any non-API, non-file route
+        // This lets Angular's client-side router handle /tournaments, /teams, etc.
+        app.MapFallbackToFile("index.html");
+
         return app;
     }
 
