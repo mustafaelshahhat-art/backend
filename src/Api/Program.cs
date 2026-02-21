@@ -27,16 +27,20 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 builder.Host.UseSerilog();
 
-// PROD-AUDIT: Fail fast if secrets are missing
-// var jwtSecret = builder.Configuration["JwtSettings:Secret"]; <--- DUPLICATE REMOVED
-// PROD-AUDIT: Fail fast if secrets are missing - DISABLED FOR DEBUGGING
+// Fail fast if JWT secret is missing or too short
 var jwtSecret = builder.Configuration["JwtSettings:Secret"];
 if (string.IsNullOrEmpty(jwtSecret) || jwtSecret.Length < 16)
 {
-    // throw new InvalidOperationException("CRITICAL: JwtSettings:Secret is missing or too short. Configure via UserSecrets or Env Vars.");
-    Console.WriteLine("CRITICAL WARNING: JwtSettings:Secret is missing. Auth will fail, but starting up for DEBUGGING.");
-    // FALLBACK FOR DEBUGGING: Set a dummy secret to prevent crash in AddJwtAuthentication
-    builder.Configuration["JwtSettings:Secret"] = "DEBUG_ONLY_SECRET_DEBUG_ONLY_SECRET_DEBUG_ONLY_SECRET";
+    if (builder.Environment.IsProduction())
+    {
+        throw new InvalidOperationException(
+            "CRITICAL: JwtSettings:Secret is missing or too short (min 16 chars). " +
+            "Set via environment variable: JwtSettings__Secret");
+    }
+
+    // Development only: use a dummy secret so local startup doesn't crash
+    Log.Warning("[CONFIG] JwtSettings:Secret is missing. Using dummy secret (Development only).");
+    builder.Configuration["JwtSettings:Secret"] = "DEV_ONLY_DUMMY_SECRET_NOT_FOR_PRODUCTION_USE_1234";
 }
 
 // Services
@@ -52,7 +56,7 @@ builder.Services.AddControllers()
     });
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<Infrastructure.Data.AppDbContext>(tags: new[] { "ready" });
-// IDistributedCache is registered in Infrastructure/DependencyInjection.cs (AddDistributedMemoryCache for dev, swap to Redis for prod)
+// IDistributedCache + IConnectionMultiplexer registered in Infrastructure/DependencyInjection.cs
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(options =>
 {
     options.InvalidModelStateResponseFactory = context =>
@@ -71,7 +75,7 @@ builder.AddSignalRServices();
 builder.Services.AddApiCors(builder.Configuration, builder.Environment);
 builder.Services.AddApiRateLimiting();
 builder.Services.AddApplication();
-builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<Application.Interfaces.ICurrentUserAccessor, Infrastructure.Authentication.CurrentUserAccessor>();
 builder.Services.AddSwaggerDocumentation();

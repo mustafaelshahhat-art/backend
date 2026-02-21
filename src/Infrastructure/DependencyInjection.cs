@@ -7,87 +7,81 @@ using Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
-        var redisConnectionString = configuration["Redis:ConnectionString"] 
-            ?? configuration.GetConnectionString("Redis") 
-            ?? "localhost:6379";
-
+        // Single source of truth: ConnectionStrings:Redis (env var: ConnectionStrings__Redis)
+        var redisConnectionString = configuration.GetConnectionString("Redis");
+        bool redisConfigured = !string.IsNullOrWhiteSpace(redisConnectionString);
         bool useRedis = false;
 
-        // Skip Redis probe entirely if connection string is empty
-        if (!string.IsNullOrWhiteSpace(redisConnectionString))
+        if (redisConfigured)
         {
             try
             {
-                // PROD-AUDIT: Distributed Safety
-                // Attempt Redis connection, fallback to SQL if unavailable (even in Production)
-                var checkOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
-                checkOptions.AbortOnConnectFail = true;
-                checkOptions.ConnectTimeout = 3000; // Fast fail check
-                using var checkConn = StackExchange.Redis.ConnectionMultiplexer.Connect(checkOptions);
-                useRedis = checkConn.IsConnected;
+                var options = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString!);
+                options.AbortOnConnectFail = false;
+                options.ConnectRetry = 3;
+                options.ConnectTimeout = 5000;
+                var multiplexer = StackExchange.Redis.ConnectionMultiplexer.Connect(options);
+                useRedis = multiplexer.IsConnected;
+
+                if (useRedis)
+                {
+                    // Register the already-connected multiplexer as singleton (no duplicate probe)
+                    services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(multiplexer);
+                    services.AddStackExchangeRedisCache(opt =>
+                    {
+                        opt.Configuration = redisConnectionString;
+                        opt.InstanceName = "KoraZone365_";
+                    });
+                    Console.WriteLine($"[CONFIG] Cache provider: Redis ({redisConnectionString})");
+                }
+                else
+                {
+                    multiplexer.Dispose();
+                    throw new InvalidOperationException($"Redis connected but IsConnected=false for '{redisConnectionString}'.");
+                }
             }
             catch (Exception ex)
             {
                 useRedis = false;
-                // PROD-FIX: Log the fallback so operators know Redis is down
-                // Note: Serilog may not be fully configured yet, use Console as fallback
-                Console.Error.WriteLine($"[WARN] Redis unavailable at '{redisConnectionString}': {ex.Message}. Falling back to SQL distributed lock and in-memory cache.");
+
+                if (environment.IsProduction())
+                {
+                    // Production: fail fast — do not silently degrade to in-memory
+                    throw new InvalidOperationException(
+                        $"CRITICAL: Redis is configured (ConnectionStrings:Redis) but unreachable. " +
+                        $"Cannot start in Production without Redis. Error: {ex.Message}", ex);
+                }
+
+                // Development: allow fallback for convenience
+                Console.WriteLine($"[CONFIG] Redis configured but unreachable ({ex.Message}). Falling back to in-memory cache (Development only).");
             }
         }
 
+        if (!useRedis)
+        {
+            services.AddDistributedMemoryCache();
+            Console.WriteLine("[CONFIG] Cache provider: In-Memory (DistributedMemoryCache)");
+        }
+
+        // Distributed Lock: follows Redis availability — no separate config key needed
         if (useRedis)
         {
-            services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp => 
-            {
-                var options = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
-                options.AbortOnConnectFail = false; 
-                options.ConnectRetry = 3;
-                options.ConnectTimeout = 5000;
-                return StackExchange.Redis.ConnectionMultiplexer.Connect(options);
-            });
-
-            services.AddStackExchangeRedisCache(options =>
-            {
-                options.Configuration = redisConnectionString;
-                options.InstanceName = "KoraZone365_";
-            });
-        }
-        else
-        {
-            // ENTERPRISE: In non-Redis environments, still use IDistributedCache interface
-            // but log a warning — production MUST use Redis for horizontal scaling.
-            Console.Error.WriteLine("[WARN] Redis unavailable. Using in-memory distributed cache. NOT safe for horizontal scaling.");
-            services.AddDistributedMemoryCache();
-        }
-
-        // Lock Provider Logic
-        var lockProvider = configuration["DistributedLock:Provider"];
-        bool useRedisLock = false;
-
-        if (string.IsNullOrEmpty(lockProvider))
-        {
-             useRedisLock = useRedis; // Default to Redis if available, else Sql
-        }
-        else
-        {
-             useRedisLock = lockProvider.Equals("Redis", StringComparison.OrdinalIgnoreCase);
-        }
-
-        if (useRedisLock && useRedis)
-        {
             services.AddSingleton<IDistributedLock, Services.RedisLockService>();
+            Console.WriteLine("[CONFIG] Distributed lock provider: Redis");
         }
         else
         {
             services.AddSingleton<IDistributedLock, Services.SqlDistributedLockService>();
+            Console.WriteLine("[CONFIG] Distributed lock provider: SQL (sp_getapplock)");
         }
 
         // PERF-FIX: Use AddDbContextPool for context reuse — reduces GC pressure

@@ -292,47 +292,40 @@ public static class ServiceCollectionExtensions
     }
 
     // SignalR with optional Redis backplane
+    // Note: Redis connectivity for SignalR is deferred — the IConnectionMultiplexer singleton
+    // is registered by DependencyInjection.AddInfrastructure(). SignalR reuses that connection
+    // instead of opening a separate probe. This method runs BEFORE AddInfrastructure, so we
+    // use a post-configure approach: always register SignalR+MessagePack, then conditionally
+    // add the Redis backplane in a hosted service or via the connection string.
     public static WebApplicationBuilder AddSignalRServices(this WebApplicationBuilder builder)
     {
-        try
-        {
-            var redisConnectionString = builder.Configuration["Redis:ConnectionString"];
-            if (!string.IsNullOrEmpty(redisConnectionString) && builder.Environment.IsProduction())
-            {
-                // Attempt to configure Redis backplane for SignalR
-                var checkOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
-                checkOptions.AbortOnConnectFail = true;
-                checkOptions.ConnectTimeout = 3000;
-                using var testConn = StackExchange.Redis.ConnectionMultiplexer.Connect(checkOptions);
+        // Read from the single source of truth: ConnectionStrings:Redis
+        var redisConnectionString = builder.Configuration.GetConnectionString("Redis");
+        bool redisConfigured = !string.IsNullOrWhiteSpace(redisConnectionString);
 
-                if (testConn.IsConnected)
-                {
-                    builder.Services.AddSignalR()
-                        // PERF: MessagePack binary protocol — ~60% payload reduction vs JSON.
-                        // Clients must use @microsoft/signalr-protocol-msgpack.
-                        // Falls back to JSON automatically for clients that don't opt in.
-                        .AddMessagePackProtocol()
-                        .AddStackExchangeRedis(redisConnectionString, options => {
-                            options.Configuration.ChannelPrefix = StackExchange.Redis.RedisChannel.Literal("ramadan_signalr");
-                        });
-                    Log.Information("SignalR configured with Redis backplane + MessagePack.");
-                }
-                else
-                {
-                    builder.Services.AddSignalR().AddMessagePackProtocol();
-                    Log.Warning("Redis unavailable for SignalR. Using in-memory backplane.");
-                }
-            }
-            else
-            {
-                builder.Services.AddSignalR().AddMessagePackProtocol(); // Development or Redis not configured
-            }
-        }
-        catch
+        if (redisConfigured)
         {
-            builder.Services.AddSignalR().AddMessagePackProtocol(); // Fallback to in-memory
-            Log.Warning("Failed to configure Redis for SignalR. Using in-memory backplane.");
+            try
+            {
+                builder.Services.AddSignalR()
+                    .AddMessagePackProtocol()
+                    .AddStackExchangeRedis(redisConnectionString!, options => {
+                        options.Configuration.ChannelPrefix = StackExchange.Redis.RedisChannel.Literal("ramadan_signalr");
+                    });
+                Log.Information("[CONFIG] SignalR backplane: Redis");
+            }
+            catch (Exception ex)
+            {
+                builder.Services.AddSignalR().AddMessagePackProtocol();
+                Log.Warning(ex, "[CONFIG] SignalR Redis backplane registration failed. Using in-memory backplane.");
+            }
         }
+        else
+        {
+            builder.Services.AddSignalR().AddMessagePackProtocol();
+            Log.Information("[CONFIG] SignalR backplane: In-Memory");
+        }
+
         builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, Api.Infrastructure.CustomUserIdProvider>();
         builder.Services.AddScoped<Application.Interfaces.IRealTimeNotifier, Api.Services.RealTimeNotifier>();
         return builder;

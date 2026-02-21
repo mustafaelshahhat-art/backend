@@ -12,25 +12,22 @@ public static class WebApplicationExtensions
 {
     public static WebApplication UseApiPipeline(this WebApplication app)
     {
-        // PROD-AUDIT: Redis Health Guard (Optional)
-        // Check Redis connectivity but don't fail startup if unavailable
-        try
+        // Startup validation: log active infrastructure providers
         {
             var redis = app.Services.GetService<StackExchange.Redis.IConnectionMultiplexer>();
             if (redis != null && redis.IsConnected)
             {
-                var db = redis.GetDatabase();
-                db.Ping();
-                Log.Information("Redis connectivity verified.");
+                var latency = redis.GetDatabase().Ping();
+                Log.Information("[STARTUP] Redis connected. Ping: {Latency}ms", latency.TotalMilliseconds);
             }
             else
             {
-                Log.Warning("Redis is not configured or unreachable. Using SQL-based caching and distributed lock.");
+                Log.Information("[STARTUP] Redis not active. Cache=InMemory, Lock=SQL");
             }
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "Redis health check failed. Using SQL-based fallback for caching and distributed lock.");
+
+            var dbConn = app.Configuration.GetConnectionString("DefaultConnection");
+            Log.Information("[STARTUP] Database: {Provider}", string.IsNullOrWhiteSpace(dbConn) ? "NOT CONFIGURED" : "SQL Server");
+            Log.Information("[STARTUP] Environment: {Env}", app.Environment.EnvironmentName);
         }
 
         // Configure the HTTP request pipeline.
