@@ -98,7 +98,7 @@ public static class ServiceCollectionExtensions
                         "https://korazone365.com",
                         "https://www.korazone365.com",
                         "https://korazone365.vercel.app",
-                        "https://korazon365.runasp.net",
+                        "https://korazone365-gsa2ftfkh9atbuaw.francecentral-01.azurewebsites.net",
                         "http://localhost:4200"
                     };
 
